@@ -1,0 +1,14 @@
+# Local runtime state
+state/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Dotnet (future)
+**/bin/
+**/obj/
