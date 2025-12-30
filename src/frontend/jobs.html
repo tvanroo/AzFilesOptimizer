@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AzFilesOptimizer - Jobs</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>AzFilesOptimizer</h1>
+    </header>
+    
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="jobs.html" class="active">Jobs</a></li>
+        </ul>
+    </nav>
+    
+    <main>
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="margin-bottom: 0;">Jobs</h2>
+                <button class="btn" onclick="showCreateJobModal()">+ New Job</button>
+            </div>
+            
+            <div id="jobs-container">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Job ID</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Updated</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobs-table-body">
+                            <tr>
+                                <td colspan="6" style="text-align: center; padding: 2rem;">
+                                    <div class="loading"></div>
+                                    <p style="margin-top: 1rem; color: var(--text-secondary);">Loading jobs...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="empty-state" style="display: none;">
+                <div class="empty-state">
+                    <h3>No jobs yet</h3>
+                    <p>Create your first discovery or optimization job to get started.</p>
+                    <button class="btn" onclick="showCreateJobModal()" style="margin-top: 1rem;">+ Create Job</button>
+                </div>
+            </div>
+            
+            <div id="error-container" style="display: none; margin-top: 1rem;"></div>
+        </div>
+        
+        <div class="card">
+            <h2>About Jobs</h2>
+            <h3 style="font-size: 1rem; margin-top: 1rem;">Discovery Jobs</h3>
+            <p>
+                Discovery jobs enumerate Azure Files shares and Azure NetApp Files resources 
+                within your defined scope (tenant/subscription/resource group filters).
+            </p>
+            
+            <h3 style="font-size: 1rem; margin-top: 1rem;">Optimization Jobs</h3>
+            <p>
+                Optimization jobs analyze discovered resources and generate AI-powered 
+                recommendations for Azure NetApp Files migration candidacy and architecture.
+            </p>
+        </div>
+    </main>
+    
+    <script src="js/api-client.js"></script>
+    <script>
+        // Placeholder mock data for jobs (until backend endpoints are implemented)
+        const mockJobs = [
+            {
+                jobId: 'disc-001',
+                type: 'Discovery',
+                status: 'Completed',
+                created: new Date(Date.now() - 86400000).toISOString(),
+                updated: new Date(Date.now() - 82800000).toISOString()
+            },
+            {
+                jobId: 'opt-001',
+                type: 'Optimization',
+                status: 'Running',
+                created: new Date(Date.now() - 3600000).toISOString(),
+                updated: new Date(Date.now() - 300000).toISOString()
+            },
+            {
+                jobId: 'disc-002',
+                type: 'Discovery',
+                status: 'Pending',
+                created: new Date(Date.now() - 600000).toISOString(),
+                updated: new Date(Date.now() - 600000).toISOString()
+            }
+        ];
+        
+        function formatDate(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleString();
+        }
+        
+        function getStatusBadge(status) {
+            const statusLower = status.toLowerCase();
+            return `<span class="badge ${statusLower}">${status}</span>`;
+        }
+        
+        async function loadJobs() {
+            const tableBody = document.getElementById('jobs-table-body');
+            const emptyState = document.getElementById('empty-state');
+            const errorContainer = document.getElementById('error-container');
+            
+            try {
+                // TODO: Replace with actual API call once backend endpoint is implemented
+                // const jobs = await apiClient.getJobs();
+                
+                // For now, use mock data after a delay to simulate API call
+                await new Promise(resolve => setTimeout(resolve, 800));
+                const jobs = mockJobs;
+                
+                if (jobs.length === 0) {
+                    tableBody.parentElement.parentElement.style.display = 'none';
+                    emptyState.style.display = 'block';
+                    return;
+                }
+                
+                tableBody.innerHTML = jobs.map(job => `
+                    <tr>
+                        <td><a href="job-detail.html?id=${job.jobId}" style="color: var(--primary-color); text-decoration: none;">${job.jobId}</a></td>
+                        <td>${job.type}</td>
+                        <td>${getStatusBadge(job.status)}</td>
+                        <td>${formatDate(job.created)}</td>
+                        <td>${formatDate(job.updated)}</td>
+                        <td>
+                            <a href="job-detail.html?id=${job.jobId}" class="btn" style="padding: 0.375rem 0.75rem; font-size: 0.8125rem;">View</a>
+                        </td>
+                    </tr>
+                `).join('');
+                
+            } catch (error) {
+                tableBody.innerHTML = '';
+                tableBody.parentElement.parentElement.style.display = 'none';
+                errorContainer.style.display = 'block';
+                errorContainer.innerHTML = `
+                    <div class="error-message">
+                        <strong>Error loading jobs:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        function showCreateJobModal() {
+            alert('Job creation UI will be implemented in a future phase.\n\nFor now, jobs can be created via direct API calls to the backend.');
+        }
+        
+        // Load jobs on page load
+        loadJobs();
+    </script>
+</body>
+</html>

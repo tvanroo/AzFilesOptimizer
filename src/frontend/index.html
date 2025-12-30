@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AzFilesOptimizer - Home</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>AzFilesOptimizer</h1>
+    </header>
+    
+    <nav>
+        <ul>
+            <li><a href="index.html" class="active">Home</a></li>
+            <li><a href="jobs.html">Jobs</a></li>
+        </ul>
+    </nav>
+    
+    <main>
+        <div class="card">
+            <h2>System Status</h2>
+            <div id="health-status" class="status-indicator loading">
+                <span class="status-dot"></span>
+                <span>Checking backend health...</span>
+            </div>
+            
+            <div id="health-details" class="info-grid" style="display: none;">
+                <div class="info-item">
+                    <label>Service Name</label>
+                    <strong id="service-name">-</strong>
+                </div>
+                <div class="info-item">
+                    <label>Version</label>
+                    <strong id="version">-</strong>
+                </div>
+                <div class="info-item">
+                    <label>Environment</label>
+                    <strong id="environment">-</strong>
+                </div>
+                <div class="info-item">
+                    <label>Storage Connection</label>
+                    <strong id="storage-status">-</strong>
+                </div>
+            </div>
+            
+            <div id="error-container" style="display: none; margin-top: 1rem;"></div>
+        </div>
+        
+        <div class="card">
+            <h2>Quick Actions</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                Start discovering Azure Files shares and ANF resources in your environment.
+            </p>
+            <a href="jobs.html" class="btn">View Jobs</a>
+        </div>
+        
+        <div class="card">
+            <h2>About</h2>
+            <p>
+                AzFilesOptimizer helps customers and field teams quickly assess Azure Files 
+                environments and identify high-confidence Azure NetApp Files (ANF) modernization 
+                opportunities.
+            </p>
+            <p style="margin-top: 1rem;">
+                This Azure-native solution is deployed into your own subscription, using Azure 
+                PaaS services to provide discovery, analysis, and AI-powered recommendations.
+            </p>
+        </div>
+    </main>
+    
+    <script src="js/api-client.js"></script>
+    <script>
+        async function loadHealthStatus() {
+            const statusElement = document.getElementById('health-status');
+            const detailsElement = document.getElementById('health-details');
+            const errorContainer = document.getElementById('error-container');
+            
+            try {
+                const health = await apiClient.getHealth();
+                
+                // Update status indicator
+                statusElement.className = 'status-indicator healthy';
+                statusElement.innerHTML = '<span class="status-dot"></span><span>Backend is healthy</span>';
+                
+                // Show and populate details
+                detailsElement.style.display = 'grid';
+                document.getElementById('service-name').textContent = health.serviceName || 'AzFilesOptimizer';
+                document.getElementById('version').textContent = health.version || '1.0.0';
+                document.getElementById('environment').textContent = health.environment || 'Development';
+                document.getElementById('storage-status').textContent = health.storageConfigured ? 'Configured' : 'Not Configured';
+                
+            } catch (error) {
+                // Update status indicator
+                statusElement.className = 'status-indicator unhealthy';
+                statusElement.innerHTML = '<span class="status-dot"></span><span>Backend is unreachable</span>';
+                
+                // Show error message
+                errorContainer.style.display = 'block';
+                errorContainer.innerHTML = `
+                    <div class="error-message">
+                        <strong>Error:</strong> ${error.message}
+                        <p style="margin-top: 0.5rem; font-size: 0.875rem;">
+                            Make sure the backend is running. For local development, start the 
+                            Azure Functions app with <code>func start</code> in the backend directory.
+                        </p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Load health status on page load
+        loadHealthStatus();
+    </script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "AzFilesOptimizer Dashboard";
+}
+
+<div class="container py-4">
+    <div class="mb-4">
+        <h1 class="display-5">AzFilesOptimizer</h1>
+        <p class="text-muted mb-0">
+            Local dashboard for Azure Files discovery, metrics, and ANF candidacy recommendations.
+        </p>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">Azure connection</div>
+                <div class="card-body">
+                    <p class="text-muted mb-2">Interactive sign-in and cloud selection.</p>
+                    <ul class="mb-2">
+                        <li>Status: <span class="fw-semibold">Not connected</span></li>
+                        <li>Cloud: <span class="text-muted">@Model.AzureCloudDisplay</span></li>
+                        <li>Tenant: <span class="text-muted">N/A</span></li>
+                    </ul>
+                    <button class="btn btn-primary" disabled>Link to Azure (coming soon)</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">Discovery jobs</div>
+                <div class="card-body">
+                    <p class="text-muted mb-2">Inventory of subscriptions, storage accounts, and Azure Files shares.</p>
+                    <ul class="mb-2">
+                        <li>Current job: <span class="text-muted">None running</span></li>
+                        <li>Last run: <span class="text-muted">N/A</span></li>
+                        <li>Discovered shares: <span class="text-muted">0</span></li>
+                    </ul>
+                    <button class="btn btn-outline-secondary" disabled>Start discovery (coming soon)</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">Metrics & monitoring</div>
+                <div class="card-body">
+                    <p class="text-muted mb-2">Historical capacity and performance signals.</p>
+                    <ul class="mb-2">
+                        <li>Default window: <span class="text-muted">7 days</span></li>
+                        <li>Metrics coverage: <span class="text-muted">Unknown</span></li>
+                        <li>Monitoring deployment: <span class="text-muted">Not configured</span></li>
+                    </ul>
+                    <button class="btn btn-outline-secondary" disabled>Configure monitoring (coming soon)</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header fw-semibold">AI recommendations</div>
+                <div class="card-body">
+                    <p class="text-muted mb-2">ANF candidacy scoring and target architecture.</p>
+                    <ul class="mb-2">
+                        <li>LLM endpoint: <span class="text-muted">Not configured</span></li>
+                        <li>Shares with scores: <span class="text-muted">0</span></li>
+                        <li>Last run: <span class="text-muted">N/A</span></li>
+                    </ul>
+                    <button class="btn btn-outline-secondary" disabled>Run AI analysis (coming soon)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

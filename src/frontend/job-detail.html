@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AzFilesOptimizer - Job Details</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>AzFilesOptimizer</h1>
+    </header>
+    
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="jobs.html">Jobs</a></li>
+        </ul>
+    </nav>
+    
+    <main>
+        <div style="margin-bottom: 1rem;">
+            <a href="jobs.html" style="color: var(--primary-color); text-decoration: none;">← Back to Jobs</a>
+        </div>
+        
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1.5rem;">
+                <div>
+                    <h2 id="job-id" style="margin-bottom: 0.5rem;">Job Details</h2>
+                    <div id="job-status-badge"></div>
+                </div>
+                <button class="btn" id="refresh-btn" onclick="loadJobDetails()">Refresh</button>
+            </div>
+            
+            <div id="job-details-container">
+                <div style="text-align: center; padding: 2rem;">
+                    <div class="loading"></div>
+                    <p style="margin-top: 1rem; color: var(--text-secondary);">Loading job details...</p>
+                </div>
+            </div>
+            
+            <div id="error-container" style="display: none;"></div>
+        </div>
+        
+        <div class="card" id="results-card" style="display: none;">
+            <h2>Results</h2>
+            <div id="results-container">
+                <p style="color: var(--text-secondary);">Results will appear here once the job completes.</p>
+            </div>
+        </div>
+        
+        <div class="card" id="logs-card" style="display: none;">
+            <h2>Execution Log</h2>
+            <div id="logs-container" style="background: var(--surface); padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.875rem; max-height: 400px; overflow-y: auto;">
+                <p style="color: var(--text-secondary);">No logs available yet.</p>
+            </div>
+        </div>
+    </main>
+    
+    <script src="js/api-client.js"></script>
+    <script>
+        // Get job ID from URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const jobId = urlParams.get('id');
+        
+        // Mock job data (until backend endpoint is implemented)
+        const mockJobData = {
+            'disc-001': {
+                jobId: 'disc-001',
+                type: 'Discovery',
+                status: 'Completed',
+                created: new Date(Date.now() - 86400000).toISOString(),
+                updated: new Date(Date.now() - 82800000).toISOString(),
+                duration: '1h 15m',
+                scope: {
+                    subscriptionId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+                    resourceGroups: ['rg-filestorage-prod', 'rg-filestorage-dev']
+                },
+                results: {
+                    azureFilesShares: 12,
+                    anfVolumes: 3,
+                    totalCapacityTB: 45.2
+                },
+                logs: [
+                    '[2025-12-29 15:30:00] Job started',
+                    '[2025-12-29 15:30:05] Authenticating to Azure...',
+                    '[2025-12-29 15:30:08] Authentication successful',
+                    '[2025-12-29 15:30:10] Scanning subscription xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+                    '[2025-12-29 15:45:23] Found 12 Azure Files shares',
+                    '[2025-12-29 16:15:42] Found 3 ANF volumes',
+                    '[2025-12-29 16:45:15] Job completed successfully'
+                ]
+            },
+            'opt-001': {
+                jobId: 'opt-001',
+                type: 'Optimization',
+                status: 'Running',
+                created: new Date(Date.now() - 3600000).toISOString(),
+                updated: new Date(Date.now() - 300000).toISOString(),
+                duration: '55m (in progress)',
+                scope: {
+                    discoveryJobId: 'disc-001'
+                },
+                logs: [
+                    '[2025-12-30 14:00:00] Job started',
+                    '[2025-12-30 14:00:05] Loading discovery results from disc-001',
+                    '[2025-12-30 14:05:12] Analyzing 12 Azure Files shares',
+                    '[2025-12-30 14:35:45] Generating AI recommendations (8/12 complete)...'
+                ]
+            },
+            'disc-002': {
+                jobId: 'disc-002',
+                type: 'Discovery',
+                status: 'Pending',
+                created: new Date(Date.now() - 600000).toISOString(),
+                updated: new Date(Date.now() - 600000).toISOString(),
+                duration: '-',
+                scope: {
+                    subscriptionId: 'yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy',
+                    resourceGroups: ['rg-storage-test']
+                },
+                logs: [
+                    '[2025-12-30 14:50:00] Job queued, waiting to start...'
+                ]
+            }
+        };
+        
+        function formatDate(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleString();
+        }
+        
+        function getStatusBadge(status) {
+            const statusLower = status.toLowerCase();
+            return `<span class="badge ${statusLower}">${status}</span>`;
+        }
+        
+        async function loadJobDetails() {
+            const detailsContainer = document.getElementById('job-details-container');
+            const errorContainer = document.getElementById('error-container');
+            const resultsCard = document.getElementById('results-card');
+            const logsCard = document.getElementById('logs-card');
+            
+            if (!jobId) {
+                errorContainer.style.display = 'block';
+                errorContainer.innerHTML = `
+                    <div class="error-message">
+                        <strong>Error:</strong> No job ID specified in URL
+                    </div>
+                `;
+                detailsContainer.style.display = 'none';
+                return;
+            }
+            
+            try {
+                // TODO: Replace with actual API call once backend endpoint is implemented
+                // const job = await apiClient.getJob(jobId);
+                
+                // For now, use mock data after a delay to simulate API call
+                await new Promise(resolve => setTimeout(resolve, 600));
+                const job = mockJobData[jobId];
+                
+                if (!job) {
+                    throw new Error('Job not found');
+                }
+                
+                // Update page title
+                document.getElementById('job-id').textContent = `Job: ${job.jobId}`;
+                document.getElementById('job-status-badge').innerHTML = getStatusBadge(job.status);
+                
+                // Display job details
+                detailsContainer.innerHTML = `
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <label>Job ID</label>
+                            <strong>${job.jobId}</strong>
+                        </div>
+                        <div class="info-item">
+                            <label>Type</label>
+                            <strong>${job.type}</strong>
+                        </div>
+                        <div class="info-item">
+                            <label>Status</label>
+                            <strong>${job.status}</strong>
+                        </div>
+                        <div class="info-item">
+                            <label>Duration</label>
+                            <strong>${job.duration}</strong>
+                        </div>
+                        <div class="info-item">
+                            <label>Created</label>
+                            <strong>${formatDate(job.created)}</strong>
+                        </div>
+                        <div class="info-item">
+                            <label>Last Updated</label>
+                            <strong>${formatDate(job.updated)}</strong>
+                        </div>
+                    </div>
+                    
+                    <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem;">Scope</h3>
+                    <div style="background: var(--surface); padding: 1rem; border-radius: 4px;">
+                        ${Object.entries(job.scope).map(([key, value]) => `
+                            <div style="margin-bottom: 0.5rem;">
+                                <strong>${key}:</strong> ${Array.isArray(value) ? value.join(', ') : value}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                // Show results if job is completed
+                if (job.status === 'Completed' && job.results) {
+                    resultsCard.style.display = 'block';
+                    document.getElementById('results-container').innerHTML = `
+                        <div class="info-grid">
+                            ${Object.entries(job.results).map(([key, value]) => `
+                                <div class="info-item">
+                                    <label>${key.replace(/([A-Z])/g, ' $1').trim()}</label>
+                                    <strong>${value}</strong>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+                
+                // Show logs if available
+                if (job.logs && job.logs.length > 0) {
+                    logsCard.style.display = 'block';
+                    document.getElementById('logs-container').innerHTML = job.logs.map(log => 
+                        `<div>${log}</div>`
+                    ).join('');
+                }
+                
+            } catch (error) {
+                detailsContainer.style.display = 'none';
+                errorContainer.style.display = 'block';
+                errorContainer.innerHTML = `
+                    <div class="error-message">
+                        <strong>Error loading job details:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // Load job details on page load
+        loadJobDetails();
+    </script>
+</body>
+</html>

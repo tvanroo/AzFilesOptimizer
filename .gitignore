@@ -12,3 +12,6 @@ Thumbs.db
 # Dotnet (future)
 **/bin/
 **/obj/
+
+# Local environment configuration
+.env
