@@ -13,12 +13,25 @@ class ApiClient {
      */
     async fetchJson(endpoint, options = {}) {
         try {
+            // Get access token if user is signed in
+            let headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            if (typeof authManager !== 'undefined' && authManager.isSignedIn()) {
+                try {
+                    const token = await authManager.getAccessToken();
+                    headers['Authorization'] = `Bearer ${token}`;
+                } catch (error) {
+                    console.warn('Failed to get access token:', error);
+                    // Continue without token for endpoints that don't require auth
+                }
+            }
+
             const response = await fetch(`${API_BASE_URL}${endpoint}`, {
                 ...options,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                }
+                headers: headers
             });
 
             if (!response.ok) {

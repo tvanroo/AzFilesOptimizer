@@ -114,17 +114,149 @@ This section shows how to deploy `infra/main.bicep` into a resource group using 
 
    These values will be used later when you configure and deploy the backend/ frontend code.
 
-## 5. Post-deployment configuration (high level)
+## 5. Configuring Azure AD Authentication
 
-After Phase 1, the core infrastructure exists but no code is deployed yet. At a high level, the next steps will be:
+### 5.1 Overview
 
-- Create and configure an Entra ID app registration for the web UI.
-- Configure Key Vault secrets (e.g., OpenAI/Azure OpenAI keys, any external endpoints).
-- Deploy backend (Functions) and frontend (Static Web App) code using CI/CD or manual publish.
+AzFilesOptimizer uses **user authentication with delegated permissions**. Users sign in with their Azure AD account, and the application acts on their behalf to discover and analyze Azure resources. No service principal creation is required from users.
 
-These are covered in later phases of the project plan and will be documented in more detail as the code is implemented.
+**Authentication Flow:**
+1. User clicks "Sign In" in the web UI
+2. User is redirected to Azure AD to authenticate
+3. User consents to delegated permissions (if first time)
+4. Azure AD returns an access token
+5. Frontend sends the token with API requests
+6. Backend validates the token and acts on behalf of the user
 
-## 6. Local development
+### 5.2 Create an Entra ID App Registration
+
+**Prerequisites:**
+- Azure AD tenant administrator or Application Developer role
+- Access to Azure Portal
+
+**Steps:**
+
+1. **Navigate to Azure AD App Registrations:**
+   - Go to [Azure Portal](https://portal.azure.com)
+   - Search for "App registrations" or navigate to **Azure Active Directory > App registrations**
+   - Click **+ New registration**
+
+2. **Register the application:**
+   - **Name:** `AzFilesOptimizer` (or your preferred name)
+   - **Supported account types:** Select one of:
+     - "Accounts in this organizational directory only" (Single tenant - recommended for internal use)
+     - "Accounts in any organizational directory" (Multi-tenant - if deploying for multiple organizations)
+   - **Redirect URI:** 
+     - Platform: **Single-page application (SPA)**
+     - For local development: `http://localhost:8080`
+     - For production: Your deployed Static Web App URL (e.g., `https://azfilesopt.azurestaticapps.net`)
+   - Click **Register**
+
+3. **Note the Application (client) ID and Tenant ID:**
+   - On the **Overview** page, copy:
+     - **Application (client) ID** - You'll need this for frontend configuration
+     - **Directory (tenant) ID** - You'll need this for frontend configuration
+
+4. **Configure API permissions (delegated):**
+   - Navigate to **API permissions**
+   - Click **+ Add a permission**
+   - Select **Azure Service Management**
+   - Check **user_impersonation** ("Access Azure Service Management as organization users")
+   - Click **Add permissions**
+   - Optionally click **Grant admin consent for [Your Tenant]** to pre-consent for all users
+
+5. **Configure additional redirect URIs (if needed):**
+   - Navigate to **Authentication**
+   - Under **Single-page application**, add additional redirect URIs:
+     - `http://localhost:8080` (local development)
+     - `https://your-app.azurestaticapps.net` (production)
+   - Under **Advanced settings**:
+     - Enable **Access tokens** (used for implicit flows)
+     - Enable **ID tokens** (used for user identification)
+
+6. **Configure optional claims (recommended):**
+   - Navigate to **Token configuration**
+   - Click **+ Add optional claim**
+   - Select **ID** token type
+   - Add: `email`, `family_name`, `given_name`
+   - Click **Add**
+
+### 5.3 Configure the Frontend
+
+Create a configuration file `src/frontend/js/auth-config.js`:
+
+```javascript
+const msalConfig = {
+    auth: {
+        clientId: "YOUR_APPLICATION_CLIENT_ID",
+        authority: "https://login.microsoftonline.com/YOUR_TENANT_ID",
+        redirectUri: window.location.origin
+    },
+    cache: {
+        cacheLocation: "localStorage",
+        storeAuthStateInCookie: false
+    }
+};
+
+const loginRequest = {
+    scopes: [
+        "https://management.azure.com/user_impersonation",  // Azure Resource Manager
+        "User.Read"  // Microsoft Graph (for user profile)
+    ]
+};
+```
+
+Replace:
+- `YOUR_APPLICATION_CLIENT_ID` with the Application (client) ID from step 3
+- `YOUR_TENANT_ID` with the Directory (tenant) ID from step 3
+
+### 5.4 Configure the Backend
+
+Update `src/backend/local.settings.json` for local development:
+
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "AzureAd:TenantId": "YOUR_TENANT_ID",
+    "AzureAd:ClientId": "YOUR_APPLICATION_CLIENT_ID"
+  }
+}
+```
+
+For deployed environments, set these as Application Settings in the Function App.
+
+### 5.5 Required User Permissions
+
+Users who sign in must have appropriate RBAC roles on Azure subscriptions/resource groups to discover resources:
+
+- **Reader** (minimum) - to enumerate Azure Files and ANF resources
+- **Contributor** (recommended) - if future features require write operations
+
+Users assign these roles via Azure Portal > Subscriptions > Access control (IAM).
+
+### 5.6 Testing Authentication
+
+1. Start the frontend and backend locally
+2. Navigate to `http://localhost:8080`
+3. Click "Sign In"
+4. You should be redirected to Microsoft login
+5. After signing in, you should see your name/email in the UI
+6. Backend should validate your token on API calls
+
+## 6. Post-deployment configuration
+
+After deploying infrastructure and configuring authentication:
+
+- Configure Key Vault secrets (e.g., OpenAI/Azure OpenAI keys)
+- Deploy backend (Functions) and frontend (Static Web App) code using CI/CD
+- Update Function App settings with Azure AD configuration
+
+These are covered in later phases of the project plan.
+
+## 7. Local development
 
 ### 6.1 Prerequisites for local development
 
@@ -240,7 +372,7 @@ To test the backend against real Azure resources:
 3. Ensure your Azure CLI is authenticated: `az login`
 4. Grant your local user identity appropriate RBAC roles on the target resources
 
-## 7. Troubleshooting and logs (to be detailed)
+## 8. Troubleshooting and logs (to be detailed)
 
 - Where to find logs in Application Insights.
 - Common errors and recovery steps.

@@ -8,7 +8,18 @@
 </head>
 <body>
     <header>
-        <h1>AzFilesOptimizer</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1>AzFilesOptimizer</h1>
+            <div id="auth-section">
+                <div id="signed-out-view" style="display: none;">
+                    <button class="btn" onclick="handleSignIn()" style="background-color: white; color: var(--primary-color);">Sign In</button>
+                </div>
+                <div id="signed-in-view" style="display: none;">
+                    <span id="user-name" style="color: white; margin-right: 1rem;"></span>
+                    <button class="btn" onclick="handleSignOut()" style="background-color: transparent; border: 1px solid white;">Sign Out</button>
+                </div>
+            </div>
+        </div>
     </header>
     
     <nav>
@@ -70,6 +81,12 @@
         </div>
     </main>
     
+    <!-- MSAL.js library -->
+    <script src="js/lib/msal-browser.min.js"></script>
+    
+    <!-- App scripts -->
+    <script src="js/auth-config.js"></script>
+    <script src="js/auth-manager.js"></script>
     <script src="js/api-client.js"></script>
     <script>
         async function loadHealthStatus() {
@@ -110,8 +127,66 @@
             }
         }
         
-        // Load health status on page load
-        loadHealthStatus();
+        // Authentication handlers
+        async function handleSignIn() {
+            try {
+                if (!authManager.msalInstance) {
+                    throw new Error('Authentication not initialized yet. Please wait a moment and try again.');
+                }
+                await authManager.signIn();
+            } catch (error) {
+                console.error('Sign-in error:', error);
+                alert('Sign-in failed: ' + error.message);
+            }
+        }
+
+        async function handleSignOut() {
+            try {
+                await authManager.signOut();
+            } catch (error) {
+                alert('Sign-out failed: ' + error.message);
+            }
+        }
+
+        function updateAuthUI() {
+            const signedInView = document.getElementById('signed-in-view');
+            const signedOutView = document.getElementById('signed-out-view');
+            const userNameElement = document.getElementById('user-name');
+
+            if (authManager.isSignedIn()) {
+                signedInView.style.display = 'block';
+                signedOutView.style.display = 'none';
+                userNameElement.textContent = authManager.getUserDisplayName();
+            } else {
+                signedInView.style.display = 'none';
+                signedOutView.style.display = 'block';
+            }
+        }
+
+        // Initialize application
+        async function initialize() {
+            try {
+                // Initialize authentication
+                await authManager.initialize();
+                updateAuthUI();
+                
+                // Load health status
+                loadHealthStatus();
+            } catch (error) {
+                console.error('Initialization failed:', error);
+                // Still show sign-in option even if initialization fails
+                document.getElementById('signed-out-view').style.display = 'block';
+                // Still try to load health status
+                loadHealthStatus();
+            }
+        }
+
+        // Start app when page and MSAL library are fully loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initialize);
+        } else {
+            initialize();
+        }
     </script>
 </body>
 </html>
