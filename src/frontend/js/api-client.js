@@ -5,7 +5,7 @@
 
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:7071/api'
-    : '/api';
+    : 'https://azfo-dev-func-xy76b.azurewebsites.net/api';
 
 class ApiClient {
     /**

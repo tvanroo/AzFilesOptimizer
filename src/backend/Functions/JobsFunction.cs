@@ -86,7 +86,13 @@ public class JobsFunction
         {
             // Parse request body
             var requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var request = JsonSerializer.Deserialize<CreateDiscoveryJobRequest>(requestBody);
+            _logger.LogInformation("Request body: {RequestBody}", requestBody);
+            
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            var request = JsonSerializer.Deserialize<CreateDiscoveryJobRequest>(requestBody, options);
 
             if (request == null)
             {
@@ -94,6 +100,9 @@ public class JobsFunction
                 await badRequestResponse.WriteAsJsonAsync(new { error = "Invalid request body" });
                 return badRequestResponse;
             }
+            
+            _logger.LogInformation("Parsed request - SubscriptionId: {SubscriptionId}, TenantId: {TenantId}", 
+                request.SubscriptionId, request.TenantId);
 
             // TODO: Extract user info from JWT token in Authorization header
             // For now, use placeholder values
