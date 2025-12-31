@@ -120,8 +120,24 @@
         }
         
         function getStatusBadge(status) {
-            const statusLower = status.toLowerCase();
-            return `<span class="badge ${statusLower}">${status}</span>`;
+            // Handle both enum values (0,1,2,3,4) and string values
+            const statusMap = {
+                0: 'Pending',
+                1: 'Running',
+                2: 'Completed',
+                3: 'Failed',
+                4: 'Cancelled'
+            };
+            
+            let statusText = status;
+            if (typeof status === 'number') {
+                statusText = statusMap[status] || 'Unknown';
+            } else if (!status) {
+                statusText = 'Unknown';
+            }
+            
+            const statusLower = statusText.toLowerCase();
+            return `<span class="badge ${statusLower}">${statusText}</span>`;
         }
         
         async function loadJobs() {
