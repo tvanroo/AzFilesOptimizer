@@ -131,8 +131,24 @@
         }
         
         function getStatusBadge(status) {
-            const statusLower = status.toLowerCase();
-            return `<span class="badge ${statusLower}">${status}</span>`;
+            // Handle both enum values (0,1,2,3,4) and string values
+            const statusMap = {
+                0: 'Pending',
+                1: 'Running',
+                2: 'Completed',
+                3: 'Failed',
+                4: 'Cancelled'
+            };
+            
+            let statusText = status;
+            if (typeof status === 'number') {
+                statusText = statusMap[status] || 'Unknown';
+            } else if (!status) {
+                statusText = 'Unknown';
+            }
+            
+            const statusLower = statusText.toLowerCase();
+            return `<span class="badge ${statusLower}">${statusText}</span>`;
         }
         
         async function loadJobDetails() {
@@ -153,82 +169,111 @@
             }
             
             try {
-                // TODO: Replace with actual API call once backend endpoint is implemented
-                // const job = await apiClient.getJob(jobId);
-                
-                // For now, use mock data after a delay to simulate API call
-                await new Promise(resolve => setTimeout(resolve, 600));
-                const job = mockJobData[jobId];
+                // Call real API
+                const job = await apiClient.getJob(jobId);
                 
                 if (!job) {
                     throw new Error('Job not found');
                 }
                 
                 // Update page title
-                document.getElementById('job-id').textContent = `Job: ${job.jobId}`;
+                const displayJobId = job.rowKey || job.jobId;
+                document.getElementById('job-id').textContent = `Job: ${displayJobId}`;
                 document.getElementById('job-status-badge').innerHTML = getStatusBadge(job.status);
+                
+                // Calculate duration
+                let duration = '-';
+                if (job.startedAt && job.completedAt) {
+                    const start = new Date(job.startedAt);
+                    const end = new Date(job.completedAt);
+                    const diffMs = end - start;
+                    const minutes = Math.floor(diffMs / 60000);
+                    duration = `${minutes}m`;
+                } else if (job.startedAt) {
+                    duration = 'In progress';
+                }
                 
                 // Display job details
                 detailsContainer.innerHTML = `
                     <div class="info-grid">
                         <div class="info-item">
                             <label>Job ID</label>
-                            <strong>${job.jobId}</strong>
+                            <strong>${displayJobId}</strong>
                         </div>
                         <div class="info-item">
                             <label>Type</label>
-                            <strong>${job.type}</strong>
+                            <strong>Discovery</strong>
                         </div>
                         <div class="info-item">
                             <label>Status</label>
-                            <strong>${job.status}</strong>
+                            <strong>${getStatusBadge(job.status).replace(/<[^>]*>/g, (tag) => tag.includes('badge') ? '' : tag).replace('</span>', '')}</strong>
                         </div>
                         <div class="info-item">
                             <label>Duration</label>
-                            <strong>${job.duration}</strong>
+                            <strong>${duration}</strong>
                         </div>
                         <div class="info-item">
                             <label>Created</label>
-                            <strong>${formatDate(job.created)}</strong>
+                            <strong>${formatDate(job.createdAt)}</strong>
                         </div>
                         <div class="info-item">
                             <label>Last Updated</label>
-                            <strong>${formatDate(job.updated)}</strong>
+                            <strong>${job.updatedAt ? formatDate(job.updatedAt) : '-'}</strong>
                         </div>
                     </div>
                     
                     <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem;">Scope</h3>
                     <div style="background: var(--surface); padding: 1rem; border-radius: 4px;">
-                        ${Object.entries(job.scope).map(([key, value]) => `
-                            <div style="margin-bottom: 0.5rem;">
-                                <strong>${key}:</strong> ${Array.isArray(value) ? value.join(', ') : value}
-                            </div>
-                        `).join('')}
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Subscription ID:</strong> ${job.subscriptionId || '-'}
+                        </div>
+                        ${job.resourceGroupNames && job.resourceGroupNames.length > 0 ? `
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Resource Groups:</strong> ${job.resourceGroupNames.join(', ')}
+                        </div>
+                        ` : ''}
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Tenant ID:</strong> ${job.tenantId || '-'}
+                        </div>
                     </div>
+                    
+                    ${job.errorMessage ? `
+                    <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem;">Error Details</h3>
+                    <div style="background: var(--surface); padding: 1rem; border-radius: 4px; color: var(--error);">
+                        <strong>${job.errorMessage}</strong>
+                        ${job.errorDetails ? `<pre style="margin-top: 0.5rem; white-space: pre-wrap;">${job.errorDetails}</pre>` : ''}
+                    </div>
+                    ` : ''}
                 `;
                 
-                // Show results if job is completed
-                if (job.status === 'Completed' && job.results) {
+                // Show results summary
+                const statusNum = typeof job.status === 'number' ? job.status : 0;
+                if (statusNum >= 1) { // Running or completed
                     resultsCard.style.display = 'block';
                     document.getElementById('results-container').innerHTML = `
                         <div class="info-grid">
-                            ${Object.entries(job.results).map(([key, value]) => `
-                                <div class="info-item">
-                                    <label>${key.replace(/([A-Z])/g, ' $1').trim()}</label>
-                                    <strong>${value}</strong>
-                                </div>
-                            `).join('')}
+                            <div class="info-item">
+                                <label>Azure Files Shares Found</label>
+                                <strong>${job.azureFilesSharesFound || 0}</strong>
+                            </div>
+                            <div class="info-item">
+                                <label>ANF Volumes Found</label>
+                                <strong>${job.anfVolumesFound || 0}</strong>
+                            </div>
+                            <div class="info-item">
+                                <label>ANF Accounts Found</label>
+                                <strong>${job.anfAccountsFound || 0}</strong>
+                            </div>
+                            <div class="info-item">
+                                <label>Total Capacity</label>
+                                <strong>${job.totalCapacityBytes ? (job.totalCapacityBytes / (1024**4)).toFixed(2) + ' TB' : '0 TB'}</strong>
+                            </div>
                         </div>
                     `;
                 }
                 
-                // Show logs if available
-                if (job.logs && job.logs.length > 0) {
-                    logsCard.style.display = 'block';
-                    document.getElementById('logs-container').innerHTML = job.logs.map(log => 
-                        `<div>${log}</div>`
-                    ).join('');
-                }
+                // Logs not implemented yet
+                logsCard.style.display = 'none';
                 
             } catch (error) {
                 detailsContainer.style.display = 'none';
