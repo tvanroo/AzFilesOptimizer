@@ -154,17 +154,18 @@
                     emptyState.style.display = 'block';
                     return;
                 }
-                
                 tableBody.innerHTML = jobs.map(job => {
-                    const jobId = job.rowKey || job.jobId;
-                    const createdAt = job.createdAt || job.created;
-                    const updatedAt = job.updatedAt || job.updated;
+                    // API returns PascalCase fields
+                    const jobId = job.RowKey || job.JobId;
+                    const status = job.Status;
+                    const createdAt = job.CreatedAt;
+                    const updatedAt = job.UpdatedAt;
                     
                     return `
                     <tr>
                         <td><a href="job-detail.html?id=${jobId}" style="color: var(--primary-color); text-decoration: none;">${jobId}</a></td>
                         <td>Discovery</td>
-                        <td>${getStatusBadge(job.status)}</td>
+                        <td>${getStatusBadge(status)}</td>
                         <td>${formatDate(createdAt)}</td>
                         <td>${updatedAt ? formatDate(updatedAt) : '-'}</td>
                         <td>
@@ -173,7 +174,6 @@
                     </tr>
                     `;
                 }).join('');
-                
             } catch (error) {
                 console.error('Error loading jobs:', error);
                 tableBody.innerHTML = '';
@@ -214,7 +214,7 @@
                 });
                 
                 hideCreateJobModal();
-                alert('Discovery job created successfully! Job ID: ' + (job.rowKey || job.jobId));
+                alert('Discovery job created successfully! Job ID: ' + (job.RowKey || job.JobId));
                 
                 // Reload jobs list
                 loadJobs();

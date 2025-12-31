@@ -56,7 +56,9 @@ class ApiClient {
      * Get list of all jobs
      */
     async getJobs() {
-        return this.fetchJson('/jobs');
+        const response = await this.fetchJson('/jobs');
+        // Azure Table Storage returns { value: [...], Count: N }
+        return response.value || response;
     }
 
     /**

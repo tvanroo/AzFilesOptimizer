@@ -176,20 +176,20 @@
                     throw new Error('Job not found');
                 }
                 
-                // Update page title
-                const displayJobId = job.rowKey || job.jobId;
+                // Update page title (API returns PascalCase)
+                const displayJobId = job.RowKey || job.JobId;
                 document.getElementById('job-id').textContent = `Job: ${displayJobId}`;
-                document.getElementById('job-status-badge').innerHTML = getStatusBadge(job.status);
+                document.getElementById('job-status-badge').innerHTML = getStatusBadge(job.Status);
                 
                 // Calculate duration
                 let duration = '-';
-                if (job.startedAt && job.completedAt) {
-                    const start = new Date(job.startedAt);
-                    const end = new Date(job.completedAt);
+                if (job.StartedAt && job.CompletedAt) {
+                    const start = new Date(job.StartedAt);
+                    const end = new Date(job.CompletedAt);
                     const diffMs = end - start;
                     const minutes = Math.floor(diffMs / 60000);
                     duration = `${minutes}m`;
-                } else if (job.startedAt) {
+                } else if (job.StartedAt) {
                     duration = 'In progress';
                 }
                 
@@ -206,7 +206,7 @@
                         </div>
                         <div class="info-item">
                             <label>Status</label>
-                            <strong>${getStatusBadge(job.status).replace(/<[^>]*>/g, (tag) => tag.includes('badge') ? '' : tag).replace('</span>', '')}</strong>
+                            <strong>${getStatusBadge(job.Status).replace(/<[^>]*>/g, (tag) => tag.includes('badge') ? '' : tag).replace('</span>', '')}</strong>
                         </div>
                         <div class="info-item">
                             <label>Duration</label>
@@ -214,59 +214,59 @@
                         </div>
                         <div class="info-item">
                             <label>Created</label>
-                            <strong>${formatDate(job.createdAt)}</strong>
+                            <strong>${formatDate(job.CreatedAt)}</strong>
                         </div>
                         <div class="info-item">
                             <label>Last Updated</label>
-                            <strong>${job.updatedAt ? formatDate(job.updatedAt) : '-'}</strong>
+                            <strong>${job.UpdatedAt ? formatDate(job.UpdatedAt) : '-'}</strong>
                         </div>
                     </div>
                     
                     <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem;">Scope</h3>
                     <div style="background: var(--surface); padding: 1rem; border-radius: 4px;">
                         <div style="margin-bottom: 0.5rem;">
-                            <strong>Subscription ID:</strong> ${job.subscriptionId || '-'}
+                            <strong>Subscription ID:</strong> ${job.SubscriptionId || '-'}
                         </div>
-                        ${job.resourceGroupNames && job.resourceGroupNames.length > 0 ? `
+                        ${job.ResourceGroupNames && job.ResourceGroupNames.length > 0 ? `
                         <div style="margin-bottom: 0.5rem;">
-                            <strong>Resource Groups:</strong> ${job.resourceGroupNames.join(', ')}
+                            <strong>Resource Groups:</strong> ${job.ResourceGroupNames.join(', ')}
                         </div>
                         ` : ''}
                         <div style="margin-bottom: 0.5rem;">
-                            <strong>Tenant ID:</strong> ${job.tenantId || '-'}
+                            <strong>Tenant ID:</strong> ${job.TenantId || '-'}
                         </div>
                     </div>
                     
-                    ${job.errorMessage ? `
+                    ${job.ErrorMessage ? `
                     <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem;">Error Details</h3>
                     <div style="background: var(--surface); padding: 1rem; border-radius: 4px; color: var(--error);">
-                        <strong>${job.errorMessage}</strong>
-                        ${job.errorDetails ? `<pre style="margin-top: 0.5rem; white-space: pre-wrap;">${job.errorDetails}</pre>` : ''}
+                        <strong>${job.ErrorMessage}</strong>
+                        ${job.ErrorDetails ? `<pre style="margin-top: 0.5rem; white-space: pre-wrap;">${job.ErrorDetails}</pre>` : ''}
                     </div>
                     ` : ''}
                 `;
                 
                 // Show results summary
-                const statusNum = typeof job.status === 'number' ? job.status : 0;
+                const statusNum = typeof job.Status === 'number' ? job.Status : 0;
                 if (statusNum >= 1) { // Running or completed
                     resultsCard.style.display = 'block';
                     document.getElementById('results-container').innerHTML = `
                         <div class="info-grid">
                             <div class="info-item">
                                 <label>Azure Files Shares Found</label>
-                                <strong>${job.azureFilesSharesFound || 0}</strong>
+                                <strong>${job.AzureFilesSharesFound || 0}</strong>
                             </div>
                             <div class="info-item">
                                 <label>ANF Volumes Found</label>
-                                <strong>${job.anfVolumesFound || 0}</strong>
+                                <strong>${job.AnfVolumesFound || 0}</strong>
                             </div>
                             <div class="info-item">
                                 <label>ANF Accounts Found</label>
-                                <strong>${job.anfAccountsFound || 0}</strong>
+                                <strong>${job.AnfAccountsFound || 0}</strong>
                             </div>
                             <div class="info-item">
                                 <label>Total Capacity</label>
-                                <strong>${job.totalCapacityBytes ? (job.totalCapacityBytes / (1024**4)).toFixed(2) + ' TB' : '0 TB'}</strong>
+                                <strong>${job.TotalCapacityBytes ? (job.TotalCapacityBytes / (1024**4)).toFixed(2) + ' TB' : '0 TB'}</strong>
                             </div>
                         </div>
                     `;
