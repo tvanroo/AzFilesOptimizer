@@ -68,8 +68,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 // Storage connection string for Azure Functions (required for triggers and state).
-var storageKeys = listKeys(storage.id, '2023-01-01')
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageKeys.keys[0].value}'
+var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storage.listKeys().keys[0].value}'
 
 // Function App hosting the backend APIs and background jobs.
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
@@ -132,7 +131,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 var kvSecretsUserRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
 
 resource keyVaultSecretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, functionApp.identity.principalId, kvSecretsUserRoleDefinitionId)
+  name: guid(keyVault.id, functionApp.name, kvSecretsUserRoleDefinitionId)
   scope: keyVault
   properties: {
     principalId: functionApp.identity.principalId
