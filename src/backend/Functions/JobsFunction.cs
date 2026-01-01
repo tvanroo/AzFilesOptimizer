@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Azure.Identity;
 using AzFilesOptimizer.Backend.Models;
 using AzFilesOptimizer.Backend.Services;
 
@@ -117,6 +118,9 @@ public class JobsFunction
 
             var createdJob = await _jobStorage.CreateDiscoveryJobAsync(job);
 
+            // Execute job immediately in background
+            _ = Task.Run(async () => await ExecuteDiscoveryJobAsync(createdJob.JobId));
+
             var response = req.CreateResponse(HttpStatusCode.Created);
             await response.WriteAsJsonAsync(createdJob);
             return response;
@@ -127,6 +131,65 @@ public class JobsFunction
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
             await errorResponse.WriteAsJsonAsync(new { error = "Failed to create job", details = ex.Message });
             return errorResponse;
+        }
+    }
+
+    private async Task ExecuteDiscoveryJobAsync(string jobId)
+    {
+        _logger.LogInformation("Executing discovery job: {JobId}", jobId);
+
+        var job = await _jobStorage.GetDiscoveryJobAsync(jobId);
+        if (job == null)
+        {
+            _logger.LogError("Job not found: {JobId}", jobId);
+            return;
+        }
+
+        try
+        {
+            // Update job status to Running
+            job.Status = JobStatus.Running;
+            job.StartedAt = DateTime.UtcNow;
+            await _jobStorage.UpdateDiscoveryJobAsync(job);
+
+            var credential = new DefaultAzureCredential();
+            var discoveryService = new DiscoveryService(_logger);
+
+            if (string.IsNullOrEmpty(job.SubscriptionId))
+            {
+                throw new InvalidOperationException("Subscription ID is required for discovery");
+            }
+
+            // Execute discovery
+            var resourceGroupName = job.ResourceGroupNames?.FirstOrDefault();
+            var result = await discoveryService.DiscoverResourcesAsync(
+                job.SubscriptionId,
+                resourceGroupName,
+                credential);
+
+            // Update job with results
+            job.Status = JobStatus.Completed;
+            job.CompletedAt = DateTime.UtcNow;
+            job.AzureFilesSharesFound = result.AzureFileShares.Count;
+            job.AnfVolumesFound = result.AnfVolumes.Count;
+            job.TotalCapacityBytes = result.AzureFileShares.Sum(s => (s.QuotaGiB ?? 0) * 1024L * 1024L * 1024L) +
+                                     result.AnfVolumes.Sum(v => v.ProvisionedSizeBytes);
+
+            await _jobStorage.UpdateDiscoveryJobAsync(job);
+
+            _logger.LogInformation("Discovery job completed: {JobId}. Found {SharesCount} shares and {VolumesCount} volumes",
+                jobId, result.AzureFileShares.Count, result.AnfVolumes.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Discovery job failed: {JobId}", jobId);
+
+            job.Status = JobStatus.Failed;
+            job.CompletedAt = DateTime.UtcNow;
+            job.ErrorMessage = ex.Message;
+            job.ErrorDetails = ex.ToString();
+
+            await _jobStorage.UpdateDiscoveryJobAsync(job);
         }
     }
 }
