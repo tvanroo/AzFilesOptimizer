@@ -1,0 +1,10 @@
+{
+  "description": {
+    "language": "dotnet-isolated",
+    "extensions": [ ".dll" ],
+    "defaultExecutablePath": "dotnet",
+    "defaultWorkerPath": "AzFilesOptimizer.Backend.dll",
+    "workerIndexing": "true",
+    "canUsePlaceholder": true
+  }
+}

@@ -29,7 +29,10 @@
                     <h2 id="job-id" style="margin-bottom: 0.5rem;">Job Details</h2>
                     <div id="job-status-badge"></div>
                 </div>
-                <button class="btn" id="refresh-btn" onclick="loadJobDetails()">Refresh</button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn" id="run-job-btn" onclick="runJob()" style="display: none; background-color: #4CAF50;">▶ Run Job</button>
+                    <button class="btn" id="refresh-btn" onclick="loadJobDetails()">Refresh</button>
+                </div>
             </div>
             
             <div id="job-details-container">
@@ -181,6 +184,14 @@
                 document.getElementById('job-id').textContent = `Job: ${displayJobId}`;
                 document.getElementById('job-status-badge').innerHTML = getStatusBadge(job.Status);
                 
+                // Show Run Job button if status is Pending
+                const runJobBtn = document.getElementById('run-job-btn');
+                if (job.Status === 0) { // Pending
+                    runJobBtn.style.display = 'inline-block';
+                } else {
+                    runJobBtn.style.display = 'none';
+                }
+                
                 // Calculate duration
                 let duration = '-';
                 if (job.StartedAt && job.CompletedAt) {
@@ -283,6 +294,26 @@
                         <strong>Error loading job details:</strong> ${error.message}
                     </div>
                 `;
+            }
+        }
+        
+        async function runJob() {
+            if (!jobId) return;
+            
+            const runJobBtn = document.getElementById('run-job-btn');
+            runJobBtn.disabled = true;
+            runJobBtn.textContent = 'Starting...';
+            
+            try {
+                await apiClient.triggerJob(jobId);
+                alert('Job started successfully! It will run in the background.');
+                
+                // Reload job details after a short delay
+                setTimeout(() => loadJobDetails(), 2000);
+            } catch (error) {
+                alert('Failed to start job: ' + error.message);
+                runJobBtn.disabled = false;
+                runJobBtn.textContent = '▶ Run Job';
             }
         }
         

@@ -87,6 +87,15 @@ class ApiClient {
             body: JSON.stringify(config)
         });
     }
+
+    /**
+     * Manually trigger a job to run
+     */
+    async triggerJob(jobId) {
+        return this.fetchJson(`/jobs/${jobId}/trigger`, {
+            method: 'POST'
+        });
+    }
 }
 
 // Export singleton instance
