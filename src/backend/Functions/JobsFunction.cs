@@ -13,6 +13,7 @@ public class JobsFunction
 {
     private readonly ILogger _logger;
     private readonly JobStorageService _jobStorage;
+    private readonly JobLogService _jobLogService;
 
     public JobsFunction(ILoggerFactory loggerFactory)
     {
@@ -21,6 +22,7 @@ public class JobsFunction
         // Get storage connection string from environment
         var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
         _jobStorage = new JobStorageService(connectionString);
+        _jobLogService = new JobLogService(connectionString);
     }
 
     [Function("GetJobs")]
@@ -73,6 +75,30 @@ public class JobsFunction
             _logger.LogError(ex, "Error getting job {JobId}", jobId);
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
             await errorResponse.WriteAsJsonAsync(new { error = "Failed to retrieve job", details = ex.Message });
+            return errorResponse;
+        }
+    }
+
+    [Function("GetJobLogs")]
+    public async Task<HttpResponseData> GetJobLogs(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "jobs/{jobId}/logs")] HttpRequestData req,
+        string jobId)
+    {
+        _logger.LogInformation("Getting logs for job: {JobId}", jobId);
+
+        try
+        {
+            var logs = await _jobLogService.GetLogsAsync(jobId);
+            
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(logs);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting logs for job {JobId}", jobId);
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new { error = "Failed to retrieve logs", details = ex.Message });
             return errorResponse;
         }
     }
@@ -137,6 +163,7 @@ public class JobsFunction
     private async Task ExecuteDiscoveryJobAsync(string jobId)
     {
         _logger.LogInformation("Executing discovery job: {JobId}", jobId);
+        await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Job started");
 
         var job = await _jobStorage.GetDiscoveryJobAsync(jobId);
         if (job == null)
@@ -151,6 +178,7 @@ public class JobsFunction
             job.Status = JobStatus.Running;
             job.StartedAt = DateTime.UtcNow;
             await _jobStorage.UpdateDiscoveryJobAsync(job);
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Authenticating to Azure...");
 
             var credential = new DefaultAzureCredential();
             var discoveryService = new DiscoveryService(_logger);
@@ -160,12 +188,24 @@ public class JobsFunction
                 throw new InvalidOperationException("Subscription ID is required for discovery");
             }
 
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Scanning subscription {job.SubscriptionId}");
+            if (job.ResourceGroupNames != null && job.ResourceGroupNames.Length > 0)
+            {
+                await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Filtering to resource groups: {string.Join(", ", job.ResourceGroupNames)}");
+            }
+            else
+            {
+                await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Scanning all resource groups in subscription");
+            }
+
             // Execute discovery
             var resourceGroupName = job.ResourceGroupNames?.FirstOrDefault();
             var result = await discoveryService.DiscoverResourcesAsync(
                 job.SubscriptionId,
                 resourceGroupName,
                 credential);
+            
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Discovery complete");
 
             // Update job with results
             job.Status = JobStatus.Completed;
@@ -176,6 +216,8 @@ public class JobsFunction
                                      result.AnfVolumes.Sum(v => v.ProvisionedSizeBytes);
 
             await _jobStorage.UpdateDiscoveryJobAsync(job);
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Found {result.AzureFileShares.Count} Azure Files shares and {result.AnfVolumes.Count} ANF volumes");
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Job completed successfully");
 
             _logger.LogInformation("Discovery job completed: {JobId}. Found {SharesCount} shares and {VolumesCount} volumes",
                 jobId, result.AzureFileShares.Count, result.AnfVolumes.Count);
@@ -183,6 +225,7 @@ public class JobsFunction
         catch (Exception ex)
         {
             _logger.LogError(ex, "Discovery job failed: {JobId}", jobId);
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] ERROR: {ex.Message}");
 
             job.Status = JobStatus.Failed;
             job.CompletedAt = DateTime.UtcNow;
