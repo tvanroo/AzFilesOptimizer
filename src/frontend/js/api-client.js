@@ -96,6 +96,15 @@ class ApiClient {
             method: 'POST'
         });
     }
+
+    /**
+     * Get logs for a job
+     */
+    async getJobLogs(jobId) {
+        const response = await this.fetchJson(`/jobs/${jobId}/logs`);
+        // Azure Table Storage returns { value: [...], Count: N }
+        return response.value || response;
+    }
 }
 
 // Export singleton instance

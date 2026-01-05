@@ -92,10 +92,12 @@
     <div id="create-job-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2rem; border-radius: 8px; max-width: 500px; width: 90%;">
             <h2>Create Discovery Job</h2>
-            <form id="create-job-form" style="margin-top: 1.5rem;">
+            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.5rem; margin-bottom: 1.5rem;">Scan your Azure subscription for Azure Files shares and Azure NetApp Files volumes.</p>
+            <form id="create-job-form">
                 <div style="margin-bottom: 1rem;">
                     <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Subscription ID *</label>
-                    <input type="text" id="subscription-id" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                    <input type="text" id="subscription-id" required pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                    <small style="color: var(--text-secondary); font-size: 0.75rem;">Find this in Azure Portal → Subscriptions</small>
                 </div>
                 <div style="margin-bottom: 1rem;">
                     <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Resource Group (optional)</label>

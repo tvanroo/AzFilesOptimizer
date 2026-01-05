@@ -283,8 +283,27 @@
                     `;
                 }
                 
-                // Logs not implemented yet
-                logsCard.style.display = 'none';
+                // Load and display logs
+                await loadLogs();
+                
+                // Auto-refresh logs if job is running
+                if (job.Status === 1) { // Running
+                    if (!window.logRefreshInterval) {
+                        window.logRefreshInterval = setInterval(async () => {
+                            await loadLogs();
+                            // Also refresh job status
+                            const currentJob = await apiClient.getJob(jobId);
+                            if (currentJob.Status !== 1) {
+                                clearInterval(window.logRefreshInterval);
+                                window.logRefreshInterval = null;
+                                loadJobDetails(); // Final refresh
+                            }
+                        }, 3000); // Refresh every 3 seconds
+                    }
+                } else if (window.logRefreshInterval) {
+                    clearInterval(window.logRefreshInterval);
+                    window.logRefreshInterval = null;
+                }
                 
             } catch (error) {
                 detailsContainer.style.display = 'none';
@@ -294,6 +313,31 @@
                         <strong>Error loading job details:</strong> ${error.message}
                     </div>
                 `;
+            }
+        }
+        
+        async function loadLogs() {
+            if (!jobId) return;
+            
+            const logsCard = document.getElementById('logs-card');
+            const logsContainer = document.getElementById('logs-container');
+            
+            try {
+                const logs = await apiClient.getJobLogs(jobId);
+                
+                if (logs && logs.length > 0) {
+                    logsCard.style.display = 'block';
+                    logsContainer.innerHTML = logs
+                        .map(log => `<div style="margin-bottom: 0.25rem;">${log.Message}</div>`)
+                        .join('');
+                    // Auto-scroll to bottom
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                } else {
+                    logsCard.style.display = 'block';
+                    logsContainer.innerHTML = '<p style="color: var(--text-secondary);">No logs available yet.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading logs:', error);
             }
         }
         
