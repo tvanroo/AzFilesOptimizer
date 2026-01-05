@@ -16,12 +16,15 @@ public class MetricsCollectionService
     }
 
     public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectStorageAccountMetricsAsync(
-        string resourceId, string storageAccountName)
+        string storageAccountResourceId, string storageAccountName)
     {
         try
         {
             var endTime = DateTime.UtcNow;
             var startTime = endTime.AddDays(-30);
+            
+            // Azure Files metrics are at the fileServices sub-resource level
+            var fileServicesResourceId = $"{storageAccountResourceId}/fileServices/default";
             
             var metrics = new[] { "Transactions", "Ingress", "Egress", "SuccessServerLatency", "Availability" };
             var metricsData = new Dictionary<string, object>();
@@ -39,7 +42,7 @@ public class MetricsCollectionService
                 try
                 {
                     var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
-                    var apiUrl = $"https://management.azure.com{resourceId}/providers/Microsoft.Insights/metrics" +
+                    var apiUrl = $"https://management.azure.com{fileServicesResourceId}/providers/Microsoft.Insights/metrics" +
                         $"?api-version=2023-10-01&timespan={Uri.EscapeDataString(timespan)}" +
                         $"&interval=P1D&metricnames={metricName}&aggregation=Average,Total";
                     
@@ -75,6 +78,17 @@ public class MetricsCollectionService
                                 }
                             }
                         }
+                        else
+                        {
+                            _logger.LogInformation("No metric data returned for {MetricName} on {Account}. Response: {Response}", 
+                                metricName, storageAccountName, content.Length > 500 ? content.Substring(0, 500) : content);
+                        }
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        _logger.LogWarning("Failed to fetch metric {MetricName} for {Account}. Status: {Status}, Error: {Error}", 
+                            metricName, storageAccountName, (int)response.StatusCode, errorContent.Length > 500 ? errorContent.Substring(0, 500) : errorContent);
                     }
                 }
                 catch (Exception ex)
@@ -153,6 +167,17 @@ public class MetricsCollectionService
                                 }
                             }
                         }
+                        else
+                        {
+                            _logger.LogInformation("No metric data returned for {MetricName} on ANF volume {Volume}. Response: {Response}", 
+                                metricName, volumeName, content.Length > 500 ? content.Substring(0, 500) : content);
+                        }
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        _logger.LogWarning("Failed to fetch metric {MetricName} for ANF volume {Volume}. Status: {Status}, Error: {Error}", 
+                            metricName, volumeName, (int)response.StatusCode, errorContent.Length > 500 ? errorContent.Substring(0, 500) : errorContent);
                     }
                 }
                 catch (Exception ex)
