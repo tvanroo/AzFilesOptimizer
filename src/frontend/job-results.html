@@ -429,10 +429,7 @@
                             sharesContainer.appendChild(shareItem);
                         });
                         
-                        saNode.appendChild(saContainer);
-                        saContainer.appendChild(rgNode);
-                        rgNode.appendChild(saContainer);
-                        
+                        // Storage Account wrapper
                         const saWrapper = document.createElement('div');
                         saWrapper.className = 'tree-node';
                         saWrapper.appendChild(saNode);
@@ -441,6 +438,7 @@
                         saContainer.appendChild(saWrapper);
                     });
                     
+                    // Resource Group wrapper
                     const rgWrapper = document.createElement('div');
                     rgWrapper.className = 'tree-node';
                     rgWrapper.appendChild(rgNode);
@@ -449,6 +447,7 @@
                     rgContainer.appendChild(rgWrapper);
                 });
                 
+                // Subscription wrapper
                 const subWrapper = document.createElement('div');
                 subWrapper.className = 'tree-node';
                 subWrapper.appendChild(subNode);
