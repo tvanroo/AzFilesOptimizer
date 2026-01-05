@@ -101,6 +101,60 @@
     ]
   },
   {
+    "name": "GetJobLogs",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.JobsFunction.GetJobLogs",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "jobs/{jobId}/logs",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "DeleteJob",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.JobsFunction.DeleteJob",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "delete"
+        ],
+        "route": "jobs/{jobId}",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
     "name": "CreateDiscoveryJob",
     "scriptFile": "AzFilesOptimizer.Backend.dll",
     "entryPoint": "AzFilesOptimizer.Backend.Functions.JobsFunction.CreateDiscoveryJob",

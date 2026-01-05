@@ -33,7 +33,10 @@
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h2 style="margin-bottom: 0;">Jobs</h2>
-                <button class="btn" onclick="showCreateJobModal()">+ New Job</button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn" id="delete-selected-btn" onclick="deleteSelectedJobs()" style="display: none; background-color: #f44336; color: white;">🗑 Delete Selected</button>
+                    <button class="btn" onclick="showCreateJobModal()">+ New Job</button>
+                </div>
             </div>
             
             <div id="jobs-container">
@@ -41,6 +44,7 @@
                     <table>
                         <thead>
                             <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th>
                                 <th>Job ID</th>
                                 <th>Type</th>
                                 <th>Status</th>
@@ -215,11 +219,9 @@
                     resourceGroupNames: resourceGroup ? [resourceGroup] : null
                 });
                 
-                hideCreateJobModal();
-                alert('Discovery job created successfully! Job ID: ' + (job.RowKey || job.JobId));
-                
-                // Reload jobs list
-                loadJobs();
+                const jobId = job.RowKey || job.JobId;
+                // Redirect to job detail page
+                window.location.href = `job-detail.html?id=${jobId}`;
             } catch (error) {
                 alert('Failed to create job: ' + error.message);
             }

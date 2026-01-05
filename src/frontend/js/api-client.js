@@ -105,6 +105,15 @@ class ApiClient {
         // Azure Table Storage returns { value: [...], Count: N }
         return response.value || response;
     }
+
+    /**
+     * Delete a job
+     */
+    async deleteJob(jobId) {
+        return this.fetchJson(`/jobs/${jobId}`, {
+            method: 'DELETE'
+        });
+    }
 }
 
 // Export singleton instance

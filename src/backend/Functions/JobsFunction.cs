@@ -103,6 +103,34 @@ public class JobsFunction
         }
     }
 
+    [Function("DeleteJob")]
+    public async Task<HttpResponseData> DeleteJob(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "jobs/{jobId}")] HttpRequestData req,
+        string jobId)
+    {
+        _logger.LogInformation("Deleting job: {JobId}", jobId);
+
+        try
+        {
+            // Delete the job
+            await _jobStorage.DeleteJobAsync(jobId);
+            
+            // Delete associated logs
+            await _jobLogService.DeleteLogsAsync(jobId);
+            
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new { message = "Job deleted successfully", jobId });
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting job {JobId}", jobId);
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new { error = "Failed to delete job", details = ex.Message });
+            return errorResponse;
+        }
+    }
+
     [Function("CreateDiscoveryJob")]
     public async Task<HttpResponseData> CreateDiscoveryJob(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "jobs/discovery")] HttpRequestData req)

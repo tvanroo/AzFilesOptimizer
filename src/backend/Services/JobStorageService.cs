@@ -68,4 +68,16 @@ public class JobStorageService
         job.UpdatedAt = DateTime.UtcNow;
         await _jobTableClient.UpdateEntityAsync(job, job.ETag, TableUpdateMode.Replace);
     }
+
+    public async Task DeleteJobAsync(string jobId)
+    {
+        try
+        {
+            await _jobTableClient.DeleteEntityAsync("DiscoveryJob", jobId);
+        }
+        catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+        {
+            // Job already deleted or doesn't exist
+        }
+    }
 }

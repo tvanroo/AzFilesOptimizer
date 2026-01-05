@@ -40,6 +40,31 @@ public class JobLogService
 
         return logs.OrderBy(l => l.CreatedAt).ToList();
     }
+
+    public async Task DeleteLogsAsync(string jobId)
+    {
+        var logs = new List<JobLogEntry>();
+        
+        // Get all logs for this job
+        await foreach (var log in _logTableClient.QueryAsync<JobLogEntry>(
+            filter: $"PartitionKey eq '{jobId}'"))
+        {
+            logs.Add(log);
+        }
+
+        // Delete each log entry
+        foreach (var log in logs)
+        {
+            try
+            {
+                await _logTableClient.DeleteEntityAsync(log.PartitionKey, log.RowKey);
+            }
+            catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+            {
+                // Log already deleted
+            }
+        }
+    }
 }
 
 public class JobLogEntry : ITableEntity
