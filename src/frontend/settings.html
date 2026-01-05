@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AzFilesOptimizer - Settings</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1>AzFilesOptimizer</h1>
+            <div id="auth-section">
+                <div id="signed-out-view" style="display: none;">
+                    <button class="btn" onclick="window.location.href='index.html'" style="background-color: white; color: var(--primary-color);">Sign In</button>
+                </div>
+                <div id="signed-in-view" style="display: none;">
+                    <span id="user-name" style="color: white; margin-right: 1rem;"></span>
+                    <button class="btn" onclick="window.location.href='index.html'" style="background-color: transparent; border: 1px solid white;">Home</button>
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="jobs.html">Jobs</a></li>
+            <li><a href="settings.html" class="active">Settings</a></li>
+        </ul>
+    </nav>
+    
+    <main>
+        <div class="card">
+            <h2>OpenAI Integration</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                Configure your OpenAI or Azure OpenAI credentials to enable AI-powered recommendations and analysis features.
+            </p>
+            
+            <div id="current-status" style="display: none; margin-bottom: 2rem;">
+                <h3 style="font-size: 1rem; margin-bottom: 0.75rem;">Current Configuration</h3>
+                <div style="background: var(--surface); padding: 1rem; border-radius: 4px;">
+                    <div style="margin-bottom: 0.5rem;"><strong>Provider:</strong> <span id="status-provider">-</span></div>
+                    <div style="margin-bottom: 0.5rem;"><strong>API Key:</strong> <span id="status-key">-</span></div>
+                    <div style="margin-bottom: 0.5rem;" id="status-endpoint-container"><strong>Endpoint:</strong> <span id="status-endpoint">-</span></div>
+                    <div style="margin-bottom: 0.5rem;"><strong>Available Models:</strong> <span id="status-models">-</span></div>
+                    <div><strong>Last Validated:</strong> <span id="status-validated">-</span></div>
+                </div>
+                <button class="btn" onclick="removeApiKey()" style="margin-top: 1rem; background-color: var(--error-color);">Remove API Key</button>
+            </div>
+            
+            <div id="configure-form">
+                <form id="api-key-form">
+                    <div style="margin-bottom: 1rem;">
+                        <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Provider *</label>
+                        <select id="provider" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;" onchange="toggleEndpointField()">
+                            <option value="OpenAI">OpenAI</option>
+                            <option value="AzureOpenAI">Azure OpenAI</option>
+                        </select>
+                    </div>
+                    
+                    <div style="margin-bottom: 1rem;" id="endpoint-container" style="display: none;">
+                        <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Azure OpenAI Endpoint *</label>
+                        <input type="text" id="endpoint" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;" placeholder="https://your-resource.openai.azure.com">
+                        <small style="color: var(--text-secondary); font-size: 0.75rem;">Find this in Azure Portal → Azure OpenAI → Keys and Endpoint</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 1rem;">
+                        <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">API Key *</label>
+                        <input type="password" id="api-key" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;" placeholder="sk-...">
+                        <small style="color: var(--text-secondary); font-size: 0.75rem;">Your API key will be encrypted and stored securely.</small>
+                    </div>
+                    
+                    <div style="display: flex; gap: 1rem;">
+                        <button type="submit" class="btn">Validate & Save</button>
+                        <button type="button" class="btn" onclick="loadStatus()" style="background-color: var(--surface); color: var(--text);">Cancel</button>
+                    </div>
+                </form>
+                
+                <div id="validation-results" style="display: none; margin-top: 1.5rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--success-color);">✓ Validation Successful</h3>
+                    <div style="background: #f0f9f0; padding: 1rem; border-radius: 4px; border-left: 4px solid var(--success-color);">
+                        <p style="margin-bottom: 0.5rem;"><strong>Available Models:</strong></p>
+                        <ul id="models-list" style="margin-left: 1.5rem; margin-top: 0.5rem;"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>About AI Features</h2>
+            <p>
+                Once configured, AI capabilities will be available for:
+            </p>
+            <ul style="margin-left: 1.5rem; margin-top: 1rem;">
+                <li style="margin-bottom: 0.5rem;">Automatic analysis of storage patterns and usage</li>
+                <li style="margin-bottom: 0.5rem;">Smart recommendations for Azure NetApp Files migration</li>
+                <li style="margin-bottom: 0.5rem;">Performance optimization suggestions</li>
+                <li style="margin-bottom: 0.5rem;">Cost optimization insights</li>
+            </ul>
+        </div>
+    </main>
+    
+    <script src="js/lib/msal-browser.min.js"></script>
+    <script src="js/auth-config.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/api-client.js"></script>
+    <script src="js/toast.js"></script>
+    <script>
+        function toggleEndpointField() {
+            const provider = document.getElementById('provider').value;
+            const endpointContainer = document.getElementById('endpoint-container');
+            const endpointInput = document.getElementById('endpoint');
+            
+            if (provider === 'AzureOpenAI') {
+                endpointContainer.style.display = 'block';
+                endpointInput.required = true;
+            } else {
+                endpointContainer.style.display = 'none';
+                endpointInput.required = false;
+            }
+        }
+        
+        async function loadStatus() {
+            try {
+                const response = await fetch(`${apiClient.constructor.name !== 'ApiClient' ? API_BASE_URL : window.location.hostname === 'localhost' ? 'http://localhost:7071/api' : 'https://azfo-dev-func-xy76b.azurewebsites.net/api'}/settings/openai-key`, {
+                    headers: authManager.isSignedIn() ? {
+                        'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                    } : {}
+                });
+                
+                const status = await response.json();
+                
+                if (status.configured) {
+                    document.getElementById('current-status').style.display = 'block';
+                    document.getElementById('configure-form').style.display = 'none';
+                    
+                    document.getElementById('status-provider').textContent = status.provider || '-';
+                    document.getElementById('status-key').textContent = status.maskedKey || '****';
+                    
+                    if (status.endpoint) {
+                        document.getElementById('status-endpoint-container').style.display = 'block';
+                        document.getElementById('status-endpoint').textContent = status.endpoint;
+                    } else {
+                        document.getElementById('status-endpoint-container').style.display = 'none';
+                    }
+                    
+                    document.getElementById('status-models').textContent = 
+                        status.availableModels?.length > 0 
+                            ? `${status.availableModels.length} models available` 
+                            : 'Unknown';
+                    
+                    document.getElementById('status-validated').textContent = 
+                        status.lastValidatedAt 
+                            ? new Date(status.lastValidatedAt).toLocaleString() 
+                            : 'Never';
+                } else {
+                    document.getElementById('current-status').style.display = 'none';
+                    document.getElementById('configure-form').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error loading status:', error);
+                Toast.error('Failed to load API key status');
+            }
+        }
+        
+        document.getElementById('api-key-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Validating...';
+            
+            try {
+                const provider = document.getElementById('provider').value;
+                const apiKey = document.getElementById('api-key').value;
+                const endpoint = document.getElementById('endpoint').value;
+                
+                const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                    ? 'http://localhost:7071/api'
+                    : 'https://azfo-dev-func-xy76b.azurewebsites.net/api';
+                
+                const response = await fetch(`${API_BASE_URL}/settings/openai-key`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(authManager.isSignedIn() ? {
+                            'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                        } : {})
+                    },
+                    body: JSON.stringify({
+                        provider: provider,
+                        apiKey: apiKey,
+                        endpoint: provider === 'AzureOpenAI' ? endpoint : null
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to save API key');
+                }
+                
+                // Show success
+                Toast.success('API key validated and saved successfully!');
+                
+                // Show validation results
+                if (result.availableModels && result.availableModels.length > 0) {
+                    document.getElementById('validation-results').style.display = 'block';
+                    const modelsList = document.getElementById('models-list');
+                    modelsList.innerHTML = result.availableModels
+                        .slice(0, 10)
+                        .map(model => `<li>${model}</li>`)
+                        .join('');
+                    
+                    if (result.availableModels.length > 10) {
+                        modelsList.innerHTML += `<li><em>... and ${result.availableModels.length - 10} more</em></li>`;
+                    }
+                }
+                
+                // Reload status after 2 seconds
+                setTimeout(() => {
+                    loadStatus();
+                    document.getElementById('api-key-form').reset();
+                    document.getElementById('validation-results').style.display = 'none';
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Error saving API key:', error);
+                Toast.error(error.message || 'Failed to save API key');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Validate & Save';
+            }
+        });
+        
+        async function removeApiKey() {
+            const confirmed = await Toast.confirm(
+                'Are you sure you want to remove your API key? AI features will be disabled.',
+                'Remove API Key',
+                'Remove',
+                'Cancel'
+            );
+            
+            if (!confirmed) return;
+            
+            try {
+                const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                    ? 'http://localhost:7071/api'
+                    : 'https://azfo-dev-func-xy76b.azurewebsites.net/api';
+                
+                const response = await fetch(`${API_BASE_URL}/settings/openai-key`, {
+                    method: 'DELETE',
+                    headers: authManager.isSignedIn() ? {
+                        'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                    } : {}
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to remove API key');
+                }
+                
+                Toast.success('API key removed successfully');
+                loadStatus();
+            } catch (error) {
+                console.error('Error removing API key:', error);
+                Toast.error('Failed to remove API key');
+            }
+        }
+        
+        function updateAuthUI() {
+            const signedInView = document.getElementById('signed-in-view');
+            const signedOutView = document.getElementById('signed-out-view');
+            const userNameElement = document.getElementById('user-name');
+
+            if (authManager.isSignedIn()) {
+                signedInView.style.display = 'block';
+                signedOutView.style.display = 'none';
+                userNameElement.textContent = authManager.getUserDisplayName();
+            } else {
+                signedInView.style.display = 'none';
+                signedOutView.style.display = 'block';
+            }
+        }
+        
+        async function initialize() {
+            try {
+                await authManager.initialize();
+                
+                const isAuthenticated = await authManager.requireAuth();
+                if (!isAuthenticated) return;
+                
+                updateAuthUI();
+                toggleEndpointField();
+                loadStatus();
+            } catch (error) {
+                console.error('Initialization failed:', error);
+                Toast.error('Failed to initialize. Please refresh the page.');
+            }
+        }
+        
+        initialize();
+    </script>
+</body>
+</html>

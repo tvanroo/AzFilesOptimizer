@@ -33,8 +33,8 @@ public class DiscoveredAzureFileShare
     // Performance properties (Premium shares)
     public int? ProvisionedIops { get; set; }
     public int? ProvisionedBandwidthMiBps { get; set; }
-    public int? ProvisionedMaxIops { get; set; }
-    public int? ProvisionedMaxBandwidthMiBps { get; set; }
+    public int? EstimatedIops { get; set; }
+    public double? EstimatedThroughputMiBps { get; set; }
     
     // Lease properties
     public string? LeaseStatus { get; set; } // "Locked", "Unlocked"
@@ -60,6 +60,16 @@ public class DiscoveredAzureFileShare
     public DateTime? LastModifiedTime { get; set; }
     public DateTime? CreationTime { get; set; }
     public DateTime DiscoveredAt { get; set; } = DateTime.UtcNow;
+    
+    // Snapshot and Backup metadata
+    public int? SnapshotCount { get; set; }
+    public long? TotalSnapshotSizeBytes { get; set; }
+    public double? ChurnRateBytesPerDay { get; set; }
+    public bool? BackupPolicyConfigured { get; set; }
+    
+    // Monitoring availability
+    public bool MonitoringEnabled { get; set; }
+    public int? MonitoringDataAvailableDays { get; set; }
 }
 
 public class DiscoveredAnfVolume
@@ -72,10 +82,28 @@ public class DiscoveredAnfVolume
     public string SubscriptionId { get; set; } = string.Empty;
     public string Location { get; set; } = string.Empty;
     public string ServiceLevel { get; set; } = string.Empty; // "Standard", "Premium", "Ultra"
+    public string? PoolQosType { get; set; } // "Auto" or "Manual"
     public long ProvisionedSizeBytes { get; set; }
+    public double? ThroughputMibps { get; set; }
+    public double? ActualThroughputMibps { get; set; }
+    public bool? CoolAccessEnabled { get; set; }
+    public string? CoolTieringPolicy { get; set; } // e.g., "Auto", "SnapshotOnly"
+    public int? EstimatedIops { get; set; }
+    public double? EstimatedThroughputMiBps { get; set; }
     public string[]? ProtocolTypes { get; set; } // e.g., ["NFSv3", "NFSv4.1", "CIFS"]
     public Dictionary<string, string>? Tags { get; set; }
     public DateTime DiscoveredAt { get; set; } = DateTime.UtcNow;
+    public string? MinimumTlsVersion { get; set; }
+    
+    // Snapshot and Backup metadata
+    public int? SnapshotCount { get; set; }
+    public long? TotalSnapshotSizeBytes { get; set; }
+    public double? ChurnRateBytesPerDay { get; set; }
+    public bool? BackupPolicyConfigured { get; set; }
+    
+    // Monitoring availability
+    public bool MonitoringEnabled { get; set; }
+    public int? MonitoringDataAvailableDays { get; set; }
 }
 
 public class DiscoveryResult

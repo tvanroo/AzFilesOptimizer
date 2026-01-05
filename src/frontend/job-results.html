@@ -383,6 +383,7 @@
         <ul>
             <li><a href="index.html">Home</a></li>
             <li><a href="jobs.html">Jobs</a></li>
+            <li><a href="settings.html">Settings</a></li>
         </ul>
     </nav>
     
@@ -440,12 +441,15 @@
             
             <!-- Table View -->
             <div id="table-view-container" class="table-view">
-                <div class="column-selector" id="column-selector">
-                    <div class="column-selector-header">
-                        <strong>Select Columns to Display:</strong>
-                        <button class="btn" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;" onclick="resetColumns()">Reset to Default</button>
+                <div class="column-selector" id="column-selector" style="margin-bottom: 1rem;">
+                    <div class="column-selector-header" style="cursor: pointer;" onclick="toggleColumnSelector()">
+                        <strong>▶ Show/Hide Columns</strong>
                     </div>
-                    <div class="column-list" id="column-list"></div>
+                    <div class="column-list" id="column-list" style="display: none; margin-top: 0.75rem;">
+                        <div style="margin-bottom: 0.75rem;">
+                            <button class="btn" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;" onclick="resetColumns()">Reset to Default</button>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="search-filter">
@@ -484,6 +488,7 @@
     <script src="js/auth-config.js"></script>
     <script src="js/auth-manager.js"></script>
     <script src="js/api-client.js"></script>
+    <script src="js/toast.js"></script>
     <script>
         let jobId = '';
         let sharesData = [];
@@ -499,6 +504,21 @@
             window.location.href = 'jobs.html';
         }
         
+        // Helper function to format numbers with thousands separators
+        function formatNumber(num, decimals = null) {
+            if (num === null || num === undefined || isNaN(num)) return 'N/A';
+            
+            // Auto-determine decimals if not specified
+            if (decimals === null) {
+                decimals = (num % 1 === 0) ? 0 : 2;
+            }
+            
+            return num.toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            });
+        }
+        
         // Helper function for formatting usage with better precision
         function formatUsage(usageBytes) {
             if (usageBytes === null || usageBytes === undefined) return 'N/A';
@@ -512,27 +532,46 @@
                 if (mib < 0.001) {
                     // Show in KiB for tiny values
                     const kib = usageBytes / 1024;
-                    return kib < 0.001 ? `${usageBytes} B` : `${kib.toFixed(2)} KiB`;
+                    return kib < 0.001 ? `${usageBytes} B` : `${formatNumber(kib, 2)} KiB`;
                 }
-                return `${mib.toFixed(2)} MiB`;
+                return `${formatNumber(mib, 2)} MiB`;
             } else if (gib < 1) {
                 // Show 3 decimal places for values less than 1 GiB
-                return gib.toFixed(3);
+                return formatNumber(gib, 3);
             } else {
                 // Show 2 decimal places for values >= 1 GiB
-                return gib.toFixed(2);
+                return formatNumber(gib, 2);
             }
         }
 
         const SCALE_TARGETS_URL = 'https://learn.microsoft.com/en-us/azure/storage/files/storage-files-scale-targets';
         function formatPerf(actual, estimated, suffix = '') {
             if (actual !== null && actual !== undefined) {
-                return `${actual}${suffix}`;
+                return `${formatNumber(actual)}${suffix}`;
             }
             if (estimated !== null && estimated !== undefined) {
-                return `<span title="Estimated from Azure Files scale targets; actual is not provisioned for this tier.">${estimated}${suffix} (est) <a href="${SCALE_TARGETS_URL}" target="_blank" rel="noopener">ℹ</a></span>`;
+                return `<span title="Estimated from Azure Files scale targets; actual is not provisioned for this tier.">${formatNumber(estimated)}${suffix} (est) <a href="${SCALE_TARGETS_URL}" target="_blank" rel="noopener">ℹ</a></span>`;
             }
             return 'N/A';
+        }
+        
+        // Helper function to format ANF SKU with service level and cool access
+        function formatAnfSku(volume) {
+            if (!volume) return 'N/A';
+            
+            let sku = volume.ServiceLevel || 'Standard';
+            
+            // Check if it's Flexible tier (has manual throughput)
+            if (volume.PoolQosType === 'Manual') {
+                sku = 'Flexible-Capacity + Flexible-Throughput';
+            }
+            
+            // Add Cool Access SKUs if enabled
+            if (volume.CoolAccessEnabled) {
+                sku += ' + Cool + CoolTransfer';
+            }
+            
+            return sku;
         }
         
         async function loadResults() {
@@ -565,17 +604,17 @@
         }
         
         function updateStats() {
-            document.getElementById('total-shares').textContent = sharesData.length;
-            document.getElementById('total-volumes').textContent = volumesData.length;
+            document.getElementById('total-shares').textContent = formatNumber(sharesData.length, 0);
+            document.getElementById('total-volumes').textContent = formatNumber(volumesData.length, 0);
             
             // Count unique storage accounts
             const storageAccounts = new Set(sharesData.map(s => s.StorageAccountName));
-            document.getElementById('total-storage-accounts').textContent = storageAccounts.size;
+            document.getElementById('total-storage-accounts').textContent = formatNumber(storageAccounts.size, 0);
             
             // Calculate total capacity
             const totalBytes = sharesData.reduce((sum, s) => sum + ((s.ShareQuotaGiB || 0) * 1024 * 1024 * 1024), 0);
-            const totalTB = (totalBytes / (1024 * 1024 * 1024 * 1024)).toFixed(2);
-            document.getElementById('total-capacity').textContent = `${totalTB} TB`;
+            const totalTB = totalBytes / (1024 * 1024 * 1024 * 1024);
+            document.getElementById('total-capacity').textContent = `${formatNumber(totalTB)} TB`;
         }
         
         function buildHierarchy() {
@@ -781,6 +820,30 @@
                 </div>
                 
                 <div class="metadata-section">
+                    <h3>Snapshots & Backup</h3>
+                    <div class="metadata-grid">
+                        <div class="metadata-label">Snapshot Count:</div>
+                        <div class="metadata-value">${share.SnapshotCount != null ? formatNumber(share.SnapshotCount, 0) : 'N/A'}</div>
+                        <div class="metadata-label">Total Snapshot Size:</div>
+                        <div class="metadata-value">${share.TotalSnapshotSizeBytes ? formatUsage(share.TotalSnapshotSizeBytes) : 'N/A'}</div>
+                        <div class="metadata-label">Churn Rate (per day):</div>
+                        <div class="metadata-value">${share.ChurnRateBytesPerDay ? formatUsage(share.ChurnRateBytesPerDay) : 'N/A'}</div>
+                        <div class="metadata-label">Backup Policy:</div>
+                        <div class="metadata-value">${share.BackupPolicyConfigured ? 'Configured' : 'N/A'}</div>
+                    </div>
+                </div>
+                
+                <div class="metadata-section">
+                    <h3>Monitoring</h3>
+                    <div class="metadata-grid">
+                        <div class="metadata-label">Monitoring Enabled:</div>
+                        <div class="metadata-value">${share.MonitoringEnabled ? 'Yes' : 'No'}</div>
+                        <div class="metadata-label">Historical Data Available:</div>
+                        <div class="metadata-value">${share.MonitoringDataAvailableDays ? `${share.MonitoringDataAvailableDays} days` : 'N/A'}</div>
+                    </div>
+                </div>
+                
+                <div class="metadata-section">
                     <h3>Timestamps</h3>
                     <div class="metadata-grid">
                         <div class="metadata-label">Last Modified:</div>
@@ -894,15 +957,15 @@
             { key: 'SubscriptionId', label: 'Subscription ID', format: (v) => v.SubscriptionId },
             { key: 'Location', label: 'Location', format: (v) => v.Location },
             { key: 'PerformanceTier', label: 'Performance Tier', format: (v) => v.AccessTier || v.ServiceLevel },
-            { key: 'CapacityGiB', label: 'Capacity (GiB)', format: (v) => v.ShareQuotaGiB || (v.ProvisionedSizeBytes ? (v.ProvisionedSizeBytes / (1024**3)).toFixed(2) : 'N/A') },
+            { key: 'CapacityGiB', label: 'Capacity (GiB)', format: (v) => v.ShareQuotaGiB ? formatNumber(v.ShareQuotaGiB) : (v.ProvisionedSizeBytes ? formatNumber(v.ProvisionedSizeBytes / (1024**3)) : 'N/A') },
             { key: 'UsedGiB', label: 'Used (GiB)', format: (v) => formatUsage(v.ShareUsageBytes) },
-            { key: 'StorageAccountSku', label: 'Storage Account SKU', format: (v) => v.StorageAccountSku || 'N/A' },
-            { key: 'StorageAccountKind', label: 'Storage Account Kind', format: (v) => v.StorageAccountKind || 'N/A' },
+            { key: 'StorageAccountSku', label: 'SKU', format: (v) => v.ShareName ? (v.StorageAccountSku || 'N/A') : formatAnfSku(v) },
+            { key: 'StorageAccountKind', label: 'Storage Account Kind', format: (v) => v.ShareName ? (v.StorageAccountKind || 'N/A') : 'ANF' },
             { key: 'EnabledProtocols', label: 'Protocols', format: (v) => (v.EnabledProtocols || v.ProtocolTypes)?.join(', ') || 'SMB' },
             { key: 'MinimumTlsVersion', label: 'Min TLS Version', format: (v) => v.MinimumTlsVersion || 'N/A' },
             { key: 'EnableHttpsTrafficOnly', label: 'HTTPS Only', format: (v) => v.EnableHttpsTrafficOnly ? 'Yes' : 'No' },
             { key: 'ProvisionedIops', label: 'Provisioned/Estimated IOPS', format: (v) => formatPerf(v.ProvisionedIops, v.EstimatedIops) },
-            { key: 'ProvisionedBandwidthMiBps', label: 'Provisioned/Estimated Bandwidth (MiB/s)', format: (v) => formatPerf(v.ProvisionedBandwidthMiBps ?? v.ActualThroughputMibps, v.EstimatedThroughputMiBps) },
+            { key: 'ProvisionedBandwidthMiBps', label: 'Provisioned/Estimated Bandwidth (MiB/s)', format: (v) => formatPerf(v.ProvisionedBandwidthMiBps ?? v.ActualThroughputMibps, v.EstimatedThroughputMiBps, ' MiB/s') },
             { key: 'LeaseStatus', label: 'Lease Status', format: (v) => v.LeaseStatus || 'N/A' },
             { key: 'LeaseState', label: 'Lease State', format: (v) => v.LeaseState || 'N/A' },
             { key: 'IsSnapshot', label: 'Is Snapshot', format: (v) => v.IsSnapshot ? 'Yes' : 'No' },
@@ -910,7 +973,11 @@
             { key: 'LastModifiedTime', label: 'Last Modified', format: (v) => v.LastModifiedTime ? new Date(v.LastModifiedTime).toLocaleDateString() : 'N/A' },
             { key: 'DiscoveredAt', label: 'Discovered At', format: (v) => new Date(v.DiscoveredAt).toLocaleDateString() },
             { key: 'CapacityPoolName', label: 'Capacity Pool (ANF)', format: (v) => v.CapacityPoolName || 'N/A' },
-            { key: 'RootSquash', label: 'Root Squash', format: (v) => v.RootSquash || 'N/A' }
+            { key: 'RootSquash', label: 'Root Squash', format: (v) => v.RootSquash || 'N/A' },
+            { key: 'SnapshotCount', label: 'Snapshots', format: (v) => v.SnapshotCount != null ? formatNumber(v.SnapshotCount, 0) : 'N/A' },
+            { key: 'TotalSnapshotSizeBytes', label: 'Snapshot Size', format: (v) => v.TotalSnapshotSizeBytes ? formatUsage(v.TotalSnapshotSizeBytes) : 'N/A' },
+            { key: 'ChurnRateBytesPerDay', label: 'Churn Rate/Day', format: (v) => v.ChurnRateBytesPerDay ? formatUsage(v.ChurnRateBytesPerDay) : 'N/A' },
+            { key: 'MonitoringEnabled', label: 'Monitoring', format: (v) => v.MonitoringEnabled ? `✓ ${v.MonitoringDataAvailableDays || '?'} days` : 'No' }
         ];
         
         function getVisibleColumns() {
@@ -952,11 +1019,30 @@
             renderTable();
         }
         
+        function toggleColumnSelector() {
+            const columnList = document.getElementById('column-list');
+            const header = document.querySelector('.column-selector-header strong');
+            const isVisible = columnList.style.display !== 'none';
+            
+            columnList.style.display = isVisible ? 'none' : 'block';
+            header.textContent = isVisible ? '▶ Show/Hide Columns' : '▼ Show/Hide Columns';
+            
+            // Save preference
+            localStorage.setItem('azfo-column-selector-open', !isVisible);
+        }
+        
         function renderColumnSelector() {
             const columnList = document.getElementById('column-list');
             const visibleColumns = getVisibleColumns();
             
-            columnList.innerHTML = COLUMN_DEFINITIONS.map(col => `
+            // Check saved preference
+            const savedOpen = localStorage.getItem('azfo-column-selector-open') === 'true';
+            if (savedOpen) {
+                columnList.style.display = 'block';
+                document.querySelector('.column-selector-header strong').textContent = '▼ Show/Hide Columns';
+            }
+            
+            const checkboxesHtml = COLUMN_DEFINITIONS.map(col => `
                 <div class="column-checkbox">
                     <input type="checkbox" id="col-${col.key}" value="${col.key}" 
                            ${visibleColumns.includes(col.key) ? 'checked' : ''}
@@ -964,6 +1050,10 @@
                     <label for="col-${col.key}">${col.label}</label>
                 </div>
             `).join('');
+            
+            // Insert checkboxes after the button div
+            const buttonDiv = columnList.querySelector('div');
+            columnList.innerHTML = buttonDiv.outerHTML + checkboxesHtml;
         }
         
         function toggleColumn(columnKey) {
@@ -1084,12 +1174,16 @@
         async function initialize() {
             try {
                 await authManager.initialize();
+                
+                // Require authentication for this page
+                const isAuthenticated = await authManager.requireAuth();
+                if (!isAuthenticated) return;
+                
                 updateAuthUI();
                 loadResults();
             } catch (error) {
                 console.error('Initialization failed:', error);
-                document.getElementById('signed-out-view').style.display = 'block';
-                loadResults();
+                Toast.error('Failed to initialize. Please refresh the page.');
             }
         }
         

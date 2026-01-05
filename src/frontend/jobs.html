@@ -26,6 +26,7 @@
         <ul>
             <li><a href="index.html">Home</a></li>
             <li><a href="jobs.html" class="active">Jobs</a></li>
+            <li><a href="settings.html">Settings</a></li>
         </ul>
     </nav>
     
@@ -99,9 +100,11 @@
             <p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.5rem; margin-bottom: 1.5rem;">Scan your Azure subscription for Azure Files shares and Azure NetApp Files volumes.</p>
             <form id="create-job-form">
                 <div style="margin-bottom: 1rem;">
-                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Subscription ID *</label>
-                    <input type="text" id="subscription-id" required pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-                    <small style="color: var(--text-secondary); font-size: 0.75rem;">Find this in Azure Portal → Subscriptions</small>
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Subscription *</label>
+                    <select id="subscription-id" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;">
+                        <option value="">Loading subscriptions...</option>
+                    </select>
+                    <small id="subscription-help" style="color: var(--text-secondary); font-size: 0.75rem; display: none;">No subscriptions found. Make sure you're signed in.</small>
                 </div>
                 <div style="margin-bottom: 1rem;">
                     <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Resource Group (optional)</label>
@@ -119,6 +122,7 @@
     <script src="js/auth-config.js"></script>
     <script src="js/auth-manager.js"></script>
     <script src="js/api-client.js"></script>
+    <script src="js/toast.js"></script>
     <script>
         function formatDate(isoString) {
             const date = new Date(isoString);
@@ -201,12 +205,48 @@
             }
         }
         
-        function showCreateJobModal() {
+        async function showCreateJobModal() {
             if (!authManager.isSignedIn()) {
-                alert('Please sign in first to create jobs.');
+                Toast.warning('Please sign in first to create jobs.');
                 return;
             }
+            
+            // Show modal
             document.getElementById('create-job-modal').style.display = 'block';
+            
+            // Load subscriptions
+            await loadSubscriptions();
+        }
+        
+        async function loadSubscriptions() {
+            const subscriptionSelect = document.getElementById('subscription-id');
+            const helpText = document.getElementById('subscription-help');
+            
+            try {
+                subscriptionSelect.disabled = true;
+                subscriptionSelect.innerHTML = '<option value="">Loading subscriptions...</option>';
+                
+                const subscriptions = await apiClient.getSubscriptions();
+                
+                if (!subscriptions || subscriptions.length === 0) {
+                    subscriptionSelect.innerHTML = '<option value="">No subscriptions found</option>';
+                    helpText.style.display = 'block';
+                    return;
+                }
+                
+                // Populate dropdown
+                subscriptionSelect.innerHTML = '<option value="">Select a subscription...</option>' + 
+                    subscriptions.map(sub => 
+                        `<option value="${sub.id}">${sub.name} (${sub.id})</option>`
+                    ).join('');
+                    
+                subscriptionSelect.disabled = false;
+            } catch (error) {
+                console.error('Failed to load subscriptions:', error);
+                subscriptionSelect.innerHTML = '<option value="">Failed to load subscriptions</option>';
+                helpText.textContent = 'Error loading subscriptions. Please try again.';
+                helpText.style.display = 'block';
+            }
         }
         
         function hideCreateJobModal() {
@@ -226,11 +266,14 @@
                     resourceGroupNames: resourceGroup ? [resourceGroup] : null
                 });
                 
+                Toast.success('Discovery job created successfully!');
                 const jobId = job.RowKey || job.JobId;
-                // Redirect to job detail page
-                window.location.href = `job-detail.html?id=${jobId}`;
+                // Redirect to job detail page after brief delay
+                setTimeout(() => {
+                    window.location.href = `job-detail.html?id=${jobId}`;
+                }, 500);
             } catch (error) {
-                alert('Failed to create job: ' + error.message);
+                Toast.error('Failed to create job: ' + error.message);
             }
         });
         
@@ -249,15 +292,21 @@
         }
         
         async function deleteJob(jobId) {
-            if (!confirm('Are you sure you want to delete this job? This action cannot be undone.')) {
-                return;
-            }
+            const confirmed = await Toast.confirm(
+                'Are you sure you want to delete this job? This action cannot be undone.',
+                'Delete Job',
+                'Delete',
+                'Cancel'
+            );
+            
+            if (!confirmed) return;
             
             try {
                 await apiClient.deleteJob(jobId);
+                Toast.success('Job deleted successfully');
                 loadJobs();
             } catch (error) {
-                alert('Failed to delete job: ' + error.message);
+                Toast.error('Failed to delete job: ' + error.message);
             }
         }
         
@@ -267,9 +316,14 @@
             
             if (jobIds.length === 0) return;
             
-            if (!confirm(`Are you sure you want to delete ${jobIds.length} job(s)? This action cannot be undone.`)) {
-                return;
-            }
+            const confirmed = await Toast.confirm(
+                `Are you sure you want to delete ${jobIds.length} job(s)? This action cannot be undone.`,
+                'Delete Jobs',
+                'Delete All',
+                'Cancel'
+            );
+            
+            if (!confirmed) return;
             
             const deleteBtn = document.getElementById('delete-selected-btn');
             deleteBtn.disabled = true;
@@ -279,13 +333,15 @@
                 // Delete jobs in parallel
                 await Promise.all(jobIds.map(jobId => apiClient.deleteJob(jobId)));
                 
+                Toast.success(`${jobIds.length} job(s) deleted successfully`);
+                
                 // Uncheck select all
                 document.getElementById('select-all').checked = false;
                 
                 // Reload jobs list
                 loadJobs();
             } catch (error) {
-                alert('Failed to delete some jobs: ' + error.message);
+                Toast.error('Failed to delete some jobs: ' + error.message);
                 deleteBtn.disabled = false;
                 updateDeleteButton();
             }
@@ -310,12 +366,16 @@
         async function initialize() {
             try {
                 await authManager.initialize();
+                
+                // Require authentication for this page
+                const isAuthenticated = await authManager.requireAuth();
+                if (!isAuthenticated) return;
+                
                 updateAuthUI();
                 loadJobs();
             } catch (error) {
                 console.error('Initialization failed:', error);
-                document.getElementById('signed-out-view').style.display = 'block';
-                loadJobs(); // Try to load anyway
+                Toast.error('Failed to initialize. Please refresh the page.');
             }
         }
         

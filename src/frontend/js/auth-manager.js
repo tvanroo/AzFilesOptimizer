@@ -159,6 +159,33 @@ class AuthManager {
         if (!this.currentAccount) return null;
         return this.currentAccount.username;
     }
+    
+    /**
+     * Get user object ID (for user-scoped queries)
+     */
+    getUserObjectId() {
+        if (!this.currentAccount) return null;
+        return this.currentAccount.localAccountId || this.currentAccount.homeAccountId;
+    }
+    
+    /**
+     * Require authentication - redirect to home if not signed in
+     * Call this on page load for protected pages
+     */
+    async requireAuth(redirectUrl = 'index.html') {
+        // Wait for initialization to complete
+        if (!this.msalInstance) {
+            await this.initialize();
+        }
+        
+        if (!this.isSignedIn()) {
+            console.log('User not signed in, redirecting to:', redirectUrl);
+            window.location.href = redirectUrl;
+            return false;
+        }
+        
+        return true;
+    }
 }
 
 // Export singleton instance

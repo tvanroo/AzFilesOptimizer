@@ -121,6 +121,13 @@ class ApiClient {
     async getJobShares(jobId) {
         return this.fetchJson(`/jobs/${jobId}/shares`);
     }
+    
+    /**
+     * Get list of accessible Azure subscriptions
+     */
+    async getSubscriptions() {
+        return this.fetchJson('/subscriptions');
+    }
 }
 
 // Export singleton instance
