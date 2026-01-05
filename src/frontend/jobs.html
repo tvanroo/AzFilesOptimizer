@@ -160,6 +160,11 @@
                     emptyState.style.display = 'block';
                     return;
                 }
+                
+                // Show table and hide empty state
+                tableBody.parentElement.parentElement.style.display = 'block';
+                emptyState.style.display = 'none';
+                
                 tableBody.innerHTML = jobs.map(job => {
                     // API returns PascalCase fields
                     const jobId = job.RowKey || job.JobId;
