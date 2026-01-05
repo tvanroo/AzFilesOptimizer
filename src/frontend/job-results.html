@@ -281,6 +281,34 @@
             position: sticky;
             top: 0;
             z-index: 10;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+        
+        .data-table th:hover {
+            background: #e0e0e0;
+        }
+        
+        .data-table th .sort-indicator {
+            margin-left: 4px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        
+        .data-table th.sorted-asc .sort-indicator::after {
+            content: '▲';
+            color: var(--primary-color);
+        }
+        
+        .data-table th.sorted-desc .sort-indicator::after {
+            content: '▼';
+            color: var(--primary-color);
+        }
+        
+        .data-table th:not(.sorted-asc):not(.sorted-desc) .sort-indicator::after {
+            content: '⬍';
+            opacity: 0.3;
         }
         
         .data-table td {
@@ -819,6 +847,8 @@
         // ==============
         
         const DEFAULT_COLUMNS = ['VolumeName', 'Service', 'PerformanceTier', 'CapacityGiB', 'UsedGiB'];
+        let currentSortColumn = null;
+        let currentSortDirection = 'asc';
         
         const COLUMN_DEFINITIONS = [
             { key: 'VolumeName', label: 'Volume Name', format: (v) => v.ShareName || v.VolumeName },
@@ -919,18 +949,70 @@
             renderTable();
         }
         
+        function sortTable(columnKey) {
+            if (currentSortColumn === columnKey) {
+                // Toggle direction
+                currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                // New column, default to ascending
+                currentSortColumn = columnKey;
+                currentSortDirection = 'asc';
+            }
+            
+            renderTable();
+        }
+        
         function renderTable() {
             const visibleColumns = getVisibleColumns();
             const visibleColumnDefs = COLUMN_DEFINITIONS.filter(col => visibleColumns.includes(col.key));
             
             // Combine shares and volumes
-            const allVolumes = [...sharesData, ...volumesData];
+            let allVolumes = [...sharesData, ...volumesData];
+            
+            // Sort if column is selected
+            if (currentSortColumn) {
+                const sortCol = COLUMN_DEFINITIONS.find(c => c.key === currentSortColumn);
+                if (sortCol) {
+                    allVolumes.sort((a, b) => {
+                        const aVal = sortCol.format(a);
+                        const bVal = sortCol.format(b);
+                        
+                        // Handle 'N/A' values
+                        if (aVal === 'N/A') return 1;
+                        if (bVal === 'N/A') return -1;
+                        
+                        // Try numeric comparison first
+                        const aNum = parseFloat(aVal);
+                        const bNum = parseFloat(bVal);
+                        if (!isNaN(aNum) && !isNaN(bNum)) {
+                            return currentSortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+                        }
+                        
+                        // String comparison
+                        const aStr = String(aVal).toLowerCase();
+                        const bStr = String(bVal).toLowerCase();
+                        
+                        if (currentSortDirection === 'asc') {
+                            return aStr < bStr ? -1 : aStr > bStr ? 1 : 0;
+                        } else {
+                            return bStr < aStr ? -1 : bStr > aStr ? 1 : 0;
+                        }
+                    });
+                }
+            }
             
             // Render header
             const header = document.getElementById('table-header');
             header.innerHTML = `
                 <tr>
-                    ${visibleColumnDefs.map(col => `<th>${col.label}</th>`).join('')}
+                    ${visibleColumnDefs.map(col => {
+                        const sortClass = currentSortColumn === col.key ? 
+                            (currentSortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc') : '';
+                        return `<th class="${sortClass}" onclick="sortTable('${col.key}')">
+                            ${col.label}
+                            <span class="sort-indicator"></span>
+                        </th>`;
+                    }).join('')}
                 </tr>
             `;
             
