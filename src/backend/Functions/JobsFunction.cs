@@ -140,13 +140,58 @@ public class JobsFunction
                 return badRequestResponse;
             }
 
-            // TODO: Extract user info from JWT token in Authorization header
-            // For now, use placeholder values
+            // Extract user info from JWT token in Authorization header
+            string userId = "anonymous";
+            string userEmail = "anonymous@example.com";
+            string tenantId = request.TenantId ?? "unknown";
+            
+            if (req.Headers.TryGetValues("Authorization", out var authHeaders))
+            {
+                var authHeader = authHeaders.FirstOrDefault();
+                if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
+                {
+                    var token = authHeader.Substring("Bearer ".Length);
+                    try
+                    {
+                        // Parse JWT token (simple parsing without validation since it's already validated by Azure AD)
+                        var tokenParts = token.Split('.');
+                        if (tokenParts.Length > 1)
+                        {
+                            var payload = tokenParts[1];
+                            // Add padding if needed
+                            var padding = payload.Length % 4;
+                            if (padding > 0) payload += new string('=', 4 - padding);
+                            
+                            var payloadJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+                            var payloadObj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(payloadJson);
+                            
+                            if (payloadObj != null)
+                            {
+                                if (payloadObj.TryGetValue("tid", out var tidValue))
+                                    tenantId = tidValue.GetString() ?? tenantId;
+                                if (payloadObj.TryGetValue("oid", out var oidValue))
+                                    userId = oidValue.GetString() ?? userId;
+                                if (payloadObj.TryGetValue("upn", out var upnValue))
+                                    userEmail = upnValue.GetString() ?? userEmail;
+                                else if (payloadObj.TryGetValue("email", out var emailValue))
+                                    userEmail = emailValue.GetString() ?? userEmail;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to parse JWT token");
+                    }
+                }
+            }
+            
+            _logger.LogInformation("Creating job for user {UserId} in tenant {TenantId}", userId, tenantId);
+            
             var job = new DiscoveryJob
             {
-                UserId = "user-placeholder",
-                UserEmail = "user@example.com",
-                TenantId = request.TenantId ?? "unknown",
+                UserId = userId,
+                UserEmail = userEmail,
+                TenantId = tenantId,
                 SubscriptionId = request.SubscriptionId,
                 ResourceGroupNames = request.ResourceGroupNames
             };
