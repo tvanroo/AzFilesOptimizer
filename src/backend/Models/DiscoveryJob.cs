@@ -23,7 +23,7 @@ public class DiscoveryJob : ITableEntity
     public string UserEmail { get; set; } = string.Empty;
     
     // Discovery scope
-    public string? SubscriptionId { get; set; }
+    public string SubscriptionId { get; set; } = string.Empty;
     public string[]? ResourceGroupNames { get; set; }
     public string TenantId { get; set; } = string.Empty;
     

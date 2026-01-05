@@ -131,6 +131,15 @@ public class JobsFunction
             _logger.LogInformation("Parsed request - SubscriptionId: {SubscriptionId}, TenantId: {TenantId}", 
                 request.SubscriptionId, request.TenantId);
 
+            // Validate required fields
+            if (string.IsNullOrWhiteSpace(request.SubscriptionId))
+            {
+                _logger.LogWarning("Missing required field: SubscriptionId");
+                var badRequestResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequestResponse.WriteAsJsonAsync(new { error = "SubscriptionId is required" });
+                return badRequestResponse;
+            }
+
             // TODO: Extract user info from JWT token in Authorization header
             // For now, use placeholder values
             var job = new DiscoveryJob
