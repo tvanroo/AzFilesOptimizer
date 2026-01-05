@@ -32,7 +32,8 @@ public class DiscoveryService
     public async Task<DiscoveryResult> DiscoverResourcesAsync(
         string subscriptionId,
         string? resourceGroupName,
-        TokenCredential credential)
+        TokenCredential credential,
+        string? tenantId = null)
     {
         await LogProgressAsync($"Starting discovery for subscription: {subscriptionId}");
 
@@ -48,7 +49,7 @@ public class DiscoveryService
             // Discover Azure Files shares
             await LogProgressAsync("Step 1/2: Discovering Azure Files shares...");
             result.AzureFileShares = await DiscoverAzureFilesSharesAsync(
-                subscription.Value, resourceGroupName);
+                subscription.Value, resourceGroupName, tenantId);
             await LogProgressAsync($"✓ Found {result.AzureFileShares.Count} Azure Files shares");
 
             // Discover ANF volumes
@@ -71,7 +72,8 @@ public class DiscoveryService
 
     private async Task<List<DiscoveredAzureFileShare>> DiscoverAzureFilesSharesAsync(
         Azure.ResourceManager.Resources.SubscriptionResource subscription,
-        string? resourceGroupFilter)
+        string? resourceGroupFilter,
+        string? tenantId = null)
     {
         var shares = new List<DiscoveredAzureFileShare>();
         int storageAccountCount = 0;
@@ -104,18 +106,67 @@ public class DiscoveryService
                     await foreach (var share in fileServiceResource.Value.GetFileShares().GetAllAsync())
                     {
                         shareCountForAccount++;
-                        shares.Add(new DiscoveredAzureFileShare
+                        
+                        // Collect comprehensive metadata
+                        var discoveredShare = new DiscoveredAzureFileShare
                         {
-                            ResourceId = share.Id.ToString(),
+                            // Hierarchy
+                            TenantId = tenantId ?? "",
+                            SubscriptionId = storageAccount.Id.SubscriptionId ?? "",
+                            ResourceGroup = storageAccount.Id.ResourceGroupName ?? "",
                             StorageAccountName = storageAccount.Data.Name,
                             ShareName = share.Data.Name,
-                            ResourceGroup = storageAccount.Id.ResourceGroupName ?? "",
-                            SubscriptionId = storageAccount.Id.SubscriptionId ?? "",
+                            
+                            // Resource identification
+                            ResourceId = share.Id.ToString(),
                             Location = storageAccount.Data.Location.Name,
-                            Tier = share.Data.AccessTier?.ToString() ?? "Unknown",
-                            QuotaGiB = share.Data.ShareQuota,
-                            Tags = storageAccount.Data.Tags?.ToDictionary(t => t.Key, t => t.Value) ?? new()
-                        });
+                            
+                            // Storage Account properties
+                            StorageAccountSku = storageAccount.Data.Sku?.Name.ToString() ?? "",
+                            StorageAccountKind = storageAccount.Data.Kind?.ToString() ?? "",
+                            EnableHttpsTrafficOnly = storageAccount.Data.EnableHttpsTrafficOnly,
+                            MinimumTlsVersion = storageAccount.Data.MinimumTlsVersion?.ToString(),
+                            AllowBlobPublicAccess = storageAccount.Data.AllowBlobPublicAccess,
+                            AllowSharedKeyAccess = storageAccount.Data.AllowSharedKeyAccess,
+                            
+                            // File Share properties
+                            AccessTier = share.Data.AccessTier?.ToString() ?? "Unknown",
+                            AccessTierChangeTime = null, // Not available in current SDK version
+                            AccessTierStatus = share.Data.AccessTierStatus,
+                            ShareQuotaGiB = share.Data.ShareQuota,
+                            ShareUsageBytes = share.Data.ShareUsageBytes,
+                            EnabledProtocols = share.Data.EnabledProtocol != null ? 
+                                new[] { share.Data.EnabledProtocol.Value.ToString() } : null,
+                            RootSquash = share.Data.RootSquash?.ToString(),
+                            
+                            // Performance properties (Premium shares)
+                            ProvisionedIops = share.Data.SignedIdentifiers?.Count,
+                            
+                            // Lease properties
+                            LeaseStatus = share.Data.LeaseStatus?.ToString(),
+                            LeaseState = share.Data.LeaseState?.ToString(),
+                            LeaseDuration = share.Data.LeaseDuration?.ToString(),
+                            
+                            // Snapshot properties
+                            SnapshotTime = share.Data.SnapshotOn?.UtcDateTime,
+                            IsSnapshot = share.Data.SnapshotOn.HasValue,
+                            
+                            // Soft delete properties
+                            IsDeleted = share.Data.IsDeleted,
+                            DeletedTime = share.Data.DeletedOn?.UtcDateTime,
+                            RemainingRetentionDays = share.Data.RemainingRetentionDays,
+                            Version = share.Data.Version,
+                            
+                            // Metadata and tags
+                            Metadata = share.Data.Metadata?.ToDictionary(m => m.Key, m => m.Value),
+                            Tags = storageAccount.Data.Tags?.ToDictionary(t => t.Key, t => t.Value),
+                            
+                            // Timestamps
+                            LastModifiedTime = share.Data.LastModifiedOn?.UtcDateTime,
+                            DiscoveredAt = DateTime.UtcNow
+                        };
+                        
+                        shares.Add(discoveredShare);
                     }
                     
                     if (shareCountForAccount > 0)

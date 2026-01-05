@@ -91,7 +91,7 @@ public class JobProcessorFunction
             job.CompletedAt = DateTime.UtcNow;
             job.AzureFilesSharesFound = result.AzureFileShares.Count;
             job.AnfVolumesFound = result.AnfVolumes.Count;
-            job.TotalCapacityBytes = result.AzureFileShares.Sum(s => (s.QuotaGiB ?? 0) * 1024L * 1024L * 1024L) +
+job.TotalCapacityBytes = result.AzureFileShares.Sum(s => (s.ShareQuotaGiB ?? 0) * 1024L * 1024L * 1024L) +
                                      result.AnfVolumes.Sum(v => v.ProvisionedSizeBytes);
 
             await _jobStorage.UpdateDiscoveryJobAsync(job);

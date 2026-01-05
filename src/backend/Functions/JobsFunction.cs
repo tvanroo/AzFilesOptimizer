@@ -14,6 +14,7 @@ public class JobsFunction
     private readonly ILogger _logger;
     private readonly JobStorageService _jobStorage;
     private readonly JobLogService _jobLogService;
+    private readonly DiscoveredResourceStorageService _resourceStorage;
 
     public JobsFunction(ILoggerFactory loggerFactory)
     {
@@ -23,6 +24,7 @@ public class JobsFunction
         var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
         _jobStorage = new JobStorageService(connectionString);
         _jobLogService = new JobLogService(connectionString);
+        _resourceStorage = new DiscoveredResourceStorageService(connectionString);
     }
 
     [Function("GetJobs")]
@@ -102,6 +104,36 @@ public class JobsFunction
             return errorResponse;
         }
     }
+    
+    [Function("GetJobShares")]
+    public async Task<HttpResponseData> GetJobShares(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "jobs/{jobId}/shares")] HttpRequestData req,
+        string jobId)
+    {
+        _logger.LogInformation("Getting discovered shares for job: {JobId}", jobId);
+
+        try
+        {
+            var shares = await _resourceStorage.GetSharesByJobIdAsync(jobId);
+            var volumes = await _resourceStorage.GetVolumesByJobIdAsync(jobId);
+            
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new { 
+                shares = shares,
+                volumes = volumes,
+                totalShares = shares.Count,
+                totalVolumes = volumes.Count
+            });
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting shares for job {JobId}", jobId);
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new { error = "Failed to retrieve shares", details = ex.Message });
+            return errorResponse;
+        }
+    }
 
     [Function("DeleteJob")]
     public async Task<HttpResponseData> DeleteJob(
@@ -117,6 +149,10 @@ public class JobsFunction
             
             // Delete associated logs
             await _jobLogService.DeleteLogsAsync(jobId);
+            
+            // Delete discovered resources
+            await _resourceStorage.DeleteSharesByJobIdAsync(jobId);
+            await _resourceStorage.DeleteVolumesByJobIdAsync(jobId);
             
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(new { message = "Job deleted successfully", jobId });
@@ -285,16 +321,24 @@ public class JobsFunction
             var result = await discoveryService.DiscoverResourcesAsync(
                 job.SubscriptionId,
                 resourceGroupName,
-                credential);
+                credential,
+                job.TenantId);
             
             await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Discovery complete");
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Persisting discovered resources...");
+
+            // Persist discovered resources to Table Storage
+            await _resourceStorage.SaveSharesAsync(jobId, result.AzureFileShares);
+            await _resourceStorage.SaveVolumesAsync(jobId, result.AnfVolumes);
+            
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Saved {result.AzureFileShares.Count} shares and {result.AnfVolumes.Count} volumes to storage");
 
             // Update job with results
             job.Status = JobStatus.Completed;
             job.CompletedAt = DateTime.UtcNow;
             job.AzureFilesSharesFound = result.AzureFileShares.Count;
             job.AnfVolumesFound = result.AnfVolumes.Count;
-            job.TotalCapacityBytes = result.AzureFileShares.Sum(s => (s.QuotaGiB ?? 0) * 1024L * 1024L * 1024L) +
+            job.TotalCapacityBytes = result.AzureFileShares.Sum(s => (s.ShareQuotaGiB ?? 0) * 1024L * 1024L * 1024L) +
                                      result.AnfVolumes.Sum(v => v.ProvisionedSizeBytes);
 
             await _jobStorage.UpdateDiscoveryJobAsync(job);
