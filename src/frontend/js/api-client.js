@@ -114,6 +114,13 @@ class ApiClient {
             method: 'DELETE'
         });
     }
+
+    /**
+     * Get discovered shares and volumes for a job
+     */
+    async getJobShares(jobId) {
+        return this.fetchJson(`/jobs/${jobId}/shares`);
+    }
 }
 
 // Export singleton instance

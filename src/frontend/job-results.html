@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discovery Results - AzFilesOptimizer</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        .tree-view {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .tree-node {
+            margin-left: 20px;
+            margin-bottom: 8px;
+        }
+        
+        .tree-node-header {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: var(--surface);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .tree-node-header:hover {
+            background: #f0f0f0;
+        }
+        
+        .tree-node-icon {
+            margin-right: 8px;
+            font-size: 14px;
+            transition: transform 0.2s;
+            display: inline-block;
+            width: 16px;
+        }
+        
+        .tree-node-icon.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .tree-node-label {
+            flex: 1;
+            font-weight: 500;
+        }
+        
+        .tree-node-count {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-left: 8px;
+        }
+        
+        .tree-node-children {
+            display: none;
+            margin-top: 8px;
+        }
+        
+        .tree-node-children.expanded {
+            display: block;
+        }
+        
+        .share-item {
+            padding: 12px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .share-item:hover {
+            border-color: var(--primary-color);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .share-name {
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 4px;
+        }
+        
+        .share-details {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        .share-detail-item {
+            display: inline-block;
+            margin-right: 16px;
+        }
+        
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        .breadcrumb-item {
+            display: flex;
+            align-items: center;
+        }
+        
+        .breadcrumb-item::after {
+            content: '→';
+            margin: 0 8px;
+        }
+        
+        .breadcrumb-item:last-child::after {
+            content: '';
+        }
+        
+        .search-filter {
+            margin-bottom: 1.5rem;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: var(--surface);
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            overflow-y: auto;
+        }
+        
+        .modal-content {
+            background: white;
+            margin: 50px auto;
+            padding: 2rem;
+            border-radius: 8px;
+            max-width: 800px;
+            width: 90%;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .modal-close {
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            color: var(--text-secondary);
+        }
+        
+        .modal-close:hover {
+            color: var(--text);
+        }
+        
+        .metadata-section {
+            margin-bottom: 1.5rem;
+        }
+        
+        .metadata-section h3 {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+            color: var(--primary-color);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+        
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 8px;
+            font-size: 0.875rem;
+        }
+        
+        .metadata-label {
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        
+        .metadata-value {
+            color: var(--text);
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1>AzFilesOptimizer</h1>
+            <div id="auth-section">
+                <div id="signed-out-view" style="display: none;">
+                    <button class="btn" onclick="window.location.href='index.html'" style="background-color: white; color: var(--primary-color);">Sign In</button>
+                </div>
+                <div id="signed-in-view" style="display: none;">
+                    <span id="user-name" style="color: white; margin-right: 1rem;"></span>
+                    <button class="btn" onclick="window.location.href='index.html'" style="background-color: transparent; border: 1px solid white;">Home</button>
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="jobs.html">Jobs</a></li>
+        </ul>
+    </nav>
+    
+    <main>
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 id="page-title">Discovery Results</h2>
+                <button class="btn" onclick="window.location.href='job-detail.html?id=' + jobId">← Back to Job</button>
+            </div>
+            
+            <div class="breadcrumb">
+                <div class="breadcrumb-item">Subscription</div>
+                <div class="breadcrumb-item">Resource Groups</div>
+                <div class="breadcrumb-item">Storage Accounts</div>
+                <div class="breadcrumb-item">File Shares</div>
+            </div>
+            
+            <div class="summary-stats" id="summary-stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="total-shares">0</div>
+                    <div class="stat-label">Azure Files Shares</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="total-volumes">0</div>
+                    <div class="stat-label">ANF Volumes</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="total-storage-accounts">0</div>
+                    <div class="stat-label">Storage Accounts</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="total-capacity">0 TB</div>
+                    <div class="stat-label">Total Capacity</div>
+                </div>
+            </div>
+            
+            <div class="search-filter">
+                <input type="text" id="search-input" class="search-input" placeholder="Search shares, storage accounts, resource groups..." onkeyup="filterTree()">
+            </div>
+            
+            <div id="tree-container" class="tree-view">
+                <div style="text-align: center; padding: 2rem;">
+                    <div class="loading"></div>
+                    <p style="margin-top: 1rem; color: var(--text-secondary);">Loading results...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <!-- Share Detail Modal -->
+    <div id="share-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Share Details</h2>
+                <span class="modal-close" onclick="closeModal()">&times;</span>
+            </div>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="js/lib/msal-browser.min.js"></script>
+    <script src="js/auth-config.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/api-client.js"></script>
+    <script>
+        let jobId = '';
+        let sharesData = [];
+        let volumesData = [];
+        let hierarchyData = {};
+        
+        // Get job ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        jobId = urlParams.get('id');
+        
+        if (!jobId) {
+            alert('No job ID provided');
+            window.location.href = 'jobs.html';
+        }
+        
+        async function loadResults() {
+            try {
+                // Load job details
+                const job = await apiClient.getJob(jobId);
+                document.getElementById('page-title').textContent = `Discovery Results - Job ${jobId.substring(0, 8)}`;
+                
+                // Load discovered resources
+                const results = await apiClient.getJobShares(jobId);
+                sharesData = results.shares || [];
+                volumesData = results.volumes || [];
+                
+                // Update summary stats
+                updateStats();
+                
+                // Build hierarchy
+                buildHierarchy();
+                
+                // Render tree
+                renderTree();
+            } catch (error) {
+                console.error('Error loading results:', error);
+                document.getElementById('tree-container').innerHTML = `
+                    <div class="error-message">
+                        <strong>Error loading results:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        function updateStats() {
+            document.getElementById('total-shares').textContent = sharesData.length;
+            document.getElementById('total-volumes').textContent = volumesData.length;
+            
+            // Count unique storage accounts
+            const storageAccounts = new Set(sharesData.map(s => s.StorageAccountName));
+            document.getElementById('total-storage-accounts').textContent = storageAccounts.size;
+            
+            // Calculate total capacity
+            const totalBytes = sharesData.reduce((sum, s) => sum + ((s.ShareQuotaGiB || 0) * 1024 * 1024 * 1024), 0);
+            const totalTB = (totalBytes / (1024 * 1024 * 1024 * 1024)).toFixed(2);
+            document.getElementById('total-capacity').textContent = `${totalTB} TB`;
+        }
+        
+        function buildHierarchy() {
+            hierarchyData = {};
+            
+            sharesData.forEach(share => {
+                const sub = share.SubscriptionId || 'Unknown';
+                const rg = share.ResourceGroup || 'Unknown';
+                const sa = share.StorageAccountName || 'Unknown';
+                
+                if (!hierarchyData[sub]) {
+                    hierarchyData[sub] = { resourceGroups: {}, subscriptionId: sub };
+                }
+                
+                if (!hierarchyData[sub].resourceGroups[rg]) {
+                    hierarchyData[sub].resourceGroups[rg] = { storageAccounts: {}, name: rg };
+                }
+                
+                if (!hierarchyData[sub].resourceGroups[rg].storageAccounts[sa]) {
+                    hierarchyData[sub].resourceGroups[rg].storageAccounts[sa] = { 
+                        shares: [],
+                        name: sa,
+                        sku: share.StorageAccountSku,
+                        location: share.Location
+                    };
+                }
+                
+                hierarchyData[sub].resourceGroups[rg].storageAccounts[sa].shares.push(share);
+            });
+        }
+        
+        function renderTree() {
+            const container = document.getElementById('tree-container');
+            container.innerHTML = '';
+            
+            Object.keys(hierarchyData).forEach(subId => {
+                const subData = hierarchyData[subId];
+                const subNode = createTreeNode(`📋 Subscription: ${subId.substring(0, 20)}...`, Object.keys(subData.resourceGroups).length, 'subscription');
+                
+                const rgContainer = document.createElement('div');
+                rgContainer.className = 'tree-node-children';
+                
+                Object.keys(subData.resourceGroups).forEach(rgName => {
+                    const rgData = subData.resourceGroups[rgName];
+                    const rgNode = createTreeNode(`📁 ${rgName}`, Object.keys(rgData.storageAccounts).length, 'resource-group');
+                    
+                    const saContainer = document.createElement('div');
+                    saContainer.className = 'tree-node-children';
+                    
+                    Object.keys(rgData.storageAccounts).forEach(saName => {
+                        const saData = rgData.storageAccounts[saName];
+                        const saNode = createTreeNode(
+                            `💾 ${saName} (${saData.sku || 'Unknown'})`, 
+                            saData.shares.length,
+                            'storage-account'
+                        );
+                        
+                        const sharesContainer = document.createElement('div');
+                        sharesContainer.className = 'tree-node-children';
+                        
+                        saData.shares.forEach(share => {
+                            const shareItem = createShareItem(share);
+                            sharesContainer.appendChild(shareItem);
+                        });
+                        
+                        saNode.appendChild(saContainer);
+                        saContainer.appendChild(rgNode);
+                        rgNode.appendChild(saContainer);
+                        
+                        const saWrapper = document.createElement('div');
+                        saWrapper.className = 'tree-node';
+                        saWrapper.appendChild(saNode);
+                        saWrapper.appendChild(sharesContainer);
+                        
+                        saContainer.appendChild(saWrapper);
+                    });
+                    
+                    const rgWrapper = document.createElement('div');
+                    rgWrapper.className = 'tree-node';
+                    rgWrapper.appendChild(rgNode);
+                    rgWrapper.appendChild(saContainer);
+                    
+                    rgContainer.appendChild(rgWrapper);
+                });
+                
+                const subWrapper = document.createElement('div');
+                subWrapper.className = 'tree-node';
+                subWrapper.appendChild(subNode);
+                subWrapper.appendChild(rgContainer);
+                
+                container.appendChild(subWrapper);
+            });
+        }
+        
+        function createTreeNode(label, count, type) {
+            const header = document.createElement('div');
+            header.className = 'tree-node-header';
+            header.onclick = function() { toggleNode(this); };
+            
+            header.innerHTML = `
+                <span class="tree-node-icon">▶</span>
+                <span class="tree-node-label">${label}</span>
+                <span class="tree-node-count">(${count})</span>
+            `;
+            
+            return header;
+        }
+        
+        function createShareItem(share) {
+            const item = document.createElement('div');
+            item.className = 'share-item';
+            item.onclick = function() { showShareDetails(share); };
+            
+            const quotaGB = share.ShareQuotaGiB || 0;
+            const usageGB = share.ShareUsageBytes ? (share.ShareUsageBytes / (1024**3)).toFixed(2) : 'N/A';
+            const tier = share.AccessTier || 'Unknown';
+            const protocols = share.EnabledProtocols ? share.EnabledProtocols.join(', ') : 'SMB';
+            
+            item.innerHTML = `
+                <div class="share-name">📄 ${share.ShareName}</div>
+                <div class="share-details">
+                    <span class="share-detail-item"><strong>Tier:</strong> ${tier}</span>
+                    <span class="share-detail-item"><strong>Quota:</strong> ${quotaGB} GiB</span>
+                    <span class="share-detail-item"><strong>Usage:</strong> ${usageGB} GB</span>
+                    <span class="share-detail-item"><strong>Protocol:</strong> ${protocols}</span>
+                </div>
+            `;
+            
+            return item;
+        }
+        
+        function toggleNode(header) {
+            const icon = header.querySelector('.tree-node-icon');
+            const parent = header.parentElement;
+            const children = parent.querySelector('.tree-node-children');
+            
+            if (children) {
+                children.classList.toggle('expanded');
+                icon.classList.toggle('expanded');
+            }
+        }
+        
+        function showShareDetails(share) {
+            document.getElementById('modal-title').textContent = `${share.ShareName} - Details`;
+            
+            const modalBody = document.getElementById('modal-body');
+            modalBody.innerHTML = `
+                <div class="metadata-section">
+                    <h3>Basic Information</h3>
+                    <div class="metadata-grid">
+                        <div class="metadata-label">Share Name:</div>
+                        <div class="metadata-value">${share.ShareName}</div>
+                        <div class="metadata-label">Storage Account:</div>
+                        <div class="metadata-value">${share.StorageAccountName}</div>
+                        <div class="metadata-label">Resource Group:</div>
+                        <div class="metadata-value">${share.ResourceGroup}</div>
+                        <div class="metadata-label">Location:</div>
+                        <div class="metadata-value">${share.Location}</div>
+                        <div class="metadata-label">Access Tier:</div>
+                        <div class="metadata-value">${share.AccessTier || 'N/A'}</div>
+                    </div>
+                </div>
+                
+                <div class="metadata-section">
+                    <h3>Storage Account Properties</h3>
+                    <div class="metadata-grid">
+                        <div class="metadata-label">SKU:</div>
+                        <div class="metadata-value">${share.StorageAccountSku || 'N/A'}</div>
+                        <div class="metadata-label">Kind:</div>
+                        <div class="metadata-value">${share.StorageAccountKind || 'N/A'}</div>
+                        <div class="metadata-label">HTTPS Only:</div>
+                        <div class="metadata-value">${share.EnableHttpsTrafficOnly ? 'Yes' : 'No'}</div>
+                        <div class="metadata-label">Minimum TLS:</div>
+                        <div class="metadata-value">${share.MinimumTlsVersion || 'N/A'}</div>
+                    </div>
+                </div>
+                
+                <div class="metadata-section">
+                    <h3>Capacity & Performance</h3>
+                    <div class="metadata-grid">
+                        <div class="metadata-label">Quota:</div>
+                        <div class="metadata-value">${share.ShareQuotaGiB || 0} GiB</div>
+                        <div class="metadata-label">Usage:</div>
+                        <div class="metadata-value">${share.ShareUsageBytes ? (share.ShareUsageBytes / (1024**3)).toFixed(2) + ' GB' : 'N/A'}</div>
+                        <div class="metadata-label">Provisioned IOPS:</div>
+                        <div class="metadata-value">${share.ProvisionedIops || 'N/A'}</div>
+                        <div class="metadata-label">Provisioned Bandwidth:</div>
+                        <div class="metadata-value">${share.ProvisionedBandwidthMiBps ? share.ProvisionedBandwidthMiBps + ' MiB/s' : 'N/A'}</div>
+                    </div>
+                </div>
+                
+                <div class="metadata-section">
+                    <h3>Network & Access</h3>
+                    <div class="metadata-grid">
+                        <div class="metadata-label">Enabled Protocols:</div>
+                        <div class="metadata-value">${share.EnabledProtocols ? share.EnabledProtocols.join(', ') : 'SMB'}</div>
+                        <div class="metadata-label">Root Squash:</div>
+                        <div class="metadata-value">${share.RootSquash || 'N/A'}</div>
+                        <div class="metadata-label">Lease Status:</div>
+                        <div class="metadata-value">${share.LeaseStatus || 'N/A'}</div>
+                        <div class="metadata-label">Lease State:</div>
+                        <div class="metadata-value">${share.LeaseState || 'N/A'}</div>
+                    </div>
+                </div>
+                
+                <div class="metadata-section">
+                    <h3>Timestamps</h3>
+                    <div class="metadata-grid">
+                        <div class="metadata-label">Last Modified:</div>
+                        <div class="metadata-value">${share.LastModifiedTime ? new Date(share.LastModifiedTime).toLocaleString() : 'N/A'}</div>
+                        <div class="metadata-label">Discovered At:</div>
+                        <div class="metadata-value">${share.DiscoveredAt ? new Date(share.DiscoveredAt).toLocaleString() : 'N/A'}</div>
+                    </div>
+                </div>
+                
+                <div class="metadata-section">
+                    <h3>Advanced</h3>
+                    <div class="metadata-grid">
+                        <div class="metadata-label">Resource ID:</div>
+                        <div class="metadata-value" style="font-size: 0.75rem;">${share.ResourceId}</div>
+                        <div class="metadata-label">Snapshot:</div>
+                        <div class="metadata-value">${share.IsSnapshot ? 'Yes' : 'No'}</div>
+                        <div class="metadata-label">Deleted:</div>
+                        <div class="metadata-value">${share.IsDeleted ? 'Yes' : 'No'}</div>
+                    </div>
+                </div>
+                
+                ${share.Tags && Object.keys(share.Tags).length > 0 ? `
+                <div class="metadata-section">
+                    <h3>Tags</h3>
+                    <div class="metadata-grid">
+                        ${Object.entries(share.Tags).map(([key, value]) => `
+                            <div class="metadata-label">${key}:</div>
+                            <div class="metadata-value">${value}</div>
+                        `).join('')}
+                    </div>
+                </div>
+                ` : ''}
+            `;
+            
+            document.getElementById('share-modal').style.display = 'block';
+        }
+        
+        function closeModal() {
+            document.getElementById('share-modal').style.display = 'none';
+        }
+        
+        function filterTree() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            
+            if (!searchTerm) {
+                // Show all
+                document.querySelectorAll('.tree-node, .share-item').forEach(el => {
+                    el.style.display = '';
+                });
+                return;
+            }
+            
+            // Filter logic
+            document.querySelectorAll('.share-item').forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+            
+            // Auto-expand nodes that have visible shares
+            document.querySelectorAll('.tree-node').forEach(node => {
+                const hasVisibleShares = Array.from(node.querySelectorAll('.share-item'))
+                    .some(item => item.style.display !== 'none');
+                
+                if (hasVisibleShares) {
+                    const children = node.querySelector('.tree-node-children');
+                    const icon = node.querySelector('.tree-node-icon');
+                    if (children && icon) {
+                        children.classList.add('expanded');
+                        icon.classList.add('expanded');
+                    }
+                }
+            });
+        }
+        
+        function updateAuthUI() {
+            const signedInView = document.getElementById('signed-in-view');
+            const signedOutView = document.getElementById('signed-out-view');
+            const userNameElement = document.getElementById('user-name');
+
+            if (authManager.isSignedIn()) {
+                signedInView.style.display = 'block';
+                signedOutView.style.display = 'none';
+                userNameElement.textContent = authManager.getUserDisplayName();
+            } else {
+                signedInView.style.display = 'none';
+                signedOutView.style.display = 'block';
+            }
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('share-modal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+        
+        // Initialize
+        async function initialize() {
+            try {
+                await authManager.initialize();
+                updateAuthUI();
+                loadResults();
+            } catch (error) {
+                console.error('Initialization failed:', error);
+                document.getElementById('signed-out-view').style.display = 'block';
+                loadResults();
+            }
+        }
+        
+        initialize();
+    </script>
+</body>
+</html>

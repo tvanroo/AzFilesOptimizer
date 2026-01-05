@@ -30,6 +30,7 @@
                     <div id="job-status-badge"></div>
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn" id="view-results-btn" onclick="viewResults()" style="display: none; background-color: #2196F3; color: white;">📊 View Results</button>
                     <button class="btn" id="run-job-btn" onclick="runJob()" style="display: none; background-color: #4CAF50;">▶ Run Job</button>
                     <button class="btn" id="refresh-btn" onclick="loadJobDetails()">Refresh</button>
                     <button class="btn" id="delete-job-btn" onclick="deleteJob()" style="background-color: #f44336; color: white;">🗑 Delete</button>
@@ -193,6 +194,14 @@
                     runJobBtn.style.display = 'none';
                 }
                 
+                // Show View Results button if status is Completed and has shares
+                const viewResultsBtn = document.getElementById('view-results-btn');
+                if (job.Status === 2 && (job.AzureFilesSharesFound > 0 || job.AnfVolumesFound > 0)) { // Completed
+                    viewResultsBtn.style.display = 'inline-block';
+                } else {
+                    viewResultsBtn.style.display = 'none';
+                }
+                
                 // Calculate duration
                 let duration = '-';
                 if (job.StartedAt && job.CompletedAt) {
@@ -340,6 +349,11 @@
             } catch (error) {
                 console.error('Error loading logs:', error);
             }
+        }
+        
+        function viewResults() {
+            if (!jobId) return;
+            window.location.href = `job-results.html?id=${jobId}`;
         }
         
         async function runJob() {
