@@ -574,6 +574,69 @@
             return sku;
         }
         
+        // Helper function to render historical metrics summary
+        function renderMetricsSummary(metricsSummaryJson) {
+            if (!metricsSummaryJson) return '';
+            
+            try {
+                const metrics = JSON.parse(metricsSummaryJson);
+                if (!metrics || Object.keys(metrics).length === 0) return '';
+                
+                const metricLabels = {
+                    'Transactions': 'Transactions',
+                    'Ingress': 'Ingress',
+                    'Egress': 'Egress',
+                    'SuccessServerLatency': 'Latency (ms)',
+                    'Availability': 'Availability (%)',
+                    'VolumeLogicalSize': 'Logical Size',
+                    'ReadIops': 'Read IOPS',
+                    'WriteIops': 'Write IOPS',
+                    'VolumeThroughputReadBytes': 'Read Throughput',
+                    'VolumeThroughputWriteBytes': 'Write Throughput',
+                    'VolumeConsumedSizePercentage': 'Consumed %'
+                };
+                
+                let html = '<div style="margin-top: 1rem; padding: 1rem; background: #f0f7ff; border-radius: 4px; border-left: 4px solid var(--primary-color);">';
+                html += '<strong style="display: block; margin-bottom: 0.75rem;">📊 Historical Metrics (30-day average):</strong>';
+                html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">';
+                
+                for (const [metricName, data] of Object.entries(metrics)) {
+                    const label = metricLabels[metricName] || metricName;
+                    const avgValue = data.average || 0;
+                    const maxValue = data.max || 0;
+                    
+                    // Format values based on metric type
+                    let formattedAvg = formatNumber(avgValue);
+                    let formattedMax = formatNumber(maxValue);
+                    
+                    if (metricName.includes('Bytes') || metricName.includes('Size')) {
+                        formattedAvg = formatUsage(avgValue);
+                        formattedMax = formatUsage(maxValue);
+                    } else if (metricName.includes('Availability')) {
+                        formattedAvg = avgValue.toFixed(2) + '%';
+                        formattedMax = maxValue.toFixed(2) + '%';
+                    } else if (metricName.includes('Latency')) {
+                        formattedAvg = avgValue.toFixed(2);
+                        formattedMax = maxValue.toFixed(2);
+                    }
+                    
+                    html += `
+                        <div style="background: white; padding: 0.75rem; border-radius: 4px; border: 1px solid #e0e0e0;">
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">${label}</div>
+                            <div style="font-size: 1rem; font-weight: 600; color: var(--primary-color);">${formattedAvg}</div>
+                            <div style="font-size: 0.7rem; color: var(--text-secondary);">max: ${formattedMax}</div>
+                        </div>
+                    `;
+                }
+                
+                html += '</div></div>';
+                return html;
+            } catch (error) {
+                console.error('Error parsing metrics summary:', error);
+                return '';
+            }
+        }
+        
         async function loadResults() {
             try {
                 // Load job details
@@ -841,6 +904,7 @@
                         <div class="metadata-label">Historical Data Available:</div>
                         <div class="metadata-value">${share.MonitoringDataAvailableDays ? `${share.MonitoringDataAvailableDays} days` : 'N/A'}</div>
                     </div>
+                    ${share.HistoricalMetricsSummary ? renderMetricsSummary(share.HistoricalMetricsSummary) : ''}
                 </div>
                 
                 <div class="metadata-section">
