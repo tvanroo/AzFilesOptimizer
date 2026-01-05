@@ -70,6 +70,7 @@ public class DiscoveredAzureFileShare
     // Monitoring availability
     public bool MonitoringEnabled { get; set; }
     public int? MonitoringDataAvailableDays { get; set; }
+    public string? HistoricalMetricsSummary { get; set; } // JSON-serialized metrics summary
 }
 
 public class DiscoveredAnfVolume
@@ -104,6 +105,7 @@ public class DiscoveredAnfVolume
     // Monitoring availability
     public bool MonitoringEnabled { get; set; }
     public int? MonitoringDataAvailableDays { get; set; }
+    public string? HistoricalMetricsSummary { get; set; } // JSON-serialized metrics summary
 }
 
 public class DiscoveryResult

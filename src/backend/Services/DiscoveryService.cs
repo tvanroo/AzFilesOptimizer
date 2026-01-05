@@ -12,6 +12,7 @@ public class DiscoveryService
     private readonly ILogger _logger;
     private readonly JobLogService? _jobLogService;
     private readonly string? _jobId;
+    private MetricsCollectionService? _metricsService;
 
     public DiscoveryService(ILogger logger, JobLogService? jobLogService = null, string? jobId = null)
     {
@@ -39,6 +40,9 @@ public class DiscoveryService
 
         var result = new DiscoveryResult();
         var armClient = new ArmClient(credential);
+        
+        // Initialize metrics collection service
+        _metricsService = new MetricsCollectionService(_logger, credential);
 
         try
         {
@@ -271,9 +275,16 @@ public class DiscoveryService
                                     }
                                 }
                                 
-                                // Set monitoring availability (placeholder - would need Azure Monitor API)
-                                discoveredShare.MonitoringEnabled = true; // Assume metrics are available
-                                discoveredShare.MonitoringDataAvailableDays = 30; // Azure Files keeps 30 days by default
+                                // Collect actual Azure Monitor metrics for storage account
+                                if (_metricsService != null)
+                                {
+                                    var (hasData, daysAvailable, metricsSummary) = await _metricsService
+                                        .CollectStorageAccountMetricsAsync(storageAccount.Id.ToString(), storageAccount.Data.Name);
+                                    
+                                    discoveredShare.MonitoringEnabled = hasData;
+                                    discoveredShare.MonitoringDataAvailableDays = daysAvailable;
+                                    discoveredShare.HistoricalMetricsSummary = metricsSummary;
+                                }
                             }
                             catch (Exception snapshotEx)
                             {
@@ -448,7 +459,7 @@ public class DiscoveryService
                             }
                             catch { /* TLS version may not be available in SDK version */ }
                             
-                            // Collect ANF snapshot metadata
+                            // Collect ANF snapshot metadata and metrics
                             try
                             {
                                 var snapshotList = new List<long?>();
@@ -463,13 +474,20 @@ public class DiscoveryService
                                 // For ANF, snapshot size calculation would require more complex queries
                                 v.TotalSnapshotSizeBytes = null;
                                 
-                                // Set monitoring availability
-                                v.MonitoringEnabled = true; // ANF has metrics
-                                v.MonitoringDataAvailableDays = 93; // ANF keeps 93 days
+                                // Collect actual Azure Monitor metrics for ANF volume
+                                if (_metricsService != null)
+                                {
+                                    var (hasData, daysAvailable, metricsSummary) = await _metricsService
+                                        .CollectAnfVolumeMetricsAsync(volume.Id.ToString(), volume.Data.Name);
+                                    
+                                    v.MonitoringEnabled = hasData;
+                                    v.MonitoringDataAvailableDays = daysAvailable;
+                                    v.HistoricalMetricsSummary = metricsSummary;
+                                }
                             }
                             catch (Exception snapshotEx)
                             {
-                                _logger.LogWarning(snapshotEx, "Failed to collect snapshot metadata for ANF volume {VolumeName}", volume.Data.Name);
+                                _logger.LogWarning(snapshotEx, "Failed to collect snapshot/metrics metadata for ANF volume {VolumeName}", volume.Data.Name);
                             }
                             
                             var (estIops, estBw) = EstimateAnfPerformance(

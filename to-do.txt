@@ -1,0 +1,13 @@
+1. Standardize number display with comma for every 3rd digit and decimal points only if the value is a non-intiger.
+2. Change "Storage Account SKU" to "SKU" and incorporate the the ANF Service Level SKU(s) as well (multiple if needed, e.g. the Flexible tier has both a capacity and throughptu SKU that combine to support a single volume. Another e.g. a volume with cool data access enabled will have hot, cool and data transfer skus)
+3. For "Storage Account Kind" ANF shoudl not be "None" but rather shoudl be "ANF"
+4. Can you find an accurate way to fill in the Min TLS Version for ANF volumes?
+5. Populate the Provisioned Bandwidth (MiB/s) colume fro both types of storage by finding it in availabel metadata sources. 
+6. Make the "Select Colums to Display" interface collopasable and collopased by default. 
+7. on the main home page, there is a spinning image that shows when loading/checkign for the backend db. I don't like that. make it a simple spinning circle. 
+8. When creating a new job, present a drop down of the possible subscriptions that are available to the logged in context. 
+9. Put the site content behind the signing auth workflow so that you must login to see details and limit the access to data to the user that logged in (other users would need to perform their own jobs to create any detail reports) so we can secure sensistive data. 
+10. Add UI and backend to enter an OpenAI API Key (or Azure OpenAI API Key) so taht when we implement AI workflows within the app, we;ll have that API available. When entering the API key, please validate that it works and return the supported Models for validation and future reference. 
+11. Any UI informaitonal/confirmation popup shoudl not be disruptinve, currently soime require a click to acknowledge. That intrupts the user flow. 
+12. Discover and document any/all snapshot and backup configurations as well as details abotu the backup/snapshot such as total size consumed, growth rate over time (to calculate churn) etc...
+13. Check whcih volumes have monitoring/metrics/data collection running and pull in historical monitoring data if available. Add a column to the resutls table to visually indicate if a volume does or does not have monitoring metics available, perhaps by displaying the number of days of historical data is avilable. 

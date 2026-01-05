@@ -234,5 +234,113 @@
         "direction": "Out"
       }
     ]
+  },
+  {
+    "name": "GetApiKeyStatus",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.SettingsFunction.GetApiKeyStatus",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "settings/openai-key",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "SetApiKey",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.SettingsFunction.SetApiKey",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "post"
+        ],
+        "route": "settings/openai-key",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "DeleteApiKey",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.SettingsFunction.DeleteApiKey",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "delete"
+        ],
+        "route": "settings/openai-key",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "GetSubscriptions",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.SubscriptionsFunction.GetSubscriptions",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "subscriptions",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
   }
 ]
