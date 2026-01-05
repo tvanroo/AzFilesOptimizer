@@ -222,6 +222,117 @@
             color: var(--text);
             word-break: break-all;
         }
+        
+        /* View toggle styles */
+        .view-toggle {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .view-toggle-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border);
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .view-toggle-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        
+        .view-toggle-btn:hover:not(.active) {
+            background: var(--surface);
+        }
+        
+        /* Table view styles */
+        .table-view {
+            display: none;
+        }
+        
+        .table-view.active {
+            display: block;
+        }
+        
+        .tree-view.active {
+            display: block;
+        }
+        
+        .tree-view:not(.active) {
+            display: none;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        
+        .data-table th {
+            background: var(--surface);
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .data-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .data-table tr:hover {
+            background: var(--surface);
+            cursor: pointer;
+        }
+        
+        .column-selector {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: var(--surface);
+            border-radius: 4px;
+        }
+        
+        .column-selector-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+        
+        .column-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.5rem;
+        }
+        
+        .column-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .column-checkbox input[type="checkbox"] {
+            cursor: pointer;
+        }
+        
+        .column-checkbox label {
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -280,14 +391,51 @@
                 </div>
             </div>
             
-            <div class="search-filter">
-                <input type="text" id="search-input" class="search-input" placeholder="Search shares, storage accounts, resource groups..." onkeyup="filterTree()">
+            <div class="view-toggle">
+                <button class="view-toggle-btn active" id="tree-view-btn" onclick="switchView('tree')">🌳 Hierarchy View</button>
+                <button class="view-toggle-btn" id="table-view-btn" onclick="switchView('table')">📊 Table View</button>
             </div>
             
-            <div id="tree-container" class="tree-view">
-                <div style="text-align: center; padding: 2rem;">
-                    <div class="loading"></div>
-                    <p style="margin-top: 1rem; color: var(--text-secondary);">Loading results...</p>
+            <!-- Tree View -->
+            <div id="tree-view-container" class="tree-view active">
+                <div class="search-filter">
+                    <input type="text" id="search-input" class="search-input" placeholder="Search shares, storage accounts, resource groups..." onkeyup="filterTree()">
+                </div>
+                
+                <div id="tree-container">
+                    <div style="text-align: center; padding: 2rem;">
+                        <div class="loading"></div>
+                        <p style="margin-top: 1rem; color: var(--text-secondary);">Loading results...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Table View -->
+            <div id="table-view-container" class="table-view">
+                <div class="column-selector" id="column-selector">
+                    <div class="column-selector-header">
+                        <strong>Select Columns to Display:</strong>
+                        <button class="btn" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;" onclick="resetColumns()">Reset to Default</button>
+                    </div>
+                    <div class="column-list" id="column-list"></div>
+                </div>
+                
+                <div class="search-filter">
+                    <input type="text" id="table-search-input" class="search-input" placeholder="Search volumes..." onkeyup="filterTable()">
+                </div>
+                
+                <div class="table-container">
+                    <table class="data-table" id="data-table">
+                        <thead id="table-header"></thead>
+                        <tbody id="table-body">
+                            <tr>
+                                <td colspan="20" style="text-align: center; padding: 2rem;">
+                                    <div class="loading"></div>
+                                    <p style="margin-top: 1rem; color: var(--text-secondary);">Loading data...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -664,6 +812,154 @@
             if (event.target == modal) {
                 closeModal();
             }
+        }
+        
+        // ==============
+        // TABLE VIEW
+        // ==============
+        
+        const DEFAULT_COLUMNS = ['VolumeName', 'Service', 'PerformanceTier', 'CapacityGiB', 'UsedGiB'];
+        
+        const COLUMN_DEFINITIONS = [
+            { key: 'VolumeName', label: 'Volume Name', format: (v) => v.ShareName || v.VolumeName },
+            { key: 'Service', label: 'Service', format: (v) => v.ShareName ? 'Azure Files' : 'ANF' },
+            { key: 'StorageAccountName', label: 'Storage Account / NetApp Account', format: (v) => v.StorageAccountName || v.NetAppAccountName },
+            { key: 'ResourceGroup', label: 'Resource Group', format: (v) => v.ResourceGroup },
+            { key: 'SubscriptionId', label: 'Subscription ID', format: (v) => v.SubscriptionId },
+            { key: 'Location', label: 'Location', format: (v) => v.Location },
+            { key: 'PerformanceTier', label: 'Performance Tier', format: (v) => v.AccessTier || v.ServiceLevel },
+            { key: 'CapacityGiB', label: 'Capacity (GiB)', format: (v) => v.ShareQuotaGiB || (v.ProvisionedSizeBytes ? (v.ProvisionedSizeBytes / (1024**3)).toFixed(2) : 'N/A') },
+            { key: 'UsedGiB', label: 'Used (GiB)', format: (v) => v.ShareUsageBytes ? (v.ShareUsageBytes / (1024**3)).toFixed(2) : 'N/A' },
+            { key: 'StorageAccountSku', label: 'Storage Account SKU', format: (v) => v.StorageAccountSku || 'N/A' },
+            { key: 'StorageAccountKind', label: 'Storage Account Kind', format: (v) => v.StorageAccountKind || 'N/A' },
+            { key: 'EnabledProtocols', label: 'Protocols', format: (v) => (v.EnabledProtocols || v.ProtocolTypes)?.join(', ') || 'SMB' },
+            { key: 'MinimumTlsVersion', label: 'Min TLS Version', format: (v) => v.MinimumTlsVersion || 'N/A' },
+            { key: 'EnableHttpsTrafficOnly', label: 'HTTPS Only', format: (v) => v.EnableHttpsTrafficOnly ? 'Yes' : 'No' },
+            { key: 'ProvisionedIops', label: 'Provisioned IOPS', format: (v) => v.ProvisionedIops || 'N/A' },
+            { key: 'ProvisionedBandwidthMiBps', label: 'Provisioned Bandwidth (MiB/s)', format: (v) => v.ProvisionedBandwidthMiBps || 'N/A' },
+            { key: 'LeaseStatus', label: 'Lease Status', format: (v) => v.LeaseStatus || 'N/A' },
+            { key: 'LeaseState', label: 'Lease State', format: (v) => v.LeaseState || 'N/A' },
+            { key: 'IsSnapshot', label: 'Is Snapshot', format: (v) => v.IsSnapshot ? 'Yes' : 'No' },
+            { key: 'IsDeleted', label: 'Is Deleted', format: (v) => v.IsDeleted ? 'Yes' : 'No' },
+            { key: 'LastModifiedTime', label: 'Last Modified', format: (v) => v.LastModifiedTime ? new Date(v.LastModifiedTime).toLocaleDateString() : 'N/A' },
+            { key: 'DiscoveredAt', label: 'Discovered At', format: (v) => new Date(v.DiscoveredAt).toLocaleDateString() },
+            { key: 'CapacityPoolName', label: 'Capacity Pool (ANF)', format: (v) => v.CapacityPoolName || 'N/A' },
+            { key: 'RootSquash', label: 'Root Squash', format: (v) => v.RootSquash || 'N/A' }
+        ];
+        
+        function getVisibleColumns() {
+            const stored = localStorage.getItem('azfo-visible-columns');
+            return stored ? JSON.parse(stored) : DEFAULT_COLUMNS;
+        }
+        
+        function saveVisibleColumns(columns) {
+            localStorage.setItem('azfo-visible-columns', JSON.stringify(columns));
+        }
+        
+        function switchView(viewType) {
+            const treeViewBtn = document.getElementById('tree-view-btn');
+            const tableViewBtn = document.getElementById('table-view-btn');
+            const treeViewContainer = document.getElementById('tree-view-container');
+            const tableViewContainer = document.getElementById('table-view-container');
+            
+            if (viewType === 'tree') {
+                treeViewBtn.classList.add('active');
+                tableViewBtn.classList.remove('active');
+                treeViewContainer.classList.add('active');
+                tableViewContainer.classList.remove('active');
+            } else {
+                tableViewBtn.classList.add('active');
+                treeViewBtn.classList.remove('active');
+                tableViewContainer.classList.add('active');
+                treeViewContainer.classList.remove('active');
+                
+                // Initialize table view if not done yet
+                if (!tableViewContainer.dataset.initialized) {
+                    initializeTableView();
+                    tableViewContainer.dataset.initialized = 'true';
+                }
+            }
+        }
+        
+        function initializeTableView() {
+            renderColumnSelector();
+            renderTable();
+        }
+        
+        function renderColumnSelector() {
+            const columnList = document.getElementById('column-list');
+            const visibleColumns = getVisibleColumns();
+            
+            columnList.innerHTML = COLUMN_DEFINITIONS.map(col => `
+                <div class="column-checkbox">
+                    <input type="checkbox" id="col-${col.key}" value="${col.key}" 
+                           ${visibleColumns.includes(col.key) ? 'checked' : ''}
+                           onchange="toggleColumn('${col.key}')">
+                    <label for="col-${col.key}">${col.label}</label>
+                </div>
+            `).join('');
+        }
+        
+        function toggleColumn(columnKey) {
+            let visibleColumns = getVisibleColumns();
+            
+            if (visibleColumns.includes(columnKey)) {
+                visibleColumns = visibleColumns.filter(c => c !== columnKey);
+            } else {
+                visibleColumns.push(columnKey);
+            }
+            
+            saveVisibleColumns(visibleColumns);
+            renderTable();
+        }
+        
+        function resetColumns() {
+            saveVisibleColumns(DEFAULT_COLUMNS);
+            renderColumnSelector();
+            renderTable();
+        }
+        
+        function renderTable() {
+            const visibleColumns = getVisibleColumns();
+            const visibleColumnDefs = COLUMN_DEFINITIONS.filter(col => visibleColumns.includes(col.key));
+            
+            // Combine shares and volumes
+            const allVolumes = [...sharesData, ...volumesData];
+            
+            // Render header
+            const header = document.getElementById('table-header');
+            header.innerHTML = `
+                <tr>
+                    ${visibleColumnDefs.map(col => `<th>${col.label}</th>`).join('')}
+                </tr>
+            `;
+            
+            // Render body
+            const tbody = document.getElementById('table-body');
+            if (allVolumes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="' + visibleColumnDefs.length + '" style="text-align: center; padding: 2rem;">No data available</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = allVolumes.map(volume => {
+                const cells = visibleColumnDefs.map(col => {
+                    const value = col.format(volume);
+                    return `<td>${value}</td>`;
+                }).join('');
+                
+                const volumeJson = JSON.stringify(volume).replace(/"/g, '&quot;');
+                return `<tr onclick='showShareDetails(${volumeJson})'>${cells}</tr>`;
+            }).join('');
+        }
+        
+        function filterTable() {
+            const searchTerm = document.getElementById('table-search-input').value.toLowerCase();
+            const rows = document.querySelectorAll('#table-body tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
         }
         
         // Initialize
