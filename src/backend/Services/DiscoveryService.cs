@@ -10,10 +10,23 @@ namespace AzFilesOptimizer.Backend.Services;
 public class DiscoveryService
 {
     private readonly ILogger _logger;
+    private readonly JobLogService? _jobLogService;
+    private readonly string? _jobId;
 
-    public DiscoveryService(ILogger logger)
+    public DiscoveryService(ILogger logger, JobLogService? jobLogService = null, string? jobId = null)
     {
         _logger = logger;
+        _jobLogService = jobLogService;
+        _jobId = jobId;
+    }
+
+    private async Task LogProgressAsync(string message)
+    {
+        _logger.LogInformation(message);
+        if (_jobLogService != null && !string.IsNullOrEmpty(_jobId))
+        {
+            await _jobLogService.AddLogAsync(_jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {message}");
+        }
     }
 
     public async Task<DiscoveryResult> DiscoverResourcesAsync(
@@ -21,34 +34,37 @@ public class DiscoveryService
         string? resourceGroupName,
         TokenCredential credential)
     {
-        _logger.LogInformation("Starting discovery for subscription: {SubscriptionId}", subscriptionId);
+        await LogProgressAsync($"Starting discovery for subscription: {subscriptionId}");
 
         var result = new DiscoveryResult();
         var armClient = new ArmClient(credential);
 
         try
         {
+            await LogProgressAsync("Connecting to Azure Resource Manager...");
             var subscription = await armClient.GetSubscriptionResource(
                 new Azure.Core.ResourceIdentifier($"/subscriptions/{subscriptionId}")).GetAsync();
 
             // Discover Azure Files shares
-            _logger.LogInformation("Discovering Azure Files shares...");
+            await LogProgressAsync("Step 1/2: Discovering Azure Files shares...");
             result.AzureFileShares = await DiscoverAzureFilesSharesAsync(
                 subscription.Value, resourceGroupName);
+            await LogProgressAsync($"✓ Found {result.AzureFileShares.Count} Azure Files shares");
 
             // Discover ANF volumes
-            _logger.LogInformation("Discovering ANF volumes...");
+            await LogProgressAsync("Step 2/2: Discovering Azure NetApp Files volumes...");
             result.AnfVolumes = await DiscoverAnfVolumesAsync(
                 subscription.Value, resourceGroupName);
+            await LogProgressAsync($"✓ Found {result.AnfVolumes.Count} ANF volumes");
 
-            _logger.LogInformation("Discovery completed. Found {FileSharesCount} Azure Files shares and {AnfCount} ANF volumes",
-                result.AzureFileShares.Count, result.AnfVolumes.Count);
+            await LogProgressAsync($"Discovery completed successfully. Total: {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes");
 
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during discovery");
+            await LogProgressAsync($"ERROR during discovery: {ex.Message}");
             throw;
         }
     }
@@ -58,12 +74,17 @@ public class DiscoveryService
         string? resourceGroupFilter)
     {
         var shares = new List<DiscoveredAzureFileShare>();
+        int storageAccountCount = 0;
 
         try
         {
+            await LogProgressAsync("  • Enumerating storage accounts...");
+            
             // Get all storage accounts in subscription
             await foreach (var storageAccount in subscription.GetStorageAccountsAsync())
             {
+                storageAccountCount++;
+                
                 // Apply resource group filter if specified
                 if (resourceGroupFilter != null && 
                     !storageAccount.Id.ResourceGroupName.Equals(resourceGroupFilter, StringComparison.OrdinalIgnoreCase))
@@ -71,7 +92,7 @@ public class DiscoveryService
                     continue;
                 }
 
-                _logger.LogInformation("Checking storage account: {AccountName}", storageAccount.Data.Name);
+                await LogProgressAsync($"  • Checking storage account: {storageAccount.Data.Name} (RG: {storageAccount.Id.ResourceGroupName})");
 
                 try
                 {
@@ -79,8 +100,10 @@ public class DiscoveryService
                     var fileServices = storageAccount.GetFileService();
                     var fileServiceResource = await fileServices.GetAsync();
                     
+                    int shareCountForAccount = 0;
                     await foreach (var share in fileServiceResource.Value.GetFileShares().GetAllAsync())
                     {
+                        shareCountForAccount++;
                         shares.Add(new DiscoveredAzureFileShare
                         {
                             ResourceId = share.Id.ToString(),
@@ -93,6 +116,11 @@ public class DiscoveryService
                             QuotaGiB = share.Data.ShareQuota,
                             Tags = storageAccount.Data.Tags?.ToDictionary(t => t.Key, t => t.Value) ?? new()
                         });
+                    }
+                    
+                    if (shareCountForAccount > 0)
+                    {
+                        await LogProgressAsync($"    → Found {shareCountForAccount} file share(s) in {storageAccount.Data.Name}");
                     }
                 }
                 catch (Exception ex)
@@ -119,6 +147,8 @@ public class DiscoveryService
 
         try
         {
+            await LogProgressAsync("  • Enumerating NetApp accounts...");
+            
             // Get all NetApp accounts in subscription
             await foreach (var netAppAccount in subscription.GetNetAppAccountsAsync())
             {
@@ -129,16 +159,20 @@ public class DiscoveryService
                     continue;
                 }
 
-                _logger.LogInformation("Checking NetApp account: {AccountName}", netAppAccount.Data.Name);
+                await LogProgressAsync($"  • Checking NetApp account: {netAppAccount.Data.Name} (RG: {netAppAccount.Id.ResourceGroupName})");
 
                 try
                 {
                     // Get all capacity pools
                     await foreach (var capacityPool in netAppAccount.GetCapacityPools().GetAllAsync())
                     {
+                        await LogProgressAsync($"    • Checking capacity pool: {capacityPool.Data.Name}");
+                        
+                        int volumeCount = 0;
                         // Get all volumes in this capacity pool
                         await foreach (var volume in capacityPool.GetNetAppVolumes().GetAllAsync())
                         {
+                            volumeCount++;
                             volumes.Add(new DiscoveredAnfVolume
                             {
                                 ResourceId = volume.Id.ToString(),
@@ -153,6 +187,11 @@ public class DiscoveryService
                                 ProtocolTypes = volume.Data.ProtocolTypes?.Select(p => p.ToString()).ToArray() ?? Array.Empty<string>(),
                                 Tags = netAppAccount.Data.Tags?.ToDictionary(t => t.Key, t => t.Value) ?? new()
                             });
+                        }
+                        
+                        if (volumeCount > 0)
+                        {
+                            await LogProgressAsync($"      → Found {volumeCount} volume(s) in pool {capacityPool.Data.Name}");
                         }
                     }
                 }

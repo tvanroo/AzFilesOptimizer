@@ -235,7 +235,7 @@ public class JobsFunction
             await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Authenticating to Azure...");
 
             var credential = new DefaultAzureCredential();
-            var discoveryService = new DiscoveryService(_logger);
+            var discoveryService = new DiscoveryService(_logger, _jobLogService, jobId);
 
             if (string.IsNullOrEmpty(job.SubscriptionId))
             {
