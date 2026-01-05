@@ -523,6 +523,17 @@
                 return gib.toFixed(2);
             }
         }
+
+        const SCALE_TARGETS_URL = 'https://learn.microsoft.com/en-us/azure/storage/files/storage-files-scale-targets';
+        function formatPerf(actual, estimated, suffix = '') {
+            if (actual !== null && actual !== undefined) {
+                return `${actual}${suffix}`;
+            }
+            if (estimated !== null && estimated !== undefined) {
+                return `<span title="Estimated from Azure Files scale targets; actual is not provisioned for this tier.">${estimated}${suffix} (est) <a href="${SCALE_TARGETS_URL}" target="_blank" rel="noopener">ℹ</a></span>`;
+            }
+            return 'N/A';
+        }
         
         async function loadResults() {
             try {
@@ -749,9 +760,9 @@
                         <div class="metadata-label">Usage:</div>
                         <div class="metadata-value">${formatUsage(share.ShareUsageBytes)}</div>
                         <div class="metadata-label">Provisioned IOPS:</div>
-                        <div class="metadata-value">${share.ProvisionedIops || 'N/A'}</div>
+                        <div class="metadata-value">${formatPerf(share.ProvisionedIops, share.EstimatedIops)}</div>
                         <div class="metadata-label">Provisioned Bandwidth:</div>
-                        <div class="metadata-value">${share.ProvisionedBandwidthMiBps ? share.ProvisionedBandwidthMiBps + ' MiB/s' : 'N/A'}</div>
+                        <div class="metadata-value">${formatPerf(share.ProvisionedBandwidthMiBps, share.EstimatedThroughputMiBps, ' MiB/s')}</div>
                     </div>
                 </div>
                 
@@ -890,8 +901,8 @@
             { key: 'EnabledProtocols', label: 'Protocols', format: (v) => (v.EnabledProtocols || v.ProtocolTypes)?.join(', ') || 'SMB' },
             { key: 'MinimumTlsVersion', label: 'Min TLS Version', format: (v) => v.MinimumTlsVersion || 'N/A' },
             { key: 'EnableHttpsTrafficOnly', label: 'HTTPS Only', format: (v) => v.EnableHttpsTrafficOnly ? 'Yes' : 'No' },
-            { key: 'ProvisionedIops', label: 'Provisioned IOPS', format: (v) => v.ProvisionedIops || 'N/A' },
-            { key: 'ProvisionedBandwidthMiBps', label: 'Provisioned Bandwidth (MiB/s)', format: (v) => v.ProvisionedBandwidthMiBps || 'N/A' },
+            { key: 'ProvisionedIops', label: 'Provisioned/Estimated IOPS', format: (v) => formatPerf(v.ProvisionedIops, v.EstimatedIops) },
+            { key: 'ProvisionedBandwidthMiBps', label: 'Provisioned/Estimated Bandwidth (MiB/s)', format: (v) => formatPerf(v.ProvisionedBandwidthMiBps ?? v.ActualThroughputMibps, v.EstimatedThroughputMiBps) },
             { key: 'LeaseStatus', label: 'Lease Status', format: (v) => v.LeaseStatus || 'N/A' },
             { key: 'LeaseState', label: 'Lease State', format: (v) => v.LeaseState || 'N/A' },
             { key: 'IsSnapshot', label: 'Is Snapshot', format: (v) => v.IsSnapshot ? 'Yes' : 'No' },
