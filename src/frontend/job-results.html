@@ -499,6 +499,31 @@
             window.location.href = 'jobs.html';
         }
         
+        // Helper function for formatting usage with better precision
+        function formatUsage(usageBytes) {
+            if (usageBytes === null || usageBytes === undefined) return 'N/A';
+            if (usageBytes === 0) return '0';
+            
+            const gib = usageBytes / (1024**3);
+            
+            if (gib < 0.001) {
+                // Show in MiB for very small values
+                const mib = usageBytes / (1024**2);
+                if (mib < 0.001) {
+                    // Show in KiB for tiny values
+                    const kib = usageBytes / 1024;
+                    return kib < 0.001 ? `${usageBytes} B` : `${kib.toFixed(2)} KiB`;
+                }
+                return `${mib.toFixed(2)} MiB`;
+            } else if (gib < 1) {
+                // Show 3 decimal places for values less than 1 GiB
+                return gib.toFixed(3);
+            } else {
+                // Show 2 decimal places for values >= 1 GiB
+                return gib.toFixed(2);
+            }
+        }
+        
         async function loadResults() {
             try {
                 // Load job details
@@ -653,7 +678,7 @@
             item.onclick = function() { showShareDetails(share); };
             
             const quotaGB = share.ShareQuotaGiB || 0;
-            const usageGB = share.ShareUsageBytes ? (share.ShareUsageBytes / (1024**3)).toFixed(2) : 'N/A';
+            const usageDisplay = formatUsage(share.ShareUsageBytes);
             const tier = share.AccessTier || 'Unknown';
             const protocols = share.EnabledProtocols ? share.EnabledProtocols.join(', ') : 'SMB';
             
@@ -662,7 +687,7 @@
                 <div class="share-details">
                     <span class="share-detail-item"><strong>Tier:</strong> ${tier}</span>
                     <span class="share-detail-item"><strong>Quota:</strong> ${quotaGB} GiB</span>
-                    <span class="share-detail-item"><strong>Usage:</strong> ${usageGB} GB</span>
+                    <span class="share-detail-item"><strong>Usage:</strong> ${usageDisplay}</span>
                     <span class="share-detail-item"><strong>Protocol:</strong> ${protocols}</span>
                 </div>
             `;
@@ -722,7 +747,7 @@
                         <div class="metadata-label">Quota:</div>
                         <div class="metadata-value">${share.ShareQuotaGiB || 0} GiB</div>
                         <div class="metadata-label">Usage:</div>
-                        <div class="metadata-value">${share.ShareUsageBytes ? (share.ShareUsageBytes / (1024**3)).toFixed(2) + ' GB' : 'N/A'}</div>
+                        <div class="metadata-value">${formatUsage(share.ShareUsageBytes)}</div>
                         <div class="metadata-label">Provisioned IOPS:</div>
                         <div class="metadata-value">${share.ProvisionedIops || 'N/A'}</div>
                         <div class="metadata-label">Provisioned Bandwidth:</div>
@@ -859,7 +884,7 @@
             { key: 'Location', label: 'Location', format: (v) => v.Location },
             { key: 'PerformanceTier', label: 'Performance Tier', format: (v) => v.AccessTier || v.ServiceLevel },
             { key: 'CapacityGiB', label: 'Capacity (GiB)', format: (v) => v.ShareQuotaGiB || (v.ProvisionedSizeBytes ? (v.ProvisionedSizeBytes / (1024**3)).toFixed(2) : 'N/A') },
-            { key: 'UsedGiB', label: 'Used (GiB)', format: (v) => v.ShareUsageBytes ? (v.ShareUsageBytes / (1024**3)).toFixed(2) : 'N/A' },
+            { key: 'UsedGiB', label: 'Used (GiB)', format: (v) => formatUsage(v.ShareUsageBytes) },
             { key: 'StorageAccountSku', label: 'Storage Account SKU', format: (v) => v.StorageAccountSku || 'N/A' },
             { key: 'StorageAccountKind', label: 'Storage Account Kind', format: (v) => v.StorageAccountKind || 'N/A' },
             { key: 'EnabledProtocols', label: 'Protocols', format: (v) => (v.EnabledProtocols || v.ProtocolTypes)?.join(', ') || 'SMB' },
