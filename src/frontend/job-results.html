@@ -897,12 +897,10 @@
                 </div>
                 
                 <div class="metadata-section">
-                    <h3>Monitoring</h3>
+                    <h3>Metrics</h3>
                     <div class="metadata-grid">
-                        <div class="metadata-label">Monitoring Enabled:</div>
-                        <div class="metadata-value">${share.MonitoringEnabled ? 'Yes' : 'No'}</div>
-                        <div class="metadata-label">Historical Data Available:</div>
-                        <div class="metadata-value">${share.MonitoringDataAvailableDays ? `${share.MonitoringDataAvailableDays} days` : 'N/A'}</div>
+                        <div class="metadata-label">Metrics Found:</div>
+                        <div class="metadata-value">${share.MonitoringDataAvailableDays != null && share.MonitoringDataAvailableDays > 0 ? `${share.MonitoringDataAvailableDays} days` : 'No'}</div>
                     </div>
                     ${share.HistoricalMetricsSummary ? renderMetricsSummary(share.HistoricalMetricsSummary) : ''}
                 </div>
@@ -1041,7 +1039,7 @@
             { key: 'SnapshotCount', label: 'Snapshots', format: (v) => v.SnapshotCount != null ? formatNumber(v.SnapshotCount, 0) : 'N/A' },
             { key: 'TotalSnapshotSizeBytes', label: 'Snapshot Size', format: (v) => v.TotalSnapshotSizeBytes ? formatUsage(v.TotalSnapshotSizeBytes) : 'N/A' },
             { key: 'ChurnRateBytesPerDay', label: 'Churn Rate/Day', format: (v) => v.ChurnRateBytesPerDay ? formatUsage(v.ChurnRateBytesPerDay) : 'N/A' },
-            { key: 'MonitoringEnabled', label: 'Monitoring', format: (v) => v.MonitoringEnabled ? `✓ ${v.MonitoringDataAvailableDays || '?'} days` : 'No' }
+            { key: 'MetricsDays', label: 'Metrics (days)', format: (v) => (v.MonitoringDataAvailableDays != null ? v.MonitoringDataAvailableDays : '0') }
         ];
         
         function getVisibleColumns() {

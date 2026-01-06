@@ -111,6 +111,8 @@ public class DiscoveryService
         }
         var shares = new List<DiscoveredAzureFileShare>();
         int storageAccountCount = 0;
+        // Cache storage-account-level metrics so we don't query repeatedly per share
+        var accountMetricsCache = new Dictionary<string, (bool hasData, int? daysAvailable, string? metricsSummary)>();
 
         try
         {
@@ -137,9 +139,15 @@ public class DiscoveryService
                     var fileServiceResource = await fileServices.GetAsync();
                     
                     int shareCountForAccount = 0;
-                    // Include snapshots and soft-deleted shares in listing; stats must be fetched via per-share Get(expand:"stats")
-                    await foreach (var share in fileServiceResource.Value.GetFileShares().GetAllAsync(expand: "deleted,snapshots"))
+                    // Enumerate base shares (exclude snapshots) and include soft-deleted shares
+                    await foreach (var share in fileServiceResource.Value.GetFileShares().GetAllAsync(expand: "deleted"))
                     {
+                        // Defensive: if SDK still returns snapshot entries, skip them
+                        if (share.Data.SnapshotOn.HasValue)
+                        {
+                            continue;
+                        }
+
                         shareCountForAccount++;
 
                         // Try to fetch stats for this share to populate ShareUsageBytes
@@ -282,30 +290,7 @@ public class DiscoveryService
                                     }
                                 }
                                 
-                                // Collect actual Azure Monitor metrics for storage account
-                                if (_metricsService != null)
-                                {
-                                    await LogProgressAsync($"      → Collecting Azure Monitor metrics for {storageAccount.Data.Name}...");
-                                    var (hasData, daysAvailable, metricsSummary) = await _metricsService
-                                        .CollectStorageAccountMetricsAsync(storageAccount.Id.ToString(), storageAccount.Data.Name);
-                                    
-                                    discoveredShare.MonitoringEnabled = hasData;
-                                    discoveredShare.MonitoringDataAvailableDays = daysAvailable;
-                                    discoveredShare.HistoricalMetricsSummary = metricsSummary;
-                                    
-                                    if (hasData)
-                                    {
-                                        await LogProgressAsync($"      ✓ Metrics collected: {daysAvailable} days available");
-                                    }
-                                    else
-                                    {
-                                        await LogProgressAsync($"      ⚠ No metrics data available for {storageAccount.Data.Name}");
-                                    }
-                                }
-                                else
-                                {
-                                    await LogProgressAsync($"      ⚠ Metrics service not initialized");
-                                }
+                                // Snapshot-specific work ends here; metrics are handled below for all shares
                             }
                             catch (Exception snapshotEx)
                             {
@@ -314,6 +299,30 @@ public class DiscoveryService
                             }
                         }
                         
+                        // Populate monitoring info for ALL shares (including snapshots) using per-account metrics
+                        if (_metricsService != null)
+                        {
+                            var accountId = storageAccount.Id.ToString();
+                            if (!accountMetricsCache.TryGetValue(accountId, out var cached))
+                            {
+                                await LogProgressAsync($"      → Collecting Azure Monitor metrics for {storageAccount.Data.Name} (once per account)...");
+                                cached = await _metricsService.CollectStorageAccountMetricsAsync(accountId, storageAccount.Data.Name);
+                                accountMetricsCache[accountId] = cached;
+                                if (cached.hasData)
+                                    await LogProgressAsync($"      ✓ Metrics collected for {storageAccount.Data.Name}: {cached.daysAvailable} days available");
+                                else
+                                    await LogProgressAsync($"      ⚠ No metrics data available for {storageAccount.Data.Name}");
+                            }
+
+                            discoveredShare.MonitoringEnabled = cached.hasData;
+                            discoveredShare.MonitoringDataAvailableDays = cached.daysAvailable;
+                            discoveredShare.HistoricalMetricsSummary = cached.metricsSummary;
+                        }
+                        else
+                        {
+                            await LogProgressAsync($"      ⚠ Metrics service not initialized");
+                        }
+
                         shares.Add(discoveredShare);
                     }
                     

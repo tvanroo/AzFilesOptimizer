@@ -1,0 +1,44 @@
+name: Deploy Functions Backend
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/backend/**'
+      - '.github/workflows/deploy-functions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-functions
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore src/backend/AzFilesOptimizer.Backend.csproj
+
+      - name: Build
+        run: dotnet build src/backend/AzFilesOptimizer.Backend.csproj -c Release --no-restore
+
+      - name: Publish (self-contained folder)
+        run: dotnet publish src/backend/AzFilesOptimizer.Backend.csproj -c Release -o publish_out
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: azfo-dev-func-xy76b
+          package: publish_out
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
