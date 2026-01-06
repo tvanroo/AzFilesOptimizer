@@ -1,5 +1,6 @@
 using Azure;
 using Azure.Data.Tables;
+using System.Text.Json;
 
 namespace AzFilesOptimizer.Backend.Models;
 
@@ -24,8 +25,27 @@ public class DiscoveryJob : ITableEntity
     
     // Discovery scope
     public string SubscriptionId { get; set; } = string.Empty;
-    public string[]? ResourceGroupNames { get; set; }
     public string TenantId { get; set; } = string.Empty;
+    
+    // Resource group names stored as JSON string for Table Storage compatibility
+    private string? _resourceGroupNamesJson;
+    public string? ResourceGroupNamesJson 
+    { 
+        get => _resourceGroupNamesJson;
+        set => _resourceGroupNamesJson = value;
+    }
+    
+    // Property for working with resource groups as array (not persisted directly)
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string[]? ResourceGroupNames 
+    { 
+        get => string.IsNullOrEmpty(_resourceGroupNamesJson) 
+            ? null 
+            : JsonSerializer.Deserialize<string[]>(_resourceGroupNamesJson);
+        set => _resourceGroupNamesJson = value == null || value.Length == 0
+            ? null 
+            : JsonSerializer.Serialize(value);
+    }
     
     // Results summary
     public int AzureFilesSharesFound { get; set; }
