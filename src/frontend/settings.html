@@ -188,40 +188,50 @@
                 const status = await response.json();
                 window.currentApiStatus = status; // Store for use in other functions
                 
-                if (status.configured) {
+                // Handle both PascalCase and camelCase from backend
+                const configured = status.configured ?? status.Configured;
+                
+                if (configured) {
                     document.getElementById('current-status').style.display = 'block';
                     document.getElementById('configure-form').style.display = 'none';
                     
-                    document.getElementById('status-provider').textContent = status.provider || '-';
-                    document.getElementById('status-key').textContent = status.maskedKey || '****';
+                    document.getElementById('status-provider').textContent = (status.provider || status.Provider) || '-';
+                    document.getElementById('status-key').textContent = (status.maskedKey || status.MaskedKey) || '****';
                     
-                    if (status.endpoint) {
+                    const endpoint = status.endpoint || status.Endpoint;
+                    if (endpoint) {
                         document.getElementById('status-endpoint-container').style.display = 'block';
-                        document.getElementById('status-endpoint').textContent = status.endpoint;
+                        document.getElementById('status-endpoint').textContent = endpoint;
                     } else {
                         document.getElementById('status-endpoint-container').style.display = 'none';
                     }
                     
-                    // Update models display
-                    if (status.availableModels?.length > 0) {
-                        document.getElementById('status-models-count').textContent = `${status.availableModels.length} models available`;
+                    // Update models display (handle both cases)
+                    const availableModels = status.availableModels || status.AvailableModels || [];
+                    const preferences = status.preferences || status.Preferences || {};
+                    
+                    if (availableModels.length > 0) {
+                        document.getElementById('status-models-count').textContent = `${availableModels.length} models available`;
                         document.getElementById('toggle-models-btn').style.display = 'inline-block';
                         
                         // Populate models list with preference badges
                         const modelsList = document.getElementById('available-models-list');
-                        modelsList.innerHTML = status.availableModels
+                        const preferredModels = preferences.preferredModels || preferences.PreferredModels || [];
+                        const allowedModels = preferences.allowedModels || preferences.AllowedModels || [];
+                        const blockedModels = preferences.blockedModels || preferences.BlockedModels || [];
+                        
+                        modelsList.innerHTML = availableModels
                             .map(model => {
-                                const prefs = status.preferences || {};
                                 let badge = '';
                                 let color = '#666';
                                 
-                                if (prefs.preferredModels?.includes(model)) {
+                                if (preferredModels.includes(model)) {
                                     badge = ' ✓';
                                     color = 'var(--success-color)';
-                                } else if (prefs.allowedModels?.includes(model)) {
+                                } else if (allowedModels.includes(model)) {
                                     badge = ' ○';
                                     color = '#2196F3';
-                                } else if (prefs.blockedModels?.includes(model)) {
+                                } else if (blockedModels.includes(model)) {
                                     badge = ' ✕';
                                     color = 'var(--error-color)';
                                 }
@@ -240,9 +250,10 @@
                         document.getElementById('toggle-models-btn').style.display = 'none';
                     }
                     
+                    const lastValidated = status.lastValidatedAt || status.LastValidatedAt;
                     document.getElementById('status-validated').textContent = 
-                        status.lastValidatedAt 
-                            ? new Date(status.lastValidatedAt).toLocaleString() 
+                        lastValidated 
+                            ? new Date(lastValidated).toLocaleString() 
                             : 'Never';
                 } else {
                     document.getElementById('current-status').style.display = 'none';
