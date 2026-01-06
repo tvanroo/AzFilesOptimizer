@@ -1,25 +1,19 @@
 using Azure;
 using Azure.Data.Tables;
 using AzFilesOptimizer.Backend.Models;
-using System.Security.Cryptography;
-using System.Text;
+using System.Text.Json;
 
 namespace AzFilesOptimizer.Backend.Services;
 
 public class ApiKeyStorageService
 {
     private readonly TableClient _tableClient;
-    private readonly string _encryptionKey;
 
     public ApiKeyStorageService(string connectionString)
     {
         var serviceClient = new TableServiceClient(connectionString);
         _tableClient = serviceClient.GetTableClient("ApiKeyConfigurations");
         _tableClient.CreateIfNotExists();
-        
-        // Get encryption key from environment or generate temporary one
-        _encryptionKey = Environment.GetEnvironmentVariable("API_KEY_ENCRYPTION_KEY") 
-            ?? Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
     }
 
     public async Task<ApiKeyConfiguration?> GetApiKeyAsync(string userId)
@@ -29,14 +23,26 @@ public class ApiKeyStorageService
             var response = await _tableClient.GetEntityAsync<TableEntity>("ApiKey", userId);
             var entity = response.Value;
             
+            var preferencesJson = entity.GetString("PreferencesJson");
+            ModelPreferences? preferences = null;
+            if (!string.IsNullOrWhiteSpace(preferencesJson))
+            {
+                try
+                {
+                    preferences = JsonSerializer.Deserialize<ModelPreferences>(preferencesJson);
+                }
+                catch { /* Ignore deserialization errors */ }
+            }
+
             return new ApiKeyConfiguration
             {
                 RowKey = entity.GetString("RowKey") ?? "",
                 PartitionKey = entity.GetString("PartitionKey") ?? "ApiKey",
                 Provider = entity.GetString("Provider") ?? "OpenAI",
-                EncryptedApiKey = entity.GetString("EncryptedApiKey") ?? "",
+                KeyVaultSecretName = entity.GetString("KeyVaultSecretName") ?? "",
                 Endpoint = entity.GetString("Endpoint"),
-                AvailableModels = entity.GetString("AvailableModels")?.Split(','),
+                AvailableModels = entity.GetString("AvailableModels")?.Split(',', StringSplitOptions.RemoveEmptyEntries),
+                Preferences = preferences ?? new ModelPreferences(),
                 CreatedAt = entity.GetDateTimeOffset("CreatedAt")?.UtcDateTime ?? DateTime.UtcNow,
                 UpdatedAt = entity.GetDateTimeOffset("UpdatedAt")?.UtcDateTime,
                 LastValidatedAt = entity.GetDateTimeOffset("LastValidatedAt")?.UtcDateTime
@@ -48,16 +54,21 @@ public class ApiKeyStorageService
         }
     }
 
-    public async Task SaveApiKeyAsync(string userId, string provider, string apiKey, string? endpoint, string[]? models)
+    public async Task SaveApiKeyMetadataAsync(
+        string userId, 
+        string provider, 
+        string keyVaultSecretName, 
+        string? endpoint, 
+        string[]? models,
+        ModelPreferences? preferences = null)
     {
-        var encryptedKey = EncryptString(apiKey);
-        
         var entity = new TableEntity("ApiKey", userId)
         {
             ["Provider"] = provider,
-            ["EncryptedApiKey"] = encryptedKey,
+            ["KeyVaultSecretName"] = keyVaultSecretName,
             ["Endpoint"] = endpoint,
             ["AvailableModels"] = models != null ? string.Join(",", models) : null,
+            ["PreferencesJson"] = preferences != null ? JsonSerializer.Serialize(preferences) : null,
             ["CreatedAt"] = DateTime.UtcNow,
             ["UpdatedAt"] = DateTime.UtcNow,
             ["LastValidatedAt"] = DateTime.UtcNow
@@ -78,50 +89,20 @@ public class ApiKeyStorageService
         }
     }
 
-    public string DecryptApiKey(string encryptedKey)
+    public async Task UpdatePreferencesAsync(string userId, ModelPreferences preferences)
     {
-        return DecryptString(encryptedKey);
-    }
-
-    private string EncryptString(string plainText)
-    {
-        using var aes = Aes.Create();
-        aes.Key = Convert.FromBase64String(_encryptionKey);
-        aes.GenerateIV();
-
-        using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-        using var ms = new MemoryStream();
-        
-        // Write IV first
-        ms.Write(aes.IV, 0, aes.IV.Length);
-        
-        using (var cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write))
-        using (var sw = new StreamWriter(cs))
+        try
         {
-            sw.Write(plainText);
+            var response = await _tableClient.GetEntityAsync<TableEntity>("ApiKey", userId);
+            var entity = response.Value;
+            entity["PreferencesJson"] = JsonSerializer.Serialize(preferences);
+            entity["UpdatedAt"] = DateTime.UtcNow;
+            await _tableClient.UpdateEntityAsync(entity, entity.ETag);
         }
-
-        return Convert.ToBase64String(ms.ToArray());
-    }
-
-    private string DecryptString(string cipherText)
-    {
-        var fullCipher = Convert.FromBase64String(cipherText);
-
-        using var aes = Aes.Create();
-        aes.Key = Convert.FromBase64String(_encryptionKey);
-
-        // Extract IV from the beginning
-        var iv = new byte[aes.IV.Length];
-        Array.Copy(fullCipher, 0, iv, 0, iv.Length);
-        aes.IV = iv;
-
-        using var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-        using var ms = new MemoryStream(fullCipher, iv.Length, fullCipher.Length - iv.Length);
-        using var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read);
-        using var sr = new StreamReader(cs);
-        
-        return sr.ReadToEnd();
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            throw new InvalidOperationException("API key configuration not found");
+        }
     }
 
     public static string MaskApiKey(string apiKey)

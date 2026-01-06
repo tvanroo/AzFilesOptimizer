@@ -1,13 +1,21 @@
 namespace AzFilesOptimizer.Backend.Models;
 
+public class ModelPreferences
+{
+    public string[] PreferredModels { get; set; } = Array.Empty<string>();
+    public string[] AllowedModels { get; set; } = Array.Empty<string>();
+    public string[] BlockedModels { get; set; } = Array.Empty<string>();
+}
+
 public class ApiKeyConfiguration
 {
     public string RowKey { get; set; } = string.Empty; // User ID
     public string PartitionKey { get; set; } = "ApiKey";
     public string Provider { get; set; } = "OpenAI"; // "OpenAI" or "AzureOpenAI"
-    public string EncryptedApiKey { get; set; } = string.Empty;
+    public string KeyVaultSecretName { get; set; } = string.Empty;
     public string? Endpoint { get; set; } // For Azure OpenAI
     public string[]? AvailableModels { get; set; }
+    public ModelPreferences Preferences { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
     public DateTime? LastValidatedAt { get; set; }
@@ -26,6 +34,14 @@ public class ApiKeyStatus
     public string? Provider { get; set; }
     public string? Endpoint { get; set; }
     public string[]? AvailableModels { get; set; }
+    public ModelPreferences? Preferences { get; set; }
     public DateTime? LastValidatedAt { get; set; }
     public string MaskedKey { get; set; } = string.Empty;
+}
+
+public class UpdatePreferencesRequest
+{
+    public string[] PreferredModels { get; set; } = Array.Empty<string>();
+    public string[] AllowedModels { get; set; } = Array.Empty<string>();
+    public string[] BlockedModels { get; set; } = Array.Empty<string>();
 }

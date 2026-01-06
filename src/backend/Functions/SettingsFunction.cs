@@ -12,6 +12,7 @@ public class SettingsFunction
 {
     private readonly ILogger _logger;
     private readonly ApiKeyStorageService _apiKeyStorage;
+    private readonly KeyVaultService _keyVaultService;
 
     public SettingsFunction(ILoggerFactory loggerFactory)
     {
@@ -19,6 +20,7 @@ public class SettingsFunction
         
         var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
         _apiKeyStorage = new ApiKeyStorageService(connectionString);
+        _keyVaultService = new KeyVaultService();
     }
 
     [Function("GetApiKeyStatus")]
@@ -41,15 +43,18 @@ public class SettingsFunction
                 return response;
             }
 
+            // Get actual API key from Key Vault
+            var apiKey = await _keyVaultService.GetApiKeyAsync(userId);
+            
             var status = new ApiKeyStatus
             {
                 Configured = true,
                 Provider = config.Provider,
                 Endpoint = config.Endpoint,
                 AvailableModels = config.AvailableModels,
+                Preferences = config.Preferences,
                 LastValidatedAt = config.LastValidatedAt,
-                MaskedKey = ApiKeyStorageService.MaskApiKey(
-                    _apiKeyStorage.DecryptApiKey(config.EncryptedApiKey))
+                MaskedKey = apiKey != null ? ApiKeyStorageService.MaskApiKey(apiKey) : "****"
             };
 
             var okResponse = req.CreateResponse(HttpStatusCode.OK);
@@ -96,8 +101,19 @@ public class SettingsFunction
                 return badRequest;
             }
 
-            // Save the encrypted key
-            await _apiKeyStorage.SaveApiKeyAsync(userId, request.Provider, request.ApiKey, request.Endpoint, models);
+            // Store API key in Key Vault
+            var secretName = await _keyVaultService.StoreApiKeyAsync(userId, request.ApiKey);
+            
+            // Save metadata to Table Storage with empty preferences
+            await _apiKeyStorage.SaveApiKeyMetadataAsync(
+                userId, 
+                request.Provider, 
+                secretName, 
+                request.Endpoint, 
+                models,
+                new ModelPreferences());
+            
+            _logger.LogInformation("API key saved for user {UserId} in Key Vault secret {SecretName}", userId, secretName);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(new 
@@ -125,6 +141,9 @@ public class SettingsFunction
         try
         {
             var userId = GetUserIdFromRequest(req);
+            
+            // Delete from both Key Vault and Table Storage
+            await _keyVaultService.DeleteApiKeyAsync(userId);
             await _apiKeyStorage.DeleteApiKeyAsync(userId);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
@@ -192,6 +211,97 @@ public class SettingsFunction
         {
             _logger.LogError(ex, "Error validating API key");
             return (false, null, $"Validation error: {ex.Message}");
+        }
+    }
+
+    [Function("GetModelPreferences")]
+    public async Task<HttpResponseData> GetModelPreferences(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "settings/model-preferences")] HttpRequestData req)
+    {
+        _logger.LogInformation("Getting model preferences");
+
+        try
+        {
+            var userId = GetUserIdFromRequest(req);
+            var config = await _apiKeyStorage.GetApiKeyAsync(userId);
+            
+            if (config == null)
+            {
+                var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+                await notFound.WriteAsJsonAsync(new { error = "API key not configured" });
+                return notFound;
+            }
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new
+            {
+                preferences = config.Preferences,
+                availableModels = config.AvailableModels ?? Array.Empty<string>()
+            });
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting model preferences");
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new { error = "Failed to get model preferences", details = ex.Message });
+            return errorResponse;
+        }
+    }
+
+    [Function("UpdateModelPreferences")]
+    public async Task<HttpResponseData> UpdateModelPreferences(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "settings/model-preferences")] HttpRequestData req)
+    {
+        _logger.LogInformation("Updating model preferences");
+
+        try
+        {
+            var userId = GetUserIdFromRequest(req);
+            
+            var requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var request = JsonSerializer.Deserialize<UpdatePreferencesRequest>(requestBody, options);
+
+            if (request == null)
+            {
+                var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequest.WriteAsJsonAsync(new { error = "Invalid request body" });
+                return badRequest;
+            }
+
+            // Validate that models aren't in multiple categories
+            var allModels = request.PreferredModels
+                .Concat(request.AllowedModels)
+                .Concat(request.BlockedModels)
+                .ToList();
+            
+            if (allModels.Count != allModels.Distinct().Count())
+            {
+                var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequest.WriteAsJsonAsync(new { error = "Models cannot be in multiple categories" });
+                return badRequest;
+            }
+
+            var preferences = new ModelPreferences
+            {
+                PreferredModels = request.PreferredModels,
+                AllowedModels = request.AllowedModels,
+                BlockedModels = request.BlockedModels
+            };
+
+            await _apiKeyStorage.UpdatePreferencesAsync(userId, preferences);
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new { message = "Model preferences updated successfully", preferences });
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating model preferences");
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new { error = "Failed to update model preferences", details = ex.Message });
+            return errorResponse;
         }
     }
 

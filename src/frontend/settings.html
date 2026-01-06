@@ -41,12 +41,26 @@
                 <h3 style="font-size: 1rem; margin-bottom: 0.75rem;">Current Configuration</h3>
                 <div style="background: var(--surface); padding: 1rem; border-radius: 4px;">
                     <div style="margin-bottom: 0.5rem;"><strong>Provider:</strong> <span id="status-provider">-</span></div>
-                    <div style="margin-bottom: 0.5rem;"><strong>API Key:</strong> <span id="status-key">-</span></div>
+                    <div style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <strong>API Key:</strong> 
+                        <span id="status-key" style="font-family: monospace;">-</span>
+                        <button class="btn" onclick="copyApiKey()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">📋 Copy</button>
+                    </div>
                     <div style="margin-bottom: 0.5rem;" id="status-endpoint-container"><strong>Endpoint:</strong> <span id="status-endpoint">-</span></div>
-                    <div style="margin-bottom: 0.5rem;"><strong>Available Models:</strong> <span id="status-models">-</span></div>
+                    <div style="margin-bottom: 0.5rem;">
+                        <strong>Available Models:</strong> 
+                        <span id="status-models-count">-</span>
+                        <button class="btn" onclick="toggleModelsList()" id="toggle-models-btn" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-left: 0.5rem; display: none;">Show All</button>
+                    </div>
+                    <div id="models-list-container" style="display: none; margin-top: 0.5rem; margin-left: 1.5rem;">
+                        <ul id="available-models-list" style="max-height: 200px; overflow-y: auto; font-size: 0.875rem;"></ul>
+                    </div>
                     <div><strong>Last Validated:</strong> <span id="status-validated">-</span></div>
                 </div>
-                <button class="btn" onclick="removeApiKey()" style="margin-top: 1rem; background-color: var(--error-color);">Remove API Key</button>
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button class="btn" onclick="showUpdateForm()" style="background-color: var(--primary-color);">Update API Key</button>
+                    <button class="btn" onclick="removeApiKey()" style="background-color: var(--error-color);">Remove API Key</button>
+                </div>
             </div>
             
             <div id="configure-form">
@@ -87,6 +101,47 @@
             </div>
         </div>
         
+        <div class="card" id="preferences-card" style="display: none;">
+            <h2>Model Preferences</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                Organize your available AI models by preference. The system will prioritize preferred models, fall back to allowed models if needed, and never use blocked models.
+            </p>
+            
+            <div style="margin-bottom: 1rem;">
+                <input type="text" id="model-search" placeholder="Search models..." style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;">
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <div>
+                    <h3 style="font-size: 0.875rem; margin-bottom: 0.5rem; color: var(--success-color);">✓ Preferred Models</h3>
+                    <div id="preferred-models" class="model-category" style="min-height: 100px; padding: 0.5rem; background: #f0f9f0; border: 2px solid var(--success-color); border-radius: 4px;">
+                        <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; margin: 1rem 0;">Drag models here or click to add</p>
+                    </div>
+                </div>
+                <div>
+                    <h3 style="font-size: 0.875rem; margin-bottom: 0.5rem; color: #2196F3;">○ Allowed Models</h3>
+                    <div id="allowed-models" class="model-category" style="min-height: 100px; padding: 0.5rem; background: #e3f2fd; border: 2px solid #2196F3; border-radius: 4px;">
+                        <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; margin: 1rem 0;">Drag models here or click to add</p>
+                    </div>
+                </div>
+                <div>
+                    <h3 style="font-size: 0.875rem; margin-bottom: 0.5rem; color: var(--error-color);">✕ Blocked Models</h3>
+                    <div id="blocked-models" class="model-category" style="min-height: 100px; padding: 0.5rem; background: #ffebee; border: 2px solid var(--error-color); border-radius: 4px;">
+                        <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; margin: 1rem 0;">Drag models here or click to add</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 style="font-size: 0.875rem; margin-bottom: 0.5rem;">Uncategorized Models</h3>
+                <div id="uncategorized-models" style="padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; min-height: 80px;">
+                    <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;">All models will appear here</p>
+                </div>
+            </div>
+            
+            <button class="btn" onclick="savePreferences()" style="margin-top: 1rem;">Save Preferences</button>
+        </div>
+        
         <div class="card">
             <h2>About AI Features</h2>
             <p>
@@ -106,6 +161,7 @@
     <script src="js/auth-manager.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/toast.js"></script>
+    <script src="js/settings-enhanced.js"></script>
     <script>
         function toggleEndpointField() {
             const provider = document.getElementById('provider').value;
@@ -130,6 +186,7 @@
                 });
                 
                 const status = await response.json();
+                window.currentApiStatus = status; // Store for use in other functions
                 
                 if (status.configured) {
                     document.getElementById('current-status').style.display = 'block';
@@ -145,10 +202,43 @@
                         document.getElementById('status-endpoint-container').style.display = 'none';
                     }
                     
-                    document.getElementById('status-models').textContent = 
-                        status.availableModels?.length > 0 
-                            ? `${status.availableModels.length} models available` 
-                            : 'Unknown';
+                    // Update models display
+                    if (status.availableModels?.length > 0) {
+                        document.getElementById('status-models-count').textContent = `${status.availableModels.length} models available`;
+                        document.getElementById('toggle-models-btn').style.display = 'inline-block';
+                        
+                        // Populate models list with preference badges
+                        const modelsList = document.getElementById('available-models-list');
+                        modelsList.innerHTML = status.availableModels
+                            .map(model => {
+                                const prefs = status.preferences || {};
+                                let badge = '';
+                                let color = '#666';
+                                
+                                if (prefs.preferredModels?.includes(model)) {
+                                    badge = ' ✓';
+                                    color = 'var(--success-color)';
+                                } else if (prefs.allowedModels?.includes(model)) {
+                                    badge = ' ○';
+                                    color = '#2196F3';
+                                } else if (prefs.blockedModels?.includes(model)) {
+                                    badge = ' ✕';
+                                    color = 'var(--error-color)';
+                                }
+                                
+                                return `<li style="color: ${color}; margin-bottom: 0.25rem;">${model}${badge}</li>`;
+                            })
+                            .join('');
+                        
+                        // Show preferences card and load preferences
+                        document.getElementById('preferences-card').style.display = 'block';
+                        if (typeof loadPreferences === 'function') {
+                            loadPreferences();
+                        }
+                    } else {
+                        document.getElementById('status-models-count').textContent = 'Unknown';
+                        document.getElementById('toggle-models-btn').style.display = 'none';
+                    }
                     
                     document.getElementById('status-validated').textContent = 
                         status.lastValidatedAt 
@@ -157,6 +247,7 @@
                 } else {
                     document.getElementById('current-status').style.display = 'none';
                     document.getElementById('configure-form').style.display = 'block';
+                    document.getElementById('preferences-card').style.display = 'none';
                 }
             } catch (error) {
                 console.error('Error loading status:', error);
