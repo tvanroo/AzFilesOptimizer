@@ -161,6 +161,7 @@ public class DiscoveryService
                         catch (Exception statsEx)
                         {
                             _logger.LogWarning(statsEx, "Failed to fetch stats for share {ShareName} in account {Account}", share.Data.Name, storageAccount.Data.Name);
+                            await LogProgressAsync($"      ⚠ Could not retrieve stats for share {share.Data.Name}");
                         }
                         
                         // Collect comprehensive metadata
@@ -233,6 +234,7 @@ public class DiscoveryService
                         {
                             try
                             {
+                                await LogProgressAsync($"      → Collecting snapshots for {share.Data.Name}...");
                                 var snapshotList = new List<(DateTime? snapshotTime, long? usageBytes)>();
                                 await foreach (var snapshot in fileServiceResource.Value.GetFileShares().GetAllAsync(expand: "snapshots"))
                                 {
@@ -255,6 +257,11 @@ public class DiscoveryService
                                 discoveredShare.TotalSnapshotSizeBytes = snapshotList
                                     .Where(s => s.usageBytes.HasValue)
                                     .Sum(s => s.usageBytes.Value);
+                                
+                                if (snapshotList.Count > 0)
+                                {
+                                    await LogProgressAsync($"      ✓ Found {snapshotList.Count} snapshot(s)");
+                                }
                                 
                                 // Calculate churn rate if we have multiple snapshots with dates
                                 var orderedSnapshots = snapshotList
@@ -303,6 +310,7 @@ public class DiscoveryService
                             catch (Exception snapshotEx)
                             {
                                 _logger.LogWarning(snapshotEx, "Failed to collect snapshot metadata for share {ShareName}", share.Data.Name);
+                                await LogProgressAsync($"      ⚠ Failed to collect snapshots for {share.Data.Name}: {snapshotEx.Message}");
                             }
                         }
                         
@@ -318,6 +326,7 @@ public class DiscoveryService
                 {
                     _logger.LogWarning(ex, "Failed to get file shares for storage account {AccountName}", 
                         storageAccount.Data.Name);
+                    await LogProgressAsync($"    ⚠ Failed to access storage account {storageAccount.Data.Name}: {ex.Message}");
                 }
             }
         }
@@ -476,6 +485,7 @@ public class DiscoveryService
                             // Collect ANF snapshot metadata and metrics
                             try
                             {
+                                await LogProgressAsync($"        → Collecting snapshots for volume {volume.Data.Name}...");
                                 var snapshotList = new List<long?>();
                                 await foreach (var snapshot in volume.GetNetAppVolumeSnapshots().GetAllAsync())
                                 {
@@ -487,6 +497,11 @@ public class DiscoveryService
                                 v.SnapshotCount = snapshotList.Count;
                                 // For ANF, snapshot size calculation would require more complex queries
                                 v.TotalSnapshotSizeBytes = null;
+                                
+                                if (snapshotList.Count > 0)
+                                {
+                                    await LogProgressAsync($"        ✓ Found {snapshotList.Count} snapshot(s)");
+                                }
                                 
                                 // Collect actual Azure Monitor metrics for ANF volume
                                 if (_metricsService != null)
@@ -512,6 +527,7 @@ public class DiscoveryService
                             catch (Exception snapshotEx)
                             {
                                 _logger.LogWarning(snapshotEx, "Failed to collect snapshot/metrics metadata for ANF volume {VolumeName}", volume.Data.Name);
+                                await LogProgressAsync($"        ⚠ Failed to collect snapshots for volume {volume.Data.Name}: {snapshotEx.Message}");
                             }
                             
                             var (estIops, estBw) = EstimateAnfPerformance(
@@ -537,6 +553,7 @@ public class DiscoveryService
                 {
                     _logger.LogWarning(ex, "Failed to get volumes for NetApp account {AccountName}", 
                         netAppAccount.Data.Name);
+                    await LogProgressAsync($"    ⚠ Failed to access NetApp account {netAppAccount.Data.Name}: {ex.Message}");
                 }
             }
         }
