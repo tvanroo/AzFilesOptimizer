@@ -1,5 +1,6 @@
 using Azure;
 using Azure.Data.Tables;
+using System.Runtime.Serialization;
 using System.Text.Json;
 
 namespace AzFilesOptimizer.Backend.Models;
@@ -36,6 +37,7 @@ public class DiscoveryJob : ITableEntity
     private string[]? _cachedResourceGroupNames;
     
     // Public array property exposed in JSON responses
+    [IgnoreDataMember] // Tell Azure.Data.Tables to ignore this property
     public string[]? ResourceGroupNames
     { 
         get 
