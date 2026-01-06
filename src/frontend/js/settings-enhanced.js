@@ -57,8 +57,15 @@ async function loadPreferences() {
         }
         
         const data = await response.json();
-        currentModels = data.availableModels || [];
-        currentPreferences = data.preferences || { preferredModels: [], allowedModels: [], blockedModels: [] };
+        currentModels = data.availableModels || data.AvailableModels || [];
+        
+        // Handle both PascalCase and camelCase from backend
+        const prefs = data.preferences || data.Preferences || {};
+        currentPreferences = {
+            preferredModels: prefs.preferredModels || prefs.PreferredModels || [],
+            allowedModels: prefs.allowedModels || prefs.AllowedModels || [],
+            blockedModels: prefs.blockedModels || prefs.BlockedModels || []
+        };
         
         renderPreferences();
     } catch (error) {
