@@ -236,6 +236,33 @@
     ]
   },
   {
+    "name": "GetResourceGroups",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.ResourceGroupsFunction.GetResourceGroups",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "subscriptions/{subscriptionId}/resourcegroups",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
     "name": "GetApiKeyStatus",
     "scriptFile": "AzFilesOptimizer.Backend.dll",
     "entryPoint": "AzFilesOptimizer.Backend.Functions.SettingsFunction.GetApiKeyStatus",

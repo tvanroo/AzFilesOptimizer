@@ -107,8 +107,14 @@
                     <small id="subscription-help" style="color: var(--text-secondary); font-size: 0.75rem; display: none;">No subscriptions found. Make sure you're signed in.</small>
                 </div>
                 <div style="margin-bottom: 1rem;">
-                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Resource Group (optional)</label>
-                    <input type="text" id="resource-group" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;" placeholder="Leave empty to scan all">
+                    <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <span style="font-weight: 500;">Resource Groups (optional)</span>
+                        <button type="button" id="refresh-rg-btn" onclick="refreshResourceGroups()" style="background: none; border: none; color: var(--primary-color); cursor: pointer; font-size: 0.875rem; padding: 0;" title="Refresh resource groups list">🔄 Refresh</button>
+                    </label>
+                    <select id="resource-groups" multiple size="5" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;">
+                        <option value="" disabled>Select a subscription first...</option>
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 0.75rem; display: block; margin-top: 0.25rem;">Hold Ctrl/Cmd to select multiple. Leave empty to scan all.</small>
                 </div>
                 <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
                     <button type="submit" class="btn">Create Job</button>
@@ -218,6 +224,9 @@
             await loadSubscriptions();
         }
         
+        // Cache for resource groups by subscription ID
+        const resourceGroupsCache = {};
+        
         async function loadSubscriptions() {
             const subscriptionSelect = document.getElementById('subscription-id');
             const helpText = document.getElementById('subscription-help');
@@ -241,11 +250,77 @@
                     ).join('');
                     
                 subscriptionSelect.disabled = false;
+                
+                // Add listener to load resource groups when subscription changes
+                subscriptionSelect.onchange = () => loadResourceGroups(subscriptionSelect.value);
             } catch (error) {
                 console.error('Failed to load subscriptions:', error);
                 subscriptionSelect.innerHTML = '<option value="">Failed to load subscriptions</option>';
                 helpText.textContent = 'Error loading subscriptions. Please try again.';
                 helpText.style.display = 'block';
+            }
+        }
+        
+        async function loadResourceGroups(subscriptionId, forceRefresh = false) {
+            const rgSelect = document.getElementById('resource-groups');
+            const refreshBtn = document.getElementById('refresh-rg-btn');
+            
+            if (!subscriptionId) {
+                rgSelect.innerHTML = '<option value="" disabled>Select a subscription first...</option>';
+                rgSelect.disabled = true;
+                refreshBtn.disabled = true;
+                return;
+            }
+            
+            // Check cache first
+            if (!forceRefresh && resourceGroupsCache[subscriptionId]) {
+                populateResourceGroups(resourceGroupsCache[subscriptionId]);
+                return;
+            }
+            
+            try {
+                rgSelect.disabled = true;
+                refreshBtn.disabled = true;
+                rgSelect.innerHTML = '<option value="" disabled>Loading resource groups...</option>';
+                
+                const resourceGroups = await apiClient.getResourceGroups(subscriptionId);
+                
+                // Cache the results
+                resourceGroupsCache[subscriptionId] = resourceGroups;
+                
+                populateResourceGroups(resourceGroups);
+            } catch (error) {
+                console.error('Failed to load resource groups:', error);
+                rgSelect.innerHTML = '<option value="" disabled>Failed to load resource groups</option>';
+                Toast.error('Failed to load resource groups: ' + error.message);
+            } finally {
+                refreshBtn.disabled = false;
+            }
+        }
+        
+        function populateResourceGroups(resourceGroups) {
+            const rgSelect = document.getElementById('resource-groups');
+            
+            if (!resourceGroups || resourceGroups.length === 0) {
+                rgSelect.innerHTML = '<option value="" disabled>No resource groups found</option>';
+                rgSelect.disabled = true;
+                return;
+            }
+            
+            // Sort by name
+            resourceGroups.sort((a, b) => a.name.localeCompare(b.name));
+            
+            rgSelect.innerHTML = resourceGroups.map(rg => 
+                `<option value="${rg.name}">${rg.name} (${rg.location})</option>`
+            ).join('');
+            
+            rgSelect.disabled = false;
+        }
+        
+        function refreshResourceGroups() {
+            const subscriptionId = document.getElementById('subscription-id').value;
+            if (subscriptionId) {
+                loadResourceGroups(subscriptionId, true);
             }
         }
         
@@ -258,7 +333,8 @@
             e.preventDefault();
             
             const subscriptionId = document.getElementById('subscription-id').value;
-            const resourceGroup = document.getElementById('resource-group').value;
+            const rgSelect = document.getElementById('resource-groups');
+            const selectedResourceGroups = Array.from(rgSelect.selectedOptions).map(opt => opt.value);
             
             if (!subscriptionId) {
                 Toast.error('Please select a subscription');
@@ -268,7 +344,7 @@
             try {
                 const job = await apiClient.createDiscoveryJob({
                     subscriptionId: subscriptionId,
-                    resourceGroupNames: resourceGroup ? [resourceGroup] : null
+                    resourceGroupNames: selectedResourceGroups.length > 0 ? selectedResourceGroups : null
                 });
                 
                 console.log('Job created:', job);

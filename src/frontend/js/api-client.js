@@ -128,6 +128,13 @@ class ApiClient {
     async getSubscriptions() {
         return this.fetchJson('/subscriptions');
     }
+    
+    /**
+     * Get list of resource groups in a subscription
+     */
+    async getResourceGroups(subscriptionId) {
+        return this.fetchJson(`/subscriptions/${subscriptionId}/resourcegroups`);
+    }
 }
 
 // Export singleton instance
