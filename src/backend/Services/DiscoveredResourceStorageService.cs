@@ -95,7 +95,12 @@ public class DiscoveredResourceStorageService
             // Timestamps
             { "LastModifiedTime", share.LastModifiedTime },
             { "CreationTime", share.CreationTime },
-            { "DiscoveredAt", share.DiscoveredAt }
+            { "DiscoveredAt", share.DiscoveredAt },
+
+            // Monitoring / Metrics
+            { "MonitoringEnabled", share.MonitoringEnabled },
+            { "MonitoringDataAvailableDays", share.MonitoringDataAvailableDays },
+            { "HistoricalMetricsSummary", share.HistoricalMetricsSummary }
         };
 
         // Store metadata and tags as JSON strings (Table Storage doesn't support complex types)
@@ -249,7 +254,12 @@ public class DiscoveredResourceStorageService
             Tags = DeserializeDictionary(entity.GetString("Tags")),
             LastModifiedTime = entity.GetDateTime("LastModifiedTime"),
             CreationTime = entity.GetDateTime("CreationTime"),
-            DiscoveredAt = entity.GetDateTime("DiscoveredAt") ?? DateTime.UtcNow
+            DiscoveredAt = entity.GetDateTime("DiscoveredAt") ?? DateTime.UtcNow,
+
+            // Monitoring / Metrics
+            MonitoringEnabled = entity.GetBoolean("MonitoringEnabled") ?? false,
+            MonitoringDataAvailableDays = entity.GetInt32("MonitoringDataAvailableDays"),
+            HistoricalMetricsSummary = entity.GetString("HistoricalMetricsSummary")
         };
     }
 
