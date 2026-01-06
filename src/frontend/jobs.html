@@ -260,19 +260,35 @@
             const subscriptionId = document.getElementById('subscription-id').value;
             const resourceGroup = document.getElementById('resource-group').value;
             
+            if (!subscriptionId) {
+                Toast.error('Please select a subscription');
+                return;
+            }
+            
             try {
                 const job = await apiClient.createDiscoveryJob({
                     subscriptionId: subscriptionId,
                     resourceGroupNames: resourceGroup ? [resourceGroup] : null
                 });
                 
+                console.log('Job created:', job);
+                const jobId = job.JobId || job.RowKey || job.jobId;
+                
+                if (!jobId) {
+                    console.error('No job ID in response:', job);
+                    Toast.error('Job created but ID not found in response');
+                    return;
+                }
+                
+                hideCreateJobModal();
                 Toast.success('Discovery job created successfully!');
-                const jobId = job.RowKey || job.JobId;
+                
                 // Redirect to job detail page after brief delay
                 setTimeout(() => {
                     window.location.href = `job-detail.html?id=${jobId}`;
                 }, 500);
             } catch (error) {
+                console.error('Error creating job:', error);
                 Toast.error('Failed to create job: ' + error.message);
             }
         });
