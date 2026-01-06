@@ -292,6 +292,10 @@
                     throw new Error(result.error || 'Failed to save API key');
                 }
                 
+                // Reset button first
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Validate & Save';
+                
                 // Show success
                 Toast.success('API key validated and saved successfully!');
                 
@@ -319,6 +323,7 @@
             } catch (error) {
                 console.error('Error saving API key:', error);
                 Toast.error(error.message || 'Failed to save API key');
+            } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Validate & Save';
             }
