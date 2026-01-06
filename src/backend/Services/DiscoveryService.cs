@@ -278,12 +278,26 @@ public class DiscoveryService
                                 // Collect actual Azure Monitor metrics for storage account
                                 if (_metricsService != null)
                                 {
+                                    await LogProgressAsync($"      → Collecting Azure Monitor metrics for {storageAccount.Data.Name}...");
                                     var (hasData, daysAvailable, metricsSummary) = await _metricsService
                                         .CollectStorageAccountMetricsAsync(storageAccount.Id.ToString(), storageAccount.Data.Name);
                                     
                                     discoveredShare.MonitoringEnabled = hasData;
                                     discoveredShare.MonitoringDataAvailableDays = daysAvailable;
                                     discoveredShare.HistoricalMetricsSummary = metricsSummary;
+                                    
+                                    if (hasData)
+                                    {
+                                        await LogProgressAsync($"      ✓ Metrics collected: {daysAvailable} days available");
+                                    }
+                                    else
+                                    {
+                                        await LogProgressAsync($"      ⚠ No metrics data available for {storageAccount.Data.Name}");
+                                    }
+                                }
+                                else
+                                {
+                                    await LogProgressAsync($"      ⚠ Metrics service not initialized");
                                 }
                             }
                             catch (Exception snapshotEx)
@@ -477,12 +491,22 @@ public class DiscoveryService
                                 // Collect actual Azure Monitor metrics for ANF volume
                                 if (_metricsService != null)
                                 {
+                                    await LogProgressAsync($"        → Collecting Azure Monitor metrics for volume {volume.Data.Name}...");
                                     var (hasData, daysAvailable, metricsSummary) = await _metricsService
                                         .CollectAnfVolumeMetricsAsync(volume.Id.ToString(), volume.Data.Name);
                                     
                                     v.MonitoringEnabled = hasData;
                                     v.MonitoringDataAvailableDays = daysAvailable;
                                     v.HistoricalMetricsSummary = metricsSummary;
+                                    
+                                    if (hasData)
+                                    {
+                                        await LogProgressAsync($"        ✓ Metrics collected: {daysAvailable} days available");
+                                    }
+                                    else
+                                    {
+                                        await LogProgressAsync($"        ⚠ No metrics data available for volume {volume.Data.Name}");
+                                    }
                                 }
                             }
                             catch (Exception snapshotEx)

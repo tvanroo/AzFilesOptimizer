@@ -25,6 +25,7 @@ public class MetricsCollectionService
             
             // Azure Files metrics are at the fileServices sub-resource level
             var fileServicesResourceId = $"{storageAccountResourceId}/fileServices/default";
+            _logger.LogInformation("Collecting metrics for {Account} using fileServices path", storageAccountName);
             
             var metrics = new[] { "Transactions", "Ingress", "Egress", "SuccessServerLatency", "Availability" };
             var metricsData = new Dictionary<string, object>();
@@ -47,6 +48,7 @@ public class MetricsCollectionService
                         $"&interval=P1D&metricnames={metricName}&aggregation=Average,Total";
                     
                     var response = await httpClient.GetAsync(apiUrl);
+                    
                     if (response.IsSuccessStatusCode)
                     {
                         var content = await response.Content.ReadAsStringAsync();
@@ -78,17 +80,13 @@ public class MetricsCollectionService
                                 }
                             }
                         }
-                        else
-                        {
-                            _logger.LogInformation("No metric data returned for {MetricName} on {Account}. Response: {Response}", 
-                                metricName, storageAccountName, content.Length > 500 ? content.Substring(0, 500) : content);
-                        }
                     }
                     else
                     {
                         var errorContent = await response.Content.ReadAsStringAsync();
-                        _logger.LogWarning("Failed to fetch metric {MetricName} for {Account}. Status: {Status}, Error: {Error}", 
-                            metricName, storageAccountName, (int)response.StatusCode, errorContent.Length > 500 ? errorContent.Substring(0, 500) : errorContent);
+                        _logger.LogWarning("Metrics API failed for {MetricName} on {Account}. Status: {Status}, Error: {Error}", 
+                            metricName, storageAccountName, (int)response.StatusCode, 
+                            errorContent.Length > 200 ? errorContent.Substring(0, 200) + "..." : errorContent);
                     }
                 }
                 catch (Exception ex)
@@ -97,8 +95,16 @@ public class MetricsCollectionService
                 }
             }
 
-            if (!hasAnyData) return (false, null, null);
-            return (true, oldestDataDays > 0 ? oldestDataDays : 30, JsonSerializer.Serialize(metricsData));
+            if (!hasAnyData)
+            {
+                _logger.LogInformation("No historical metrics found for {Account} (no data in Azure Monitor)", storageAccountName);
+                return (false, null, null);
+            }
+            
+            var jsonSummary = JsonSerializer.Serialize(metricsData);
+            _logger.LogInformation("Successfully collected {Count} metrics for {Account}: {MetricNames}", 
+                metricsData.Count, storageAccountName, string.Join(", ", metricsData.Keys));
+            return (true, oldestDataDays > 0 ? oldestDataDays : 30, jsonSummary);
         }
         catch (Exception ex)
         {
