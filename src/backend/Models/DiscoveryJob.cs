@@ -27,50 +27,31 @@ public class DiscoveryJob : ITableEntity
     public string SubscriptionId { get; set; } = string.Empty;
     public string TenantId { get; set; } = string.Empty;
     
-    // Resource group names stored as JSON string for Table Storage compatibility
-    // This property is stored in Table Storage
-    private string? _resourceGroupNamesJson;
+    // Resource group names as comma-separated string for Table Storage
+    // This is the actual property stored in Table Storage
+    [System.Text.Json.Serialization.JsonIgnore] // Hide from JSON responses
+    public string? ResourceGroupNamesString { get; set; }
     
-    // Internal property for Table Storage (not exposed in JSON responses)
-    [System.Text.Json.Serialization.JsonIgnore]
-    public string? ResourceGroupNamesJson 
-    { 
-        get 
-        {
-            // Always sync from array to JSON before reading
-            if (_cachedResourceGroupNames != null)
-            {
-                _resourceGroupNamesJson = _cachedResourceGroupNames.Length == 0 
-                    ? null 
-                    : JsonSerializer.Serialize(_cachedResourceGroupNames);
-            }
-            return _resourceGroupNamesJson;
-        }
-        set 
-        {
-            _resourceGroupNamesJson = value;
-            _cachedResourceGroupNames = null; // Clear cache
-        }
-    }
-    
-    // Property for working with resource groups as array (used by code and JSON responses)
+    // Property for working with resource groups as array
     private string[]? _cachedResourceGroupNames;
-    public string[]? ResourceGroupNames 
+    
+    // Public array property exposed in JSON responses
+    public string[]? ResourceGroupNames
     { 
         get 
         {
-            if (_cachedResourceGroupNames == null && !string.IsNullOrEmpty(_resourceGroupNamesJson))
+            if (_cachedResourceGroupNames == null && !string.IsNullOrEmpty(ResourceGroupNamesString))
             {
-                _cachedResourceGroupNames = JsonSerializer.Deserialize<string[]>(_resourceGroupNamesJson);
+                _cachedResourceGroupNames = ResourceGroupNamesString.Split(',', StringSplitOptions.RemoveEmptyEntries);
             }
             return _cachedResourceGroupNames;
         }
         set 
         {
             _cachedResourceGroupNames = value;
-            _resourceGroupNamesJson = value == null || value.Length == 0
+            ResourceGroupNamesString = value == null || value.Length == 0
                 ? null 
-                : JsonSerializer.Serialize(value);
+                : string.Join(",", value);
         }
     }
     
