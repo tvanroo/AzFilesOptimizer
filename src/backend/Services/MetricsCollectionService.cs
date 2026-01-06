@@ -59,10 +59,10 @@ public class MetricsCollectionService
 
             foreach (var metric in metrics)
             {
+                var metricName = metric.name;
+                var aggregation = metric.aggregation;
                 try
                 {
-                    var metricName = metric.name;
-                    var aggregation = metric.aggregation;
                     var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
                     var apiUrl = $"https://management.azure.com{fileServicesResourceId}/providers/Microsoft.Insights/metrics" +
                         $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
@@ -189,10 +189,10 @@ public class MetricsCollectionService
 
             foreach (var metric in metrics)
             {
+                var metricName = metric.name;
+                var aggregation = metric.aggregation;
                 try
                 {
-                    var metricName = metric.name;
-                    var aggregation = metric.aggregation;
                     var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
                     var apiUrl = $"https://management.azure.com{resourceId}/providers/Microsoft.Insights/metrics" +
                         $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
