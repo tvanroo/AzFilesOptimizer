@@ -343,4 +343,94 @@ public class MetricsCollectionService
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
     }
+
+    public async Task<string> CollectStorageAccountMetricsRawAsync(string storageAccountResourceId, string storageAccountName, int days)
+    {
+        var endTime = DateTime.UtcNow;
+        var startTime = endTime.AddDays(-Math.Max(1, Math.Min(93, days)));
+
+        // Metrics at fileServices scope
+        var fileServicesResourceId = $"{storageAccountResourceId}/fileServices/default";
+        using var httpClient = new HttpClient();
+        var token = await _credential.GetTokenAsync(new TokenRequestContext(new[] { "https://management.azure.com/.default" }), default);
+        httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
+
+        var supported = await GetSupportedMetricNamesAsync(fileServicesResourceId);
+        var preferred = new[] { "Transactions", "Ingress", "Egress", "SuccessServerLatency", "SuccessE2ELatency", "Availability", "FileCapacity" };
+        var metrics = preferred.Where(m => supported.Contains(m, StringComparer.OrdinalIgnoreCase)).ToArray();
+
+        var result = new Dictionary<string, object?>();
+        result["resourceId"] = storageAccountResourceId;
+        result["storageAccount"] = storageAccountName;
+        result["timespan"] = new { start = startTime, end = endTime };
+        result["interval"] = "PT1H";
+        var metricsObj = new Dictionary<string, object?>();
+        result["metrics"] = metricsObj;
+
+        foreach (var metricName in metrics)
+        {
+            var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
+            var apiUrl = $"https://management.azure.com{fileServicesResourceId}/providers/Microsoft.Insights/metrics" +
+                         $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
+                         $"&interval=PT1H&metricNamespace=microsoft.storage%2Fstorageaccounts%2Ffileservices&metricnames={metricName}&aggregation=Average,Total,Maximum,Minimum";
+            var response = await httpClient.GetAsync(apiUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                continue;
+            }
+            var content = await response.Content.ReadAsStringAsync();
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var parsed = JsonSerializer.Deserialize<MetricsApiResponseRaw>(content, options);
+            if (parsed?.value == null || parsed.value.Length == 0) continue;
+
+            var first = parsed.value[0];
+            var unit = first.unit;
+            var points = new List<Dictionary<string, object?>>();
+            foreach (var ts in first.timeseries ?? Array.Empty<TimeseriesRaw>())
+            {
+                foreach (var dp in (ts.data ?? Array.Empty<DataPointRaw>()))
+                {
+                    if (dp.average.HasValue || dp.total.HasValue || dp.maximum.HasValue || dp.minimum.HasValue)
+                    {
+                        points.Add(new Dictionary<string, object?>
+                        {
+                            ["timeStamp"] = dp.timeStamp,
+                            ["average"] = dp.average,
+                            ["total"] = dp.total,
+                            ["maximum"] = dp.maximum,
+                            ["minimum"] = dp.minimum
+                        });
+                    }
+                }
+            }
+            metricsObj[metricName] = new { unit, points };
+        }
+
+        return JsonSerializer.Serialize(result);
+    }
+
+    private class MetricsApiResponseRaw
+    {
+        public MetricRaw[]? value { get; set; }
+    }
+
+    private class MetricRaw
+    {
+        public string? unit { get; set; }
+        public TimeseriesRaw[]? timeseries { get; set; }
+    }
+
+    private class TimeseriesRaw
+    {
+        public DataPointRaw[]? data { get; set; }
+    }
+
+    private class DataPointRaw
+    {
+        public string timeStamp { get; set; } = "";
+        public double? average { get; set; }
+        public double? total { get; set; }
+        public double? maximum { get; set; }
+        public double? minimum { get; set; }
+    }
 }

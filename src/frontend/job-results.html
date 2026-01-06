@@ -583,21 +583,23 @@
                 if (!metrics || Object.keys(metrics).length === 0) return '';
                 
                 const metricLabels = {
-                    'Transactions': 'Transactions',
-                    'Ingress': 'Ingress',
-                    'Egress': 'Egress',
-                    'SuccessServerLatency': 'Latency (ms)',
+                    'Transactions': 'Transactions (count/hour)',
+                    'Ingress': 'Ingress (bytes/hour)',
+                    'Egress': 'Egress (bytes/hour)',
+                    'SuccessServerLatency': 'Server Latency (ms)',
+                    'SuccessE2ELatency': 'E2E Latency (ms)',
                     'Availability': 'Availability (%)',
-                    'VolumeLogicalSize': 'Logical Size',
+                    'VolumeLogicalSize': 'Logical Size (bytes)',
                     'ReadIops': 'Read IOPS',
                     'WriteIops': 'Write IOPS',
-                    'VolumeThroughputReadBytes': 'Read Throughput',
-                    'VolumeThroughputWriteBytes': 'Write Throughput',
+                    'VolumeThroughputReadBytes': 'Read Throughput (bytes/s)',
+                    'VolumeThroughputWriteBytes': 'Write Throughput (bytes/s)',
                     'VolumeConsumedSizePercentage': 'Consumed %'
                 };
                 
                 let html = '<div style="margin-top: 1rem; padding: 1rem; background: #f0f7ff; border-radius: 4px; border-left: 4px solid var(--primary-color);">';
-                html += '<strong style="display: block; margin-bottom: 0.75rem;">📊 Historical Metrics (30-day average):</strong>';
+                html += '<strong style="display: block; margin-bottom: 0.75rem;">📊 Historical Metrics (30 days, hourly):</strong>';
+                html += '<div style="margin-bottom: 0.5rem;"><button class="btn" id="download-metrics-btn" style="padding: 0.25rem 0.5rem;">⬇ Download raw metrics (JSON)</button></div>';
                 html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">';
                 
                 for (const [metricName, data] of Object.entries(metrics)) {
@@ -941,6 +943,27 @@
             `;
             
             document.getElementById('share-modal').style.display = 'block';
+
+            // Wire up raw metrics download button if present
+            const dlBtn = document.getElementById('download-metrics-btn');
+            if (dlBtn) {
+                dlBtn.onclick = async () => {
+                    try {
+                        const raw = await apiClient.getShareMetricsRaw(jobId, share.ResourceId, 30);
+                        const blob = new Blob([JSON.stringify(raw, null, 2)], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${share.StorageAccountName}_${share.ShareName}_metrics.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                    } catch (e) {
+                        Toast.error('Failed to download raw metrics: ' + e.message);
+                    }
+                };
+            }
         }
         
         function closeModal() {

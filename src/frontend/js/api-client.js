@@ -121,6 +121,14 @@ class ApiClient {
     async getJobShares(jobId) {
         return this.fetchJson(`/jobs/${jobId}/shares`);
     }
+
+    /**
+     * Get raw metrics JSON for a share (account-level for now)
+     */
+    async getShareMetricsRaw(jobId, resourceId, days = 30) {
+        const encoded = encodeURIComponent(resourceId);
+        return this.fetchJson(`/jobs/${jobId}/shares/metricsraw?resourceId=${encoded}&days=${days}`);
+    }
     
     /**
      * Get list of accessible Azure subscriptions

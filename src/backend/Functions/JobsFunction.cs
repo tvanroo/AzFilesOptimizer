@@ -15,6 +15,7 @@ public class JobsFunction
     private readonly JobStorageService _jobStorage;
     private readonly JobLogService _jobLogService;
     private readonly DiscoveredResourceStorageService _resourceStorage;
+    private MetricsCollectionService? _metricsService;
 
     public JobsFunction(ILoggerFactory loggerFactory)
     {
@@ -132,6 +133,62 @@ public class JobsFunction
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
             await errorResponse.WriteAsJsonAsync(new { error = "Failed to retrieve shares", details = ex.Message });
             return errorResponse;
+        }
+    }
+
+    [Function("GetShareMetricsRaw")]
+    public async Task<HttpResponseData> GetShareMetricsRaw(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "jobs/{jobId}/shares/metricsraw")] HttpRequestData req,
+        string jobId)
+    {
+        try
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            var resourceId = query.Get("resourceId");
+            var daysStr = query.Get("days") ?? "30";
+            if (string.IsNullOrWhiteSpace(resourceId))
+            {
+                var bad = req.CreateResponse(HttpStatusCode.BadRequest);
+                await bad.WriteAsJsonAsync(new { error = "Missing resourceId query parameter" });
+                return bad;
+            }
+
+            // Find share by resourceId under this job
+            var shares = await _resourceStorage.GetSharesByJobIdAsync(jobId);
+            var share = shares.FirstOrDefault(s => string.Equals(s.ResourceId, resourceId, StringComparison.OrdinalIgnoreCase));
+            if (share == null)
+            {
+                var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+                await notFound.WriteAsJsonAsync(new { error = "Share not found for job" });
+                return notFound;
+            }
+
+            int days = 30;
+            int.TryParse(daysStr, out days);
+            days = Math.Max(1, Math.Min(93, days));
+
+            if (_metricsService == null)
+            {
+                // Initialize on demand
+                var credential = new DefaultAzureCredential();
+                _metricsService = new MetricsCollectionService(_logger, credential);
+            }
+
+            // Azure Files metrics are at the fileServices scope; derive storage account resourceId by trimming after /fileServices
+            var idx = share.ResourceId.IndexOf("/fileServices", StringComparison.OrdinalIgnoreCase);
+            var storageAccountResourceId = idx > 0 ? share.ResourceId.Substring(0, idx) : share.ResourceId;
+
+            var raw = await _metricsService.CollectStorageAccountMetricsRawAsync(storageAccountResourceId, share.StorageAccountName, days);
+            var resp = req.CreateResponse(HttpStatusCode.OK);
+            await resp.WriteStringAsync(raw, System.Text.Encoding.UTF8);
+            return resp;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error returning raw metrics for job {JobId}", jobId);
+            var error = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await error.WriteAsJsonAsync(new { error = ex.Message });
+            return error;
         }
     }
 
