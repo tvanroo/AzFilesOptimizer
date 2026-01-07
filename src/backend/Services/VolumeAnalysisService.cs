@@ -13,6 +13,7 @@ public class VolumeAnalysisService
     private readonly BlobContainerClient _blobContainer;
     private readonly WorkloadProfileService _profileService;
     private readonly AnalysisPromptService _promptService;
+    private AnalysisLogService? _logService;
 
     public VolumeAnalysisService(
         string connectionString,
@@ -29,15 +30,25 @@ public class VolumeAnalysisService
         _blobContainer.CreateIfNotExists();
     }
 
-    public async Task AnalyzeVolumesAsync(string discoveryJobId, string userId, string apiKey, string provider, string? endpoint)
+    public async Task AnalyzeVolumesAsync(string discoveryJobId, string userId, string apiKey, string provider, string? endpoint, string? analysisJobId = null)
     {
         _logger.LogInformation("Starting analysis for discovery job: {JobId}", discoveryJobId);
+        
+        // Initialize log service if analysisJobId provided
+        if (!string.IsNullOrEmpty(analysisJobId))
+        {
+            var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
+            _logService = new AnalysisLogService(connectionString, _logger);
+            await _logService.LogProgressAsync(analysisJobId, $"Starting analysis for discovery job: {discoveryJobId}");
+        }
 
         // Load discovery data
         var discoveryData = await LoadDiscoveryDataAsync(discoveryJobId);
         if (discoveryData == null || discoveryData.Volumes.Count == 0)
         {
             _logger.LogWarning("No volumes found for discovery job: {JobId}", discoveryJobId);
+            if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                await _logService.LogProgressAsync(analysisJobId, "No volumes found for analysis", "WARNING");
             return;
         }
 
@@ -46,16 +57,22 @@ public class VolumeAnalysisService
         var profiles = await _profileService.GetAllProfilesAsync();
 
         _logger.LogInformation("Loaded {PromptCount} prompts and {ProfileCount} profiles", prompts.Count, profiles.Count);
+        if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+            await _logService.LogProgressAsync(analysisJobId, $"Found {discoveryData.Volumes.Count} volumes to analyze using {prompts.Count} prompts");
 
         int processedCount = 0;
         int failedCount = 0;
+        int totalCount = discoveryData.Volumes.Count;
 
         // Analyze each volume
         foreach (var volumeWrapper in discoveryData.Volumes)
         {
+            processedCount++;
             try
             {
                 _logger.LogInformation("Analyzing volume: {VolumeName}", volumeWrapper.Volume.ShareName);
+                if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                    await _logService.LogVolumeStartAsync(analysisJobId, volumeWrapper.Volume.ShareName ?? "Unknown", processedCount, totalCount);
                 
                 var analysis = await AnalyzeSingleVolumeAsync(
                     volumeWrapper.Volume,
@@ -63,16 +80,25 @@ public class VolumeAnalysisService
                     profiles.ToArray(),
                     apiKey,
                     provider,
-                    endpoint);
+                    endpoint,
+                    analysisJobId,
+                    volumeWrapper.Volume.ShareName ?? "Unknown");
                 
                 volumeWrapper.AiAnalysis = analysis;
                 volumeWrapper.UserAnnotations ??= new UserAnnotations();
                 
-                processedCount++;
+                if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                {
+                    var workloadName = analysis.SuggestedWorkloadName ?? "Unclassified";
+                    await _logService.LogVolumeCompleteAsync(analysisJobId, volumeWrapper.Volume.ShareName ?? "Unknown", workloadName, analysis.ConfidenceScore);
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to analyze volume: {VolumeName}", volumeWrapper.Volume.ShareName);
+                if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                    await _logService.LogVolumeErrorAsync(analysisJobId, volumeWrapper.Volume.ShareName ?? "Unknown", ex.Message);
+                    
                 volumeWrapper.AiAnalysis = new AiAnalysisResult
                 {
                     LastAnalyzed = DateTime.UtcNow,
@@ -87,6 +113,8 @@ public class VolumeAnalysisService
         await SaveDiscoveryDataAsync(discoveryData);
 
         _logger.LogInformation("Analysis complete. Processed: {Processed}, Failed: {Failed}", processedCount, failedCount);
+        if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+            await _logService.LogProgressAsync(analysisJobId, $"✓ Analysis complete! Processed: {processedCount}, Failed: {failedCount}");
     }
 
     public async Task<AiAnalysisResult> AnalyzeSingleVolumeAsync(
@@ -95,7 +123,9 @@ public class VolumeAnalysisService
         WorkloadProfile[] profiles,
         string apiKey,
         string provider,
-        string? endpoint)
+        string? endpoint,
+        string? analysisJobId = null,
+        string? volumeName = null)
     {
         var result = new AiAnalysisResult
         {
@@ -124,6 +154,13 @@ public class VolumeAnalysisService
                 
                 // Call AI
                 var aiResponse = await CallAIForAnalysis(fullPrompt, apiKey, provider, endpoint);
+                
+                // Log prompt execution
+                if (_logService != null && !string.IsNullOrEmpty(analysisJobId) && !string.IsNullOrEmpty(volumeName))
+                {
+                    var summary = aiResponse.Length > 100 ? aiResponse.Substring(0, 100) + "..." : aiResponse;
+                    await _logService.LogPromptExecutionAsync(analysisJobId, volumeName, prompt.Name, summary);
+                }
                 
                 // Parse response
                 var promptResult = new PromptExecutionResult

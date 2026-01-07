@@ -5,6 +5,8 @@ const volumeAnalysis = {
     pageSize: 50,
     totalCount: 0,
     currentJobId: null,
+    currentAnalysisJobId: null,
+    logPollInterval: null,
 
     init() {
         this.loadJobs();
@@ -384,14 +386,73 @@ const volumeAnalysis = {
             if (!response.ok) throw new Error('Failed to start analysis');
             
             const result = await response.json();
-            alert(`Analysis started. Job ID: ${result.AnalysisJobId}`);
+            this.currentAnalysisJobId = result.AnalysisJobId;
             
-            // Poll for status
+            // Show log modal and start polling
+            this.showLogModal();
             this.pollAnalysisStatus(result.AnalysisJobId);
         } catch (error) {
             console.error('Error starting analysis:', error);
             alert('Error starting analysis');
         }
+    },
+
+    showLogModal() {
+        document.getElementById('logModal').classList.add('show');
+        document.getElementById('logBody').innerHTML = '<div style="color: #888;">Starting analysis...</div>';
+        document.getElementById('logProgress').style.width = '0%';
+        document.getElementById('logStatus').textContent = 'Starting analysis...';
+        
+        // Start polling for logs
+        this.startLogPolling();
+    },
+
+    closeLogModal() {
+        document.getElementById('logModal').classList.remove('show');
+        this.stopLogPolling();
+    },
+
+    startLogPolling() {
+        this.stopLogPolling(); // Clear any existing interval
+        this.logPollInterval = setInterval(() => this.fetchLogs(), 2000);
+        this.fetchLogs(); // Fetch immediately
+    },
+
+    stopLogPolling() {
+        if (this.logPollInterval) {
+            clearInterval(this.logPollInterval);
+            this.logPollInterval = null;
+        }
+    },
+
+    async fetchLogs() {
+        if (!this.currentAnalysisJobId) return;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/analysis/${this.currentAnalysisJobId}/logs`);
+            if (!response.ok) return;
+            
+            const logs = await response.json();
+            this.renderLogs(logs);
+        } catch (error) {
+            console.error('Error fetching logs:', error);
+        }
+    },
+
+    renderLogs(logs) {
+        if (!logs || logs.length === 0) return;
+
+        const logBody = document.getElementById('logBody');
+        logBody.innerHTML = logs.map(log => {
+            const timestamp = new Date(log.Timestamp).toLocaleTimeString();
+            return `<div class="log-entry ${log.Level}">
+                <span class="log-timestamp">${timestamp}</span>
+                <span>${this.escapeHtml(log.Message)}</span>
+            </div>`;
+        }).join('');
+        
+        // Auto-scroll to bottom
+        logBody.scrollTop = logBody.scrollHeight;
     },
 
     async pollAnalysisStatus(analysisJobId) {
@@ -401,20 +462,32 @@ const volumeAnalysis = {
                 if (!response.ok) throw new Error('Failed to check status');
                 const status = await response.json();
                 
+                // Update progress
+                const progress = status.ProgressPercentage || 0;
+                document.getElementById('logProgress').style.width = progress + '%';
+                document.getElementById('logStatus').textContent = 
+                    `${status.Status} - ${status.ProcessedVolumes}/${status.TotalVolumes} volumes (${progress}%)`;
+                
                 if (status.Status === 'Completed') {
-                    alert('Analysis completed successfully!');
-                    await this.applyFilters();
+                    this.stopLogPolling();
+                    setTimeout(() => {
+                        alert('Analysis completed successfully!');
+                        this.closeLogModal();
+                        this.applyFilters();
+                    }, 2000); // Give time to see final logs
                 } else if (status.Status === 'Failed') {
+                    this.stopLogPolling();
                     alert('Analysis failed: ' + status.ErrorMessage);
+                    this.closeLogModal();
                 } else {
-                    setTimeout(checkStatus, 5000); // Check again in 5 seconds
+                    setTimeout(checkStatus, 3000); // Check again in 3 seconds
                 }
             } catch (error) {
                 console.error('Error checking status:', error);
             }
         };
         
-        setTimeout(checkStatus, 5000);
+        setTimeout(checkStatus, 3000);
     },
 
     async exportData(format) {

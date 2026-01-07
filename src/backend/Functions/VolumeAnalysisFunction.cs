@@ -17,6 +17,7 @@ public class VolumeAnalysisFunction
     private readonly QueueClient _analysisQueue;
     private readonly VolumeAnnotationService _annotationService;
     private readonly DiscoveryMigrationService _migrationService;
+    private readonly AnalysisLogService _analysisLogService;
 
     public VolumeAnalysisFunction(ILoggerFactory loggerFactory)
     {
@@ -33,6 +34,7 @@ public class VolumeAnalysisFunction
         
         _annotationService = new VolumeAnnotationService(connectionString, _logger);
         _migrationService = new DiscoveryMigrationService(connectionString, _logger);
+        _analysisLogService = new AnalysisLogService(connectionString, _logger);
     }
 
     [Function("StartAnalysis")]
@@ -108,6 +110,28 @@ public class VolumeAnalysisFunction
         {
             _logger.LogError(ex, "Error getting analysis status {JobId}", jobId);
             var response = req.CreateResponse(HttpStatusCode.NotFound);
+            return response;
+        }
+    }
+
+    [Function("GetAnalysisLogs")]
+    public async Task<HttpResponseData> GetLogs(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "analysis/{jobId}/logs")] HttpRequestData req,
+        string jobId)
+    {
+        try
+        {
+            var logs = await _analysisLogService.GetLogsAsync(jobId);
+            
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(logs);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting analysis logs {JobId}", jobId);
+            var response = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await response.WriteStringAsync($"Error: {ex.Message}");
             return response;
         }
     }

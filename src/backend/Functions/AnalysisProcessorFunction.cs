@@ -92,7 +92,8 @@ public class AnalysisProcessorFunction
                 "system",
                 apiKey,
                 apiKeyConfig.Provider,
-                apiKeyConfig.Endpoint);
+                apiKeyConfig.Endpoint,
+                analysisJobId);
 
             // Update job with completion
             analysisJob.Status = AnalysisJobStatus.Completed.ToString();
