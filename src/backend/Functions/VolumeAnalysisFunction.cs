@@ -16,6 +16,7 @@ public class VolumeAnalysisFunction
     private readonly TableClient _analysisJobsTable;
     private readonly QueueClient _analysisQueue;
     private readonly VolumeAnnotationService _annotationService;
+    private readonly DiscoveryMigrationService _migrationService;
 
     public VolumeAnalysisFunction(ILoggerFactory loggerFactory)
     {
@@ -31,6 +32,7 @@ public class VolumeAnalysisFunction
         _analysisQueue.CreateIfNotExists();
         
         _annotationService = new VolumeAnnotationService(connectionString, _logger);
+        _migrationService = new DiscoveryMigrationService(connectionString, _logger);
     }
 
     [Function("StartAnalysis")]
@@ -40,6 +42,9 @@ public class VolumeAnalysisFunction
     {
         try
         {
+            // Ensure volumes are migrated from Tables to Blob storage
+            await _migrationService.MigrateJobVolumesToBlobAsync(jobId);
+            
             var analysisJobId = Guid.NewGuid().ToString();
             
             var analysisJob = new AnalysisJob
@@ -114,6 +119,9 @@ public class VolumeAnalysisFunction
     {
         try
         {
+            // Ensure volumes are migrated from Tables to Blob storage
+            await _migrationService.MigrateJobVolumesToBlobAsync(jobId);
+            
             var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
             var workloadFilter = query["workloadFilter"];
             var statusFilter = query["statusFilter"];
