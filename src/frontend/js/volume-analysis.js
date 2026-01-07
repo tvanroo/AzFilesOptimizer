@@ -15,9 +15,9 @@ const volumeAnalysis = {
     },
 
     async loadJobs() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/discovery-jobs`);
-            if (!response.ok) throw new Error('Failed to load jobs');
+    try {
+        const response = await fetch(`${API_BASE_URL}/jobs`);
+        if (!response.ok) throw new Error('Failed to load jobs');
             const jobs = await response.json();
             
             const selector = document.getElementById('jobSelector');
