@@ -11,12 +11,13 @@ const analysisPrompts = {
 
     async loadPrompts() {
         try {
-            const response = await fetch('/api/analysis-prompts');
+            const response = await fetch(`${API_BASE_URL}/analysis-prompts`);
+            if (!response.ok) throw new Error('Failed to load prompts');
             this.prompts = await response.json();
             this.renderPrompts();
         } catch (error) {
             console.error('Error loading prompts:', error);
-            alert('Error loading analysis prompts');
+            alert('Error loading analysis prompts: ' + error.message);
         }
     },
 
@@ -96,7 +97,7 @@ const analysisPrompts = {
                 priorities[prompt.PromptId] = prompt.Priority;
             });
 
-            const response = await fetch('/api/analysis-prompts/reorder', {
+            const response = await fetch(`${API_BASE_URL}/analysis-prompts/reorder`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ Priorities: priorities })
@@ -232,7 +233,8 @@ const analysisPrompts = {
 
     async loadWorkloadProfiles() {
         try {
-            const response = await fetch('/api/workload-profiles');
+            const response = await fetch(`${API_BASE_URL}/workload-profiles`);
+            if (!response.ok) throw new Error('Failed to load workload profiles');
             const profiles = await response.json();
             
             const select = document.getElementById('targetWorkload');
@@ -285,7 +287,7 @@ const analysisPrompts = {
     },
 
     async savePrompt(prompt) {
-        const url = prompt.PromptId ? `/api/analysis-prompts/${prompt.PromptId}` : '/api/analysis-prompts';
+        const url = prompt.PromptId ? `${API_BASE_URL}/analysis-prompts/${prompt.PromptId}` : `${API_BASE_URL}/analysis-prompts`;
         const method = prompt.PromptId ? 'PUT' : 'POST';
 
         const response = await fetch(url, {
@@ -301,7 +303,7 @@ const analysisPrompts = {
         if (!confirm('Are you sure you want to delete this prompt?')) return;
 
         try {
-            const response = await fetch(`/api/analysis-prompts/${promptId}`, { method: 'DELETE' });
+            const response = await fetch(`${API_BASE_URL}/analysis-prompts/${promptId}`, { method: 'DELETE' });
             if (!response.ok) throw new Error('Failed to delete prompt');
 
             alert('Prompt deleted successfully');

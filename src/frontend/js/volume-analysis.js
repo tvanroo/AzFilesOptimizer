@@ -16,7 +16,8 @@ const volumeAnalysis = {
 
     async loadJobs() {
         try {
-            const response = await fetch('/api/discovery-jobs');
+            const response = await fetch(`${API_BASE_URL}/discovery-jobs`);
+            if (!response.ok) throw new Error('Failed to load jobs');
             const jobs = await response.json();
             
             const selector = document.getElementById('jobSelector');
@@ -29,7 +30,8 @@ const volumeAnalysis = {
 
     async loadWorkloadProfiles() {
         try {
-            const response = await fetch('/api/workload-profiles');
+            const response = await fetch(`${API_BASE_URL}/workload-profiles`);
+            if (!response.ok) throw new Error('Failed to load workload profiles');
             const profiles = await response.json();
             
             const filterSelect = document.getElementById('workloadFilter');
@@ -59,12 +61,13 @@ const volumeAnalysis = {
         const confidenceMin = parseInt(document.getElementById('confidenceSlider').value) / 100;
 
         try {
-            let url = `/api/discovery/${this.currentJobId}/volumes?page=${this.currentPage}&pageSize=${this.pageSize}`;
+            let url = `${API_BASE_URL}/discovery/${this.currentJobId}/volumes?page=${this.currentPage}&pageSize=${this.pageSize}`;
             if (workloadFilter) url += `&workloadFilter=${workloadFilter}`;
             if (statusFilter) url += `&statusFilter=${statusFilter}`;
             if (confidenceMin > 0) url += `&confidenceMin=${confidenceMin}`;
 
             const response = await fetch(url);
+            if (!response.ok) throw new Error('Failed to load volumes');
             const data = await response.json();
             
             this.volumes = data.Volumes;
@@ -308,7 +311,8 @@ const volumeAnalysis = {
         `;
 
         // Load workloads and set current value
-        const response = await fetch('/api/workload-profiles');
+        const response = await fetch(`${API_BASE_URL}/workload-profiles`);
+        if (!response.ok) throw new Error('Failed to load workload profiles');
         const profiles = await response.json();
         const workloadSelect = document.getElementById('userWorkload');
         workloadSelect.innerHTML = '<option value="">Not confirmed</option>' +
@@ -348,7 +352,7 @@ const volumeAnalysis = {
         };
 
         try {
-            const response = await fetch(`/api/discovery/${this.currentJobId}/volumes/${volumeId}/annotations`, {
+            const response = await fetch(`${API_BASE_URL}/discovery/${this.currentJobId}/volumes/${volumeId}/annotations`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(annotations)
@@ -373,7 +377,7 @@ const volumeAnalysis = {
         if (!confirm('This will analyze all volumes in the selected job. Continue?')) return;
 
         try {
-            const response = await fetch(`/api/discovery/${this.currentJobId}/analyze`, {
+            const response = await fetch(`${API_BASE_URL}/discovery/${this.currentJobId}/analyze`, {
                 method: 'POST'
             });
 
@@ -393,7 +397,8 @@ const volumeAnalysis = {
     async pollAnalysisStatus(analysisJobId) {
         const checkStatus = async () => {
             try {
-                const response = await fetch(`/api/analysis/${analysisJobId}/status`);
+                const response = await fetch(`${API_BASE_URL}/analysis/${analysisJobId}/status`);
+                if (!response.ok) throw new Error('Failed to check status');
                 const status = await response.json();
                 
                 if (status.Status === 'Completed') {
@@ -416,7 +421,8 @@ const volumeAnalysis = {
         if (!this.currentJobId) return;
 
         try {
-            const response = await fetch(`/api/discovery/${this.currentJobId}/export?format=${format}`);
+            const response = await fetch(`${API_BASE_URL}/discovery/${this.currentJobId}/export?format=${format}`);
+            if (!response.ok) throw new Error('Failed to export data');
             const data = await response.text();
             
             const blob = new Blob([data], { type: format === 'csv' ? 'text/csv' : 'application/json' });
@@ -441,7 +447,7 @@ const volumeAnalysis = {
 
         const volumeIds = Array.from(this.selectedVolumes);
         try {
-            const response = await fetch(`/api/discovery/${this.currentJobId}/volumes/bulk-annotations`, {
+            const response = await fetch(`${API_BASE_URL}/discovery/${this.currentJobId}/volumes/bulk-annotations`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

@@ -8,12 +8,13 @@ const workloadProfiles = {
 
     async loadProfiles() {
         try {
-            const response = await fetch('/api/workload-profiles');
+            const response = await fetch(`${API_BASE_URL}/workload-profiles`);
+            if (!response.ok) throw new Error('Failed to load profiles');
             this.profiles = await response.json();
             this.renderProfilesList();
         } catch (error) {
             console.error('Error loading profiles:', error);
-            alert('Error loading workload profiles');
+            alert('Error loading workload profiles: ' + error.message);
         }
     },
 
@@ -221,7 +222,7 @@ const workloadProfiles = {
         };
 
         try {
-            const url = profile.ProfileId ? `/api/workload-profiles/${profile.ProfileId}` : '/api/workload-profiles';
+            const url = profile.ProfileId ? `${API_BASE_URL}/workload-profiles/${profile.ProfileId}` : `${API_BASE_URL}/workload-profiles`;
             const method = profile.ProfileId ? 'PUT' : 'POST';
             
             const response = await fetch(url, {
@@ -245,7 +246,7 @@ const workloadProfiles = {
         if (!confirm('Are you sure you want to delete this profile?')) return;
 
         try {
-            const response = await fetch(`/api/workload-profiles/${this.selectedProfile.ProfileId}`, {
+            const response = await fetch(`${API_BASE_URL}/workload-profiles/${this.selectedProfile.ProfileId}`, {
                 method: 'DELETE'
             });
 
@@ -264,7 +265,7 @@ const workloadProfiles = {
         if (!confirm('This will create default system profiles. Continue?')) return;
 
         try {
-            const response = await fetch('/api/workload-profiles/seed', { method: 'POST' });
+            const response = await fetch(`${API_BASE_URL}/workload-profiles/seed`, { method: 'POST' });
             if (!response.ok) throw new Error('Failed to seed profiles');
 
             alert('Default profiles created successfully');
