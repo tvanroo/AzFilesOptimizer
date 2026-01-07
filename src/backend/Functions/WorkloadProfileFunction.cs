@@ -22,7 +22,7 @@ public class WorkloadProfileFunction
 
     [Function("GetWorkloadProfiles")]
     public async Task<HttpResponseData> GetAll(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "workload-profiles")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "workload-profiles")] HttpRequestData req)
     {
         _logger.LogInformation("Getting all workload profiles");
 
@@ -45,7 +45,7 @@ public class WorkloadProfileFunction
 
     [Function("GetWorkloadProfile")]
     public async Task<HttpResponseData> GetById(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "workload-profiles/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "workload-profiles/{id}")] HttpRequestData req,
         string id)
     {
         _logger.LogInformation("Getting workload profile: {ProfileId}", id);
@@ -76,7 +76,7 @@ public class WorkloadProfileFunction
 
     [Function("CreateWorkloadProfile")]
     public async Task<HttpResponseData> Create(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "workload-profiles")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "workload-profiles")] HttpRequestData req)
     {
         _logger.LogInformation("Creating workload profile");
 
@@ -107,7 +107,7 @@ public class WorkloadProfileFunction
 
     [Function("UpdateWorkloadProfile")]
     public async Task<HttpResponseData> Update(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "workload-profiles/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "workload-profiles/{id}")] HttpRequestData req,
         string id)
     {
         _logger.LogInformation("Updating workload profile: {ProfileId}", id);
@@ -146,7 +146,7 @@ public class WorkloadProfileFunction
 
     [Function("DeleteWorkloadProfile")]
     public async Task<HttpResponseData> Delete(
-        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "workload-profiles/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "workload-profiles/{id}")] HttpRequestData req,
         string id)
     {
         _logger.LogInformation("Deleting workload profile: {ProfileId}", id);
@@ -175,7 +175,7 @@ public class WorkloadProfileFunction
 
     [Function("SeedWorkloadProfiles")]
     public async Task<HttpResponseData> SeedProfiles(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "workload-profiles/seed")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "workload-profiles/seed")] HttpRequestData req)
     {
         _logger.LogInformation("Seeding default workload profiles");
 

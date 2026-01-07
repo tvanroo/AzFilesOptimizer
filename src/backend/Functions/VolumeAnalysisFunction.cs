@@ -35,7 +35,7 @@ public class VolumeAnalysisFunction
 
     [Function("StartAnalysis")]
     public async Task<HttpResponseData> StartAnalysis(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "discovery/{jobId}/analyze")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "discovery/{jobId}/analyze")] HttpRequestData req,
         string jobId)
     {
         try
@@ -77,7 +77,7 @@ public class VolumeAnalysisFunction
 
     [Function("GetAnalysisStatus")]
     public async Task<HttpResponseData> GetStatus(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "analysis/{jobId}/status")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "analysis/{jobId}/status")] HttpRequestData req,
         string jobId)
     {
         try
@@ -109,7 +109,7 @@ public class VolumeAnalysisFunction
 
     [Function("GetVolumes")]
     public async Task<HttpResponseData> GetVolumes(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "discovery/{jobId}/volumes")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "discovery/{jobId}/volumes")] HttpRequestData req,
         string jobId)
     {
         try
@@ -139,7 +139,7 @@ public class VolumeAnalysisFunction
 
     [Function("UpdateVolumeAnnotations")]
     public async Task<HttpResponseData> UpdateAnnotations(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "discovery/{jobId}/volumes/{volumeId}/annotations")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "discovery/{jobId}/volumes/{volumeId}/annotations")] HttpRequestData req,
         string jobId,
         string volumeId)
     {
@@ -176,7 +176,7 @@ public class VolumeAnalysisFunction
 
     [Function("BulkUpdateAnnotations")]
     public async Task<HttpResponseData> BulkUpdate(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "discovery/{jobId}/volumes/bulk-annotations")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "discovery/{jobId}/volumes/bulk-annotations")] HttpRequestData req,
         string jobId)
     {
         try
@@ -204,7 +204,7 @@ public class VolumeAnalysisFunction
 
     [Function("ExportVolumes")]
     public async Task<HttpResponseData> Export(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "discovery/{jobId}/export")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "discovery/{jobId}/export")] HttpRequestData req,
         string jobId)
     {
         try

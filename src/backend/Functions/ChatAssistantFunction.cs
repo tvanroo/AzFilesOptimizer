@@ -25,7 +25,7 @@ public class ChatAssistantFunction
 
     [Function("ChatAssistant")]
     public async Task<HttpResponseData> Chat(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "discovery/{jobId}/chat")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "discovery/{jobId}/chat")] HttpRequestData req,
         string jobId)
     {
         _logger.LogInformation("Chat request for job: {JobId}", jobId);

@@ -22,7 +22,7 @@ public class AnalysisPromptFunction
 
     [Function("GetAnalysisPrompts")]
     public async Task<HttpResponseData> GetAll(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "analysis-prompts")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "analysis-prompts")] HttpRequestData req)
     {
         try
         {
@@ -42,7 +42,7 @@ public class AnalysisPromptFunction
 
     [Function("GetAnalysisPrompt")]
     public async Task<HttpResponseData> GetById(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "analysis-prompts/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "analysis-prompts/{id}")] HttpRequestData req,
         string id)
     {
         try
@@ -69,7 +69,7 @@ public class AnalysisPromptFunction
 
     [Function("CreateAnalysisPrompt")]
     public async Task<HttpResponseData> Create(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "analysis-prompts")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "analysis-prompts")] HttpRequestData req)
     {
         try
         {
@@ -106,7 +106,7 @@ public class AnalysisPromptFunction
 
     [Function("UpdateAnalysisPrompt")]
     public async Task<HttpResponseData> Update(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "analysis-prompts/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "analysis-prompts/{id}")] HttpRequestData req,
         string id)
     {
         try
@@ -145,7 +145,7 @@ public class AnalysisPromptFunction
 
     [Function("DeleteAnalysisPrompt")]
     public async Task<HttpResponseData> Delete(
-        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "analysis-prompts/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "analysis-prompts/{id}")] HttpRequestData req,
         string id)
     {
         try
@@ -165,7 +165,7 @@ public class AnalysisPromptFunction
 
     [Function("ReorderAnalysisPrompts")]
     public async Task<HttpResponseData> Reorder(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "analysis-prompts/reorder")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "analysis-prompts/reorder")] HttpRequestData req)
     {
         try
         {
