@@ -1,7 +1,8 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 using Azure.Data.Tables;
+using Azure;
+using System.Text.Json;
 using AzFilesOptimizer.Backend.Models;
 using AzFilesOptimizer.Backend.Services;
 
