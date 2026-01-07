@@ -314,6 +314,21 @@ const analysisPrompts = {
         }
     },
 
+    async seedPrompts() {
+        if (!confirm('This will create 7 default analysis prompts. Continue?')) return;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/analysis-prompts/seed`, { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to seed prompts');
+
+            alert('Default prompts created successfully');
+            await this.loadPrompts();
+        } catch (error) {
+            console.error('Error seeding prompts:', error);
+            alert('Error seeding prompts');
+        }
+    },
+
     truncate(text, length) {
         if (!text) return '';
         return text.length > length ? text.substring(0, length) + '...' : text;

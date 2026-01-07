@@ -188,4 +188,27 @@ public class AnalysisPromptFunction
             return response;
         }
     }
+
+    [Function("SeedAnalysisPrompts")]
+    public async Task<HttpResponseData> SeedPrompts(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "analysis-prompts/seed")] HttpRequestData req)
+    {
+        _logger.LogInformation("Seeding default analysis prompts");
+
+        try
+        {
+            await _promptService.SeedDefaultPromptsAsync();
+            
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteStringAsync("Default analysis prompts seeded successfully");
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error seeding analysis prompts");
+            var response = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await response.WriteStringAsync($"Error: {ex.Message}");
+            return response;
+        }
+    }
 }
