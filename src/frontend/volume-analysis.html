@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volume Analysis - AzFilesOptimizer</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        .analysis-container { padding: 20px; }
+        .analysis-header { margin-bottom: 30px; }
+        .toolbar { 
+            display: flex; 
+            gap: 15px; 
+            align-items: center; 
+            padding: 20px; 
+            background: #f5f5f5; 
+            border-radius: 6px;
+            flex-wrap: wrap;
+        }
+        .toolbar select, .toolbar input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn-primary { background: #2196f3; color: white; }
+        .btn-success { background: #4caf50; color: white; }
+        .btn-danger { background: #f44336; color: white; }
+        .volumes-grid { 
+            margin-top: 20px; 
+            border: 1px solid #ddd; 
+            border-radius: 6px; 
+            overflow: hidden;
+        }
+        .grid-header { 
+            display: grid; 
+            grid-template-columns: 40px 200px 200px 100px 150px 150px 120px 120px; 
+            background: #f5f5f5; 
+            font-weight: 600; 
+            padding: 12px;
+            border-bottom: 2px solid #ddd;
+        }
+        .grid-row { 
+            display: grid; 
+            grid-template-columns: 40px 200px 200px 100px 150px 150px 120px 120px; 
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .grid-row:hover { background: #f9f9f9; }
+        .grid-row.selected { background: #e3f2fd; }
+        .status-icon { text-align: center; font-size: 18px; }
+        .confidence-bar {
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(to right, #f44336, #ff9800, #4caf50);
+            transition: width 0.3s;
+        }
+        .bulk-toolbar {
+            display: none;
+            padding: 15px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            align-items: center;
+            gap: 15px;
+        }
+        .bulk-toolbar.show { display: flex; }
+        .detail-panel {
+            position: fixed;
+            right: -600px;
+            top: 0;
+            width: 600px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.2);
+            transition: right 0.3s;
+            overflow-y: auto;
+            z-index: 1000;
+        }
+        .detail-panel.show { right: 0; }
+        .detail-header {
+            padding: 20px;
+            background: #2196f3;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .detail-content { padding: 20px; }
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #ddd;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab.active {
+            border-bottom-color: #2196f3;
+            color: #2196f3;
+            font-weight: 600;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .property-grid {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .property-label { font-weight: 600; color: #666; }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-success { background: #4caf50; color: white; }
+        .badge-warning { background: #ff9800; color: white; }
+        .badge-danger { background: #f44336; color: white; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-weight: 600; margin-bottom: 5px; }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+            padding: 20px;
+        }
+        .page-btn {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .page-btn:hover { background: #f5f5f5; }
+        .page-btn.active { background: #2196f3; color: white; border-color: #2196f3; }
+    </style>
+</head>
+<body>
+    <header>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1>AzFilesOptimizer</h1>
+            <div id="auth-section">
+                <div id="signed-out-view" style="display: none;">
+                    <button class="btn" onclick="window.location.href='index.html'" style="background-color: white; color: var(--primary-color);">Sign In</button>
+                </div>
+                <div id="signed-in-view" style="display: none;">
+                    <span id="user-name" style="color: white; margin-right: 1rem;"></span>
+                    <button class="btn" onclick="window.location.href='index.html'" style="background-color: transparent; border: 1px solid white;">Home</button>
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="jobs.html">Jobs</a></li>
+            <li><a href="workload-profiles.html">Workload Profiles</a></li>
+            <li><a href="analysis-prompts.html">Analysis Prompts</a></li>
+            <li><a href="volume-analysis.html" class="active">Volume Analysis</a></li>
+            <li><a href="volume-chat.html">AI Assistant</a></li>
+            <li><a href="settings.html">Settings</a></li>
+        </ul>
+    </nav>
+    
+    <main>
+
+        <div class="analysis-container">
+            <div class="analysis-header">
+                <h2>Volume Analysis & Review</h2>
+                <div class="toolbar">
+                    <div>
+                        <label>Discovery Job</label>
+                        <select id="jobSelector" onchange="volumeAnalysis.loadVolumes()"></select>
+                    </div>
+                    <div>
+                        <label>Workload Filter</label>
+                        <select id="workloadFilter" onchange="volumeAnalysis.applyFilters()">
+                            <option value="">All Workloads</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Status Filter</label>
+                        <select id="statusFilter" onchange="volumeAnalysis.applyFilters()">
+                            <option value="">All Status</option>
+                            <option value="Candidate">Candidate</option>
+                            <option value="Excluded">Excluded</option>
+                            <option value="UnderReview">Under Review</option>
+                            <option value="Approved">Approved</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Min Confidence</label>
+                        <input type="range" id="confidenceSlider" min="0" max="100" value="0" oninput="volumeAnalysis.applyFilters()">
+                        <span id="confidenceValue">0%</span>
+                    </div>
+                    <button class="btn btn-primary" onclick="volumeAnalysis.runAnalysis()">Run Analysis</button>
+                    <button class="btn btn-success" onclick="volumeAnalysis.exportData('json')">Export JSON</button>
+                    <button class="btn btn-success" onclick="volumeAnalysis.exportData('csv')">Export CSV</button>
+                </div>
+            </div>
+
+            <div id="bulkToolbar" class="bulk-toolbar">
+                <span id="selectedCount">0 selected</span>
+                <button class="btn btn-primary" onclick="volumeAnalysis.bulkApprove()">Approve AI Suggestion</button>
+                <select id="bulkWorkload">
+                    <option value="">Assign Workload...</option>
+                </select>
+                <button class="btn btn-danger" onclick="volumeAnalysis.bulkExclude()">Exclude Selected</button>
+                <button class="btn" onclick="volumeAnalysis.clearSelection()">Clear Selection</button>
+            </div>
+
+            <div class="volumes-grid">
+                <div class="grid-header">
+                    <div><input type="checkbox" id="selectAll" onchange="volumeAnalysis.toggleSelectAll()"></div>
+                    <div>Volume Name</div>
+                    <div>Storage Account</div>
+                    <div>Size (GiB)</div>
+                    <div>AI Workload</div>
+                    <div>User Workload</div>
+                    <div>Confidence</div>
+                    <div>Status</div>
+                </div>
+                <div id="volumesGrid"></div>
+            </div>
+
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </main>
+
+    <div id="detailPanel" class="detail-panel">
+        <div class="detail-header">
+            <h3 id="detailTitle">Volume Details</h3>
+            <button class="btn" onclick="volumeAnalysis.closeDetail()" style="background: rgba(255,255,255,0.2);">Close</button>
+        </div>
+        <div class="detail-content" id="detailContent"></div>
+    </div>
+
+    <script src="js/lib/msal-browser.min.js"></script>
+    <script src="js/auth-config.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/api-client.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/volume-analysis.js"></script>
+</body>
+</html>
