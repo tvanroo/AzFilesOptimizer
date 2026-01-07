@@ -1,0 +1,38 @@
+<step title="BackgroundTrace" date="2026-01-07T19:14:30.546" instance="c22980" url="/api/zipdeploy" method="POST" >
+  <step title="Updating shutdown sentinel last write time" date="2026-01-07T19:14:30.593" SemaphoreCount="7" /><!-- duration: 0ms -->
+  <step title="LockFile &apos;C:\home\site\locks\deployments.lock&apos; acquired" date="2026-01-07T19:14:30.609" /><!-- duration: 0ms -->
+  <step title="Creating temporary deployment" date="2026-01-07T19:14:30.609" /><!-- duration: 63ms -->
+  <step title="Performing fetch based deployment" date="2026-01-07T19:14:30.671" >
+    <step title="Fetching changes." date="2026-01-07T19:14:30.734" /><!-- duration: 31ms -->
+    <step title="Starting LocalZipHandler" date="2026-01-07T19:14:30.765" /><!-- duration: 0ms -->
+    <step title="Starting ExtractTriggers" date="2026-01-07T19:14:30.781" /><!-- duration: 0ms -->
+    <step title="Before sending BuildRequestReceived status to /api/updatedeploystatus" date="2026-01-07T19:14:30.827" /><!-- duration: 0ms -->
+    <step title="DeploymentManager.Deploy(id:91b22abf2cbf42fdad541d3e9ec4c25b)" date="2026-01-07T19:14:30.843" >
+      <step title="Collecting changeset information" date="2026-01-07T19:14:30.843" /><!-- duration: 141ms -->
+      <step title="Updating submodules" date="2026-01-07T19:14:30.984" >
+        <step title="Updating submodules." date="2026-01-07T19:14:31.031" /><!-- duration: 16ms -->
+      </step><!-- duration: 63ms -->
+      <step title="Preparing deployment for commit id &apos;91b22abf2c&apos;." date="2026-01-07T19:14:31.109" /><!-- duration: 16ms -->
+      <step title="Determining deployment builder" date="2026-01-07T19:14:31.171" >
+        <step title="Builder is RunFromZipSiteBuilder" date="2026-01-07T19:14:31.171" /><!-- duration: 16ms -->
+      </step><!-- duration: 16ms -->
+      <step title="Copying SSH keys" date="2026-01-07T19:14:31.202" /><!-- duration: 16ms -->
+      <step title="Building" date="2026-01-07T19:14:31.218" >
+        <step title="Skipping build. Project type: Run-From-Zip" date="2026-01-07T19:14:31.296" /><!-- duration: 0ms -->
+        <step title="Skipping post build. Project type: Run-From-Zip" date="2026-01-07T19:14:31.327" /><!-- duration: 16ms -->
+        <step title="Triggering recycle (preview mode disabled)." date="2026-01-07T19:14:31.390" /><!-- duration: 16ms -->
+        <step title="Ignoring FS watcher based recycle request as this is a classic Windows app." date="2026-01-07T19:14:31.406" /><!-- duration: 0ms -->
+        <step title="Deployment successful. DEPLOYMENTINFO: deploymentPath = Functions App ZipDeploy. Run from package., deployer = GITHUB_ZIP_DEPLOY_FUNCTIONS_V1, os = windows, sku = Dynamic, language = dotnet, siteName = azfo-dev-func-xy76b, slotName = Production, siteHostName = azfo-dev-func-xy76b.azurewebsites.net, deploymentStatus = Success" date="2026-01-07T19:14:31.452" /><!-- duration: 0ms -->
+        <step title="Purge deployment items" date="2026-01-07T19:14:31.546" >
+          <step title="Remove c190599de, Success, received at 1/6/2026 2:38:35 AM" date="2026-01-07T19:14:31.609" /><!-- duration: 16ms -->
+        </step><!-- duration: 78ms -->
+      </step><!-- duration: 422ms -->
+    </step><!-- duration: 797ms -->
+    <step title="Cleaning up temp files" date="2026-01-07T19:14:31.640" /><!-- duration: 16ms -->
+    <step title="Updating C:\home\data\SitePackages\packagename.txt with deployment 20260107191429.zip" date="2026-01-07T19:14:31.656" /><!-- duration: 62ms -->
+    <step title="Begin HttpPost https://azfo-dev-func-xy76b.scm.azurewebsites.net/operations/settriggers, x-ms-request-id: f24b90d0-20ac-4273-9403-b7c7ac3845a0" date="2026-01-07T19:14:31.765" /><!-- duration: 0ms -->
+    <step title="End HttpPost, status: OK" date="2026-01-07T19:14:32.077" /><!-- duration: 16ms -->
+    <step title="Scheduling background sync triggers after delay" date="2026-01-07T19:14:32.093" /><!-- duration: 0ms -->
+  </step><!-- duration: 1469ms -->
+  <step title="LockFile &apos;C:\home\site\locks\deployments.lock&apos; released" date="2026-01-07T19:14:32.156" /><!-- duration: 0ms -->
+</step><!-- duration: 1610ms -->

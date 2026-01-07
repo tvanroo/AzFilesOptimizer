@@ -1,5 +1,241 @@
 [
   {
+    "name": "AnalysisProcessor",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.AnalysisProcessorFunction.Run",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "message",
+        "direction": "In",
+        "type": "queueTrigger",
+        "dataType": "String",
+        "queueName": "analysis-queue",
+        "connection": "AzureWebJobsStorage",
+        "properties": {}
+      }
+    ]
+  },
+  {
+    "name": "GetAnalysisPrompts",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.AnalysisPromptFunction.GetAll",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "analysis-prompts",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "GetAnalysisPrompt",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.AnalysisPromptFunction.GetById",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "analysis-prompts/{id}",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "CreateAnalysisPrompt",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.AnalysisPromptFunction.Create",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "post"
+        ],
+        "route": "analysis-prompts",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "UpdateAnalysisPrompt",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.AnalysisPromptFunction.Update",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "put"
+        ],
+        "route": "analysis-prompts/{id}",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "DeleteAnalysisPrompt",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.AnalysisPromptFunction.Delete",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "delete"
+        ],
+        "route": "analysis-prompts/{id}",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "ReorderAnalysisPrompts",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.AnalysisPromptFunction.Reorder",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "put"
+        ],
+        "route": "analysis-prompts/reorder",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "SeedAnalysisPrompts",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.AnalysisPromptFunction.SeedPrompts",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "post"
+        ],
+        "route": "analysis-prompts/seed",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "ChatAssistant",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.ChatAssistantFunction.Chat",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "post"
+        ],
+        "route": "discovery/{jobId}/chat",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
     "name": "Health",
     "scriptFile": "AzFilesOptimizer.Backend.dll",
     "entryPoint": "AzFilesOptimizer.Backend.Functions.HealthFunction.Run",
@@ -145,6 +381,33 @@
           "get"
         ],
         "route": "jobs/{jobId}/shares",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "GetShareMetricsRaw",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.JobsFunction.GetShareMetricsRaw",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "jobs/{jobId}/shares/metricsraw",
         "properties": {}
       },
       {
@@ -344,6 +607,60 @@
     ]
   },
   {
+    "name": "GetModelPreferences",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.SettingsFunction.GetModelPreferences",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "settings/model-preferences",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "UpdateModelPreferences",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.SettingsFunction.UpdateModelPreferences",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "put"
+        ],
+        "route": "settings/model-preferences",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
     "name": "GetSubscriptions",
     "scriptFile": "AzFilesOptimizer.Backend.dll",
     "entryPoint": "AzFilesOptimizer.Backend.Functions.SubscriptionsFunction.GetSubscriptions",
@@ -361,6 +678,357 @@
           "get"
         ],
         "route": "subscriptions",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "StartAnalysis",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.VolumeAnalysisFunction.StartAnalysis",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "post"
+        ],
+        "route": "discovery/{jobId}/analyze",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "GetAnalysisStatus",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.VolumeAnalysisFunction.GetStatus",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "analysis/{jobId}/status",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "GetAnalysisLogs",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.VolumeAnalysisFunction.GetLogs",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "analysis/{jobId}/logs",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "GetVolumes",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.VolumeAnalysisFunction.GetVolumes",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "discovery/{jobId}/volumes",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "UpdateVolumeAnnotations",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.VolumeAnalysisFunction.UpdateAnnotations",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "put"
+        ],
+        "route": "discovery/{jobId}/volumes/{volumeId}/annotations",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "BulkUpdateAnnotations",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.VolumeAnalysisFunction.BulkUpdate",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "put"
+        ],
+        "route": "discovery/{jobId}/volumes/bulk-annotations",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "ExportVolumes",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.VolumeAnalysisFunction.Export",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "discovery/{jobId}/export",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "GetWorkloadProfiles",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.WorkloadProfileFunction.GetAll",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "workload-profiles",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "GetWorkloadProfile",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.WorkloadProfileFunction.GetById",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "get"
+        ],
+        "route": "workload-profiles/{id}",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "CreateWorkloadProfile",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.WorkloadProfileFunction.Create",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "post"
+        ],
+        "route": "workload-profiles",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "UpdateWorkloadProfile",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.WorkloadProfileFunction.Update",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "put"
+        ],
+        "route": "workload-profiles/{id}",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "DeleteWorkloadProfile",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.WorkloadProfileFunction.Delete",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "delete"
+        ],
+        "route": "workload-profiles/{id}",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "SeedWorkloadProfiles",
+    "scriptFile": "AzFilesOptimizer.Backend.dll",
+    "entryPoint": "AzFilesOptimizer.Backend.Functions.WorkloadProfileFunction.SeedProfiles",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Anonymous",
+        "methods": [
+          "post"
+        ],
+        "route": "workload-profiles/seed",
         "properties": {}
       },
       {

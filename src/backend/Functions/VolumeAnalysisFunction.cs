@@ -60,7 +60,7 @@ public class VolumeAnalysisFunction
             await _analysisJobsTable.AddEntityAsync(analysisJob);
             
             // Queue analysis message
-            var message = JsonSerializer.Serialize(new { analysisJobId, discoveryJobId = jobId });
+            var message = JsonSerializer.Serialize(new { AnalysisJobId = analysisJobId, DiscoveryJobId = jobId });
             await _analysisQueue.SendMessageAsync(message);
             
             _logger.LogInformation("Started analysis job {AnalysisJobId} for discovery {DiscoveryJobId}", analysisJobId, jobId);

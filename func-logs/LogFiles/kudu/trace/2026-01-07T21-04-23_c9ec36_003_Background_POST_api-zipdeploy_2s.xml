@@ -1,0 +1,38 @@
+<step title="BackgroundTrace" date="2026-01-07T21:04:23.097" instance="c9ec36" url="/api/zipdeploy" method="POST" >
+  <step title="Updating shutdown sentinel last write time" date="2026-01-07T21:04:23.113" SemaphoreCount="7" /><!-- duration: 0ms -->
+  <step title="LockFile &apos;C:\home\site\locks\deployments.lock&apos; acquired" date="2026-01-07T21:04:23.113" /><!-- duration: 16ms -->
+  <step title="Creating temporary deployment" date="2026-01-07T21:04:23.129" /><!-- duration: 47ms -->
+  <step title="Performing fetch based deployment" date="2026-01-07T21:04:23.191" >
+    <step title="Fetching changes." date="2026-01-07T21:04:23.285" /><!-- duration: 16ms -->
+    <step title="Starting LocalZipHandler" date="2026-01-07T21:04:23.300" /><!-- duration: 0ms -->
+    <step title="Starting ExtractTriggers" date="2026-01-07T21:04:23.316" /><!-- duration: 0ms -->
+    <step title="Before sending BuildRequestReceived status to /api/updatedeploystatus" date="2026-01-07T21:04:23.363" /><!-- duration: 16ms -->
+    <step title="DeploymentManager.Deploy(id:7bf7a3334ad049159b0ff5697332c5b2)" date="2026-01-07T21:04:23.379" >
+      <step title="Collecting changeset information" date="2026-01-07T21:04:23.394" /><!-- duration: 31ms -->
+      <step title="Updating submodules" date="2026-01-07T21:04:23.425" >
+        <step title="Updating submodules." date="2026-01-07T21:04:23.488" /><!-- duration: 0ms -->
+      </step><!-- duration: 62ms -->
+      <step title="Preparing deployment for commit id &apos;7bf7a3334a&apos;." date="2026-01-07T21:04:23.535" /><!-- duration: 0ms -->
+      <step title="Determining deployment builder" date="2026-01-07T21:04:23.566" >
+        <step title="Builder is RunFromZipSiteBuilder" date="2026-01-07T21:04:23.582" /><!-- duration: 16ms -->
+      </step><!-- duration: 31ms -->
+      <step title="Copying SSH keys" date="2026-01-07T21:04:23.629" /><!-- duration: 0ms -->
+      <step title="Building" date="2026-01-07T21:04:23.645" >
+        <step title="Skipping build. Project type: Run-From-Zip" date="2026-01-07T21:04:23.675" /><!-- duration: 0ms -->
+        <step title="Skipping post build. Project type: Run-From-Zip" date="2026-01-07T21:04:23.738" /><!-- duration: 0ms -->
+        <step title="Triggering recycle (preview mode disabled)." date="2026-01-07T21:04:23.785" /><!-- duration: 0ms -->
+        <step title="Ignoring FS watcher based recycle request as this is a classic Windows app." date="2026-01-07T21:04:23.785" /><!-- duration: 0ms -->
+        <step title="Deployment successful. DEPLOYMENTINFO: deploymentPath = Functions App ZipDeploy. Run from package., deployer = az_cli_functions, os = windows, sku = Dynamic, language = dotnet-isolated, siteName = azfo-dev-func-xy76b, slotName = Production, siteHostName = azfo-dev-func-xy76b.azurewebsites.net, deploymentStatus = Success" date="2026-01-07T21:04:23.832" /><!-- duration: 16ms -->
+        <step title="Purge deployment items" date="2026-01-07T21:04:24.550" >
+          <step title="Remove d08355444, Success, received at 1/6/2026 8:37:51 PM" date="2026-01-07T21:04:24.597" /><!-- duration: 0ms -->
+        </step><!-- duration: 47ms -->
+      </step><!-- duration: 984ms -->
+    </step><!-- duration: 1250ms -->
+    <step title="Cleaning up temp files" date="2026-01-07T21:04:24.644" /><!-- duration: 0ms -->
+    <step title="Updating C:\home\data\SitePackages\packagename.txt with deployment 20260107210422.zip" date="2026-01-07T21:04:24.660" /><!-- duration: 78ms -->
+    <step title="Begin HttpPost https://azfo-dev-func-xy76b.scm.azurewebsites.net/operations/settriggers, x-ms-request-id: 5defa08c-ec0c-11f0-bdb3-525400df94ca" date="2026-01-07T21:04:24.800" /><!-- duration: 16ms -->
+    <step title="End HttpPost, status: OK" date="2026-01-07T21:04:25.129" /><!-- duration: 0ms -->
+    <step title="Scheduling background sync triggers after delay" date="2026-01-07T21:04:25.129" /><!-- duration: 16ms -->
+  </step><!-- duration: 2016ms -->
+  <step title="LockFile &apos;C:\home\site\locks\deployments.lock&apos; released" date="2026-01-07T21:04:25.207" /><!-- duration: 16ms -->
+</step><!-- duration: 2125ms -->

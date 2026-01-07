@@ -81,15 +81,26 @@ public class AnalysisProcessorFunction
             analysisJob.ProcessedVolumes = 0;
             await _analysisJobsTable.UpdateEntityAsync(analysisJob, analysisJob.ETag, TableUpdateMode.Replace);
 
-            // Get API key configuration (use a system user ID or get from job)
-            var apiKeyConfig = await _apiKeyService.GetApiKeyAsync("system");
+            // Get API key configuration (use default-user for now)
+            var apiKeyConfig = await _apiKeyService.GetApiKeyAsync("default-user");
             if (apiKeyConfig == null)
             {
                 throw new InvalidOperationException("No API key configured");
             }
 
+            if (string.IsNullOrEmpty(apiKeyConfig.KeyVaultSecretName))
+            {
+                throw new InvalidOperationException("API key not configured in Key Vault");
+            }
+
             // Get API key from Key Vault
-            var apiKey = await GetApiKeyFromKeyVaultAsync(apiKeyConfig.KeyVaultSecretName);
+            var keyVaultService = new KeyVaultService();
+            var apiKey = await keyVaultService.GetApiKeyAsync("default-user");
+            
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                throw new InvalidOperationException("Failed to retrieve API key from Key Vault");
+            }
             
             // Create analysis service
             var analysisService = new VolumeAnalysisService(
@@ -101,7 +112,7 @@ public class AnalysisProcessorFunction
             // Execute analysis
             await analysisService.AnalyzeVolumesAsync(
                 discoveryJobId,
-                "system",
+                "default-user",
                 apiKey,
                 apiKeyConfig.Provider,
                 apiKeyConfig.Endpoint,
@@ -126,17 +137,6 @@ public class AnalysisProcessorFunction
         }
     }
 
-    private async Task<string> GetApiKeyFromKeyVaultAsync(string secretName)
-    {
-        // TODO: Implement Key Vault integration
-        // For now, return from environment variable
-        var apiKey = Environment.GetEnvironmentVariable("OpenAI_ApiKey");
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("API key not found in environment variables");
-        }
-        return apiKey;
-    }
 
     private class AnalysisQueueMessage
     {

@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<deployment>
+  <id>65aadc7a64024684a353ba24a1a06191</id>
+  <author>N/A</author>
+  <deployer>GITHUB_ZIP_DEPLOY_FUNCTIONS_V1</deployer>
+  <authorEmail>N/A</authorEmail>
+  <message>{"type":"deployment","sha":"75d1fc005c5b2bdd98504fc091f21c388f54193f","repoName":"tvanroo/AzFilesOptimizer","actor":"tvanroo","slotName":"production"}</message>
+  <progress></progress>
+  <status>Success</status>
+  <statusText></statusText>
+  <lastSuccessEndTime>2026-01-07T19:44:49.0787444Z</lastSuccessEndTime>
+  <receivedTime>2026-01-07T19:44:48.6881208Z</receivedTime>
+  <startTime>2026-01-07T19:44:48.7974927Z</startTime>
+  <endTime>2026-01-07T19:44:49.0787444Z</endTime>
+  <complete>True</complete>
+  <is_temp>False</is_temp>
+  <is_readonly>True</is_readonly>
+  <project_type>Run-From-Zip</project_type>
+  <vsproject_id></vsproject_id>
+</deployment>

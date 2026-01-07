@@ -1,0 +1,34 @@
+<step title="BackgroundTrace" date="2026-01-07T19:14:32.109" instance="c22980" url="synctriggers-operation" method="POST" >
+  <step title="Updating shutdown sentinel last write time" date="2026-01-07T19:14:32.109" SemaphoreCount="6" /><!-- duration: 0ms -->
+  <step title="Delaying &apos;00:01:00&apos; for Functions site to restart." date="2026-01-07T19:14:32.124" /><!-- duration: 0ms -->
+  <step title="Begin HttpPost https://azfo-dev-func-xy76b.azurewebsites.net/admin/host/synctriggers, x-ms-request-id: f24b90d0-20ac-4273-9403-b7c7ac3845a0" date="2026-01-07T19:15:32.152" /><!-- duration: 0ms -->
+  <step title="End HttpPost, status: ServiceUnavailable" date="2026-01-07T19:15:32.558" /><!-- duration: 16ms -->
+  <step title="Begin HttpPost https://azfo-dev-func-xy76b.azurewebsites.net/admin/host/synctriggers, x-ms-request-id: f24b90d0-20ac-4273-9403-b7c7ac3845a0" date="2026-01-07T19:15:33.589" /><!-- duration: 0ms -->
+  <step title="End HttpPost, status: ServiceUnavailable" date="2026-01-07T19:15:33.636" /><!-- duration: 16ms -->
+  <step title="Begin HttpPost https://azfo-dev-func-xy76b.azurewebsites.net/admin/host/synctriggers, x-ms-request-id: f24b90d0-20ac-4273-9403-b7c7ac3845a0" date="2026-01-07T19:15:34.675" /><!-- duration: 2ms -->
+  <step title="End HttpPost, status: ServiceUnavailable" date="2026-01-07T19:15:34.708" /><!-- duration: 16ms -->
+  <step title="Syncing function triggers by calling the functions runtime site failed. System.Net.Http.HttpRequestException: Response status code does not indicate success: 503 (Service Unavailable).
+   at System.Net.Http.HttpResponseMessage.EnsureSuccessStatusCode()
+   at Kudu.Core.Helpers.PostDeploymentHelper.&lt;PostAsync&gt;d__49.MoveNext()
+--- End of stack trace from previous location where exception was thrown ---
+   at System.Runtime.CompilerServices.TaskAwaiter.ThrowForNonSuccess(Task task)
+   at System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
+   at Kudu.Core.Helpers.PostDeploymentHelper.&lt;&gt;c__DisplayClass38_0.&lt;&lt;TryFunctionsRuntimeSyncTriggers&gt;b__1&gt;d.MoveNext()
+--- End of stack trace from previous location where exception was thrown ---
+   at System.Runtime.CompilerServices.TaskAwaiter.ThrowForNonSuccess(Task task)
+   at System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
+   at Kudu.Core.Infrastructure.OperationManager.&lt;&gt;c__DisplayClass4_0.&lt;&lt;AttemptAsync&gt;b__0&gt;d.MoveNext()
+--- End of stack trace from previous location where exception was thrown ---
+   at System.Runtime.CompilerServices.TaskAwaiter.ThrowForNonSuccess(Task task)
+   at System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
+   at Kudu.Core.Infrastructure.OperationManager.&lt;AttemptAsync&gt;d__5`1.MoveNext()
+--- End of stack trace from previous location where exception was thrown ---
+   at System.Runtime.CompilerServices.TaskAwaiter.ThrowForNonSuccess(Task task)
+   at System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
+   at Kudu.Core.Helpers.PostDeploymentHelper.&lt;TryFunctionsRuntimeSyncTriggers&gt;d__38.MoveNext()" date="2026-01-07T19:15:34.724" /><!-- duration: 0ms -->
+  <step title="Attempting to perform settriggers call directly." date="2026-01-07T19:15:34.724" /><!-- duration: 16ms -->
+  <step title="Begin HttpPost https://azfo-dev-func-xy76b.scm.azurewebsites.net/operations/settriggers, x-ms-request-id: f24b90d0-20ac-4273-9403-b7c7ac3845a0" date="2026-01-07T19:15:34.755" /><!-- duration: 16ms -->
+  <step title="End HttpPost, status: OK" date="2026-01-07T19:15:34.833" /><!-- duration: 0ms -->
+  <step title="Syncing 0 function triggers with payload size 15 bytes successful." date="2026-01-07T19:15:34.849" /><!-- duration: 0ms -->
+  <step title="Deleting shutdown sentinel file" date="2026-01-07T19:15:34.849" SemaphoreCount="8" /><!-- duration: 0ms -->
+</step><!-- duration: 62756ms -->
