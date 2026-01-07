@@ -60,12 +60,25 @@ public class AnalysisProcessorFunction
 
         var job = await _analysisJobsTable.GetEntityAsync<AnalysisJob>("AnalysisJob", analysisJobId);
         var analysisJob = job.Value;
+        
+        var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
 
         try
         {
-            // Update job status to Running
+            // First, get the discovery data to count volumes
+            var migrationService = new DiscoveryMigrationService(connectionString, _logger);
+            await migrationService.MigrateJobVolumesToBlobAsync(discoveryJobId);
+            
+            var annotationService = new VolumeAnnotationService(connectionString, _logger);
+            var discoveryData = await annotationService.GetDiscoveryDataAsync(discoveryJobId);
+            
+            int totalVolumes = discoveryData?.Volumes?.Count ?? 0;
+            
+            // Update job status to Running with volume count
             analysisJob.Status = AnalysisJobStatus.Running.ToString();
             analysisJob.StartedAt = DateTime.UtcNow;
+            analysisJob.TotalVolumes = totalVolumes;
+            analysisJob.ProcessedVolumes = 0;
             await _analysisJobsTable.UpdateEntityAsync(analysisJob, analysisJob.ETag, TableUpdateMode.Replace);
 
             // Get API key configuration (use a system user ID or get from job)
@@ -79,7 +92,6 @@ public class AnalysisProcessorFunction
             var apiKey = await GetApiKeyFromKeyVaultAsync(apiKeyConfig.KeyVaultSecretName);
             
             // Create analysis service
-            var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
             var analysisService = new VolumeAnalysisService(
                 connectionString,
                 _profileService,

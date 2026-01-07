@@ -14,6 +14,8 @@ public class VolumeAnalysisService
     private readonly WorkloadProfileService _profileService;
     private readonly AnalysisPromptService _promptService;
     private AnalysisLogService? _logService;
+    private Azure.Data.Tables.TableClient? _analysisJobsTable;
+    private string? _currentAnalysisJobId;
 
     public VolumeAnalysisService(
         string connectionString,
@@ -34,12 +36,17 @@ public class VolumeAnalysisService
     {
         _logger.LogInformation("Starting analysis for discovery job: {JobId}", discoveryJobId);
         
-        // Initialize log service if analysisJobId provided
+        // Initialize log service and job tracking if analysisJobId provided
         if (!string.IsNullOrEmpty(analysisJobId))
         {
+            _currentAnalysisJobId = analysisJobId;
             var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
             _logService = new AnalysisLogService(connectionString, _logger);
             await _logService.LogProgressAsync(analysisJobId, $"Starting analysis for discovery job: {discoveryJobId}");
+            
+            // Initialize table client for progress updates
+            var tableServiceClient = new Azure.Data.Tables.TableServiceClient(connectionString);
+            _analysisJobsTable = tableServiceClient.GetTableClient("AnalysisJobs");
         }
 
         // Load discovery data
@@ -92,6 +99,9 @@ public class VolumeAnalysisService
                     var workloadName = analysis.SuggestedWorkloadName ?? "Unclassified";
                     await _logService.LogVolumeCompleteAsync(analysisJobId, volumeWrapper.Volume.ShareName ?? "Unknown", workloadName, analysis.ConfidenceScore);
                 }
+                
+                // Update job progress
+                await UpdateJobProgressAsync(processedCount, failedCount);
             }
             catch (Exception ex)
             {
@@ -448,6 +458,27 @@ public class VolumeAnalysisService
         {
             _logger.LogError(ex, "Error saving discovery data for job: {JobId}", data.JobId);
             throw;
+        }
+    }
+    
+    private async Task UpdateJobProgressAsync(int processedCount, int failedCount)
+    {
+        if (_analysisJobsTable == null || string.IsNullOrEmpty(_currentAnalysisJobId))
+            return;
+            
+        try
+        {
+            var job = await _analysisJobsTable.GetEntityAsync<AnalysisJob>("AnalysisJob", _currentAnalysisJobId);
+            var analysisJob = job.Value;
+            
+            analysisJob.ProcessedVolumes = processedCount;
+            analysisJob.FailedVolumes = failedCount;
+            
+            await _analysisJobsTable.UpdateEntityAsync(analysisJob, Azure.ETag.All, Azure.Data.Tables.TableUpdateMode.Replace);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update job progress for {JobId}", _currentAnalysisJobId);
         }
     }
 }
