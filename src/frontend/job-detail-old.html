@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AzFilesOptimizer - Job Details</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>AzFilesOptimizer</h1>
+    </header>
+    
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="jobs.html">Jobs</a></li>
+            <li><a href="workload-profiles.html">Workload Profiles</a></li>
+            <li><a href="analysis-prompts.html">Analysis Prompts</a></li>
+            <li><a href="volume-analysis.html">Volume Analysis</a></li>
+            <li><a href="volume-chat.html">AI Assistant</a></li>
+            <li><a href="settings.html">Settings</a></li>
+        </ul>
+    </nav>
+    
+    <main>
+        <div style="margin-bottom: 1rem;">
+            <a href="jobs.html" style="color: var(--primary-color); text-decoration: none;">← Back to Jobs</a>
+        </div>
+        
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1.5rem;">
+                <div>
+                    <h2 id="job-id" style="margin-bottom: 0.5rem;">Job Details</h2>
+                    <div id="job-status-badge"></div>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn" id="view-results-btn" onclick="viewResults()" style="display: none; background-color: #2196F3; color: white;">📊 View Results</button>
+                    <button class="btn" id="run-job-btn" onclick="runJob()" style="display: none; background-color: #4CAF50;">▶ Run Job</button>
+                    <button class="btn" id="refresh-btn" onclick="loadJobDetails()">Refresh</button>
+                    <button class="btn" id="delete-job-btn" onclick="deleteJob()" style="background-color: #f44336; color: white;">🗑 Delete</button>
+                </div>
+            </div>
+            
+            <div id="job-details-container">
+                <div style="text-align: center; padding: 2rem;">
+                    <div class="loading"></div>
+                    <p style="margin-top: 1rem; color: var(--text-secondary);">Loading job details...</p>
+                </div>
+            </div>
+            
+            <div id="error-container" style="display: none;"></div>
+        </div>
+        
+        <div class="card" id="results-card" style="display: none;">
+            <h2>Results</h2>
+            <div id="results-container">
+                <p style="color: var(--text-secondary);">Results will appear here once the job completes.</p>
+            </div>
+        </div>
+        
+        <div class="card" id="logs-card" style="display: none;">
+            <h2>Execution Log</h2>
+            <div id="logs-container" style="background: var(--surface); padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.875rem; max-height: 400px; overflow-y: auto;">
+                <p style="color: var(--text-secondary);">No logs available yet.</p>
+            </div>
+        </div>
+    </main>
+    
+    <script src="js/lib/msal-browser.min.js"></script>
+    <script src="js/auth-config.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/api-client.js"></script>
+    <script src="js/toast.js"></script>
+    <script>
+        // Get job ID from URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const jobId = urlParams.get('id');
+        
+        // Mock job data (until backend endpoint is implemented)
+        const mockJobData = {
+            'disc-001': {
+                jobId: 'disc-001',
+                type: 'Discovery',
+                status: 'Completed',
+                created: new Date(Date.now() - 86400000).toISOString(),
+                updated: new Date(Date.now() - 82800000).toISOString(),
+                duration: '1h 15m',
+                scope: {
+                    subscriptionId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+                    resourceGroups: ['rg-filestorage-prod', 'rg-filestorage-dev']
+                },
+                results: {
+                    azureFilesShares: 12,
+                    anfVolumes: 3,
+                    totalCapacityTB: 45.2
+                },
+                logs: [
+                    '[2025-12-29 15:30:00] Job started',
+                    '[2025-12-29 15:30:05] Authenticating to Azure...',
+                    '[2025-12-29 15:30:08] Authentication successful',
+                    '[2025-12-29 15:30:10] Scanning subscription xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+                    '[2025-12-29 15:45:23] Found 12 Azure Files shares',
+                    '[2025-12-29 16:15:42] Found 3 ANF volumes',
+                    '[2025-12-29 16:45:15] Job completed successfully'
+                ]
+            },
+            'opt-001': {
+                jobId: 'opt-001',
+                type: 'Optimization',
+                status: 'Running',
+                created: new Date(Date.now() - 3600000).toISOString(),
+                updated: new Date(Date.now() - 300000).toISOString(),
+                duration: '55m (in progress)',
+                scope: {
+                    discoveryJobId: 'disc-001'
+                },
+                logs: [
+                    '[2025-12-30 14:00:00] Job started',
+                    '[2025-12-30 14:00:05] Loading discovery results from disc-001',
+                    '[2025-12-30 14:05:12] Analyzing 12 Azure Files shares',
+                    '[2025-12-30 14:35:45] Generating AI recommendations (8/12 complete)...'
+                ]
+            },
+            'disc-002': {
+                jobId: 'disc-002',
+                type: 'Discovery',
+                status: 'Pending',
+                created: new Date(Date.now() - 600000).toISOString(),
+                updated: new Date(Date.now() - 600000).toISOString(),
+                duration: '-',
+                scope: {
+                    subscriptionId: 'yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy',
+                    resourceGroups: ['rg-storage-test']
+                },
+                logs: [
+                    '[2025-12-30 14:50:00] Job queued, waiting to start...'
+                ]
+            }
+        };
+        
+        function formatDate(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleString();
+        }
+        
+        function getStatusBadge(status) {
+            // Handle both enum values (0,1,2,3,4) and string values
+            const statusMap = {
+                0: 'Pending',
+                1: 'Running',
+                2: 'Completed',
+                3: 'Failed',
+                4: 'Cancelled'
+            };
+            
+            let statusText = status;
+            if (typeof status === 'number') {
+                statusText = statusMap[status] || 'Unknown';
+            } else if (!status) {
+                statusText = 'Unknown';
+            }
+            
+            const statusLower = statusText.toLowerCase();
+            return `<span class="badge ${statusLower}">${statusText}</span>`;
+        }
+        
+        async function loadJobDetails() {
+            const detailsContainer = document.getElementById('job-details-container');
+            const errorContainer = document.getElementById('error-container');
+            const resultsCard = document.getElementById('results-card');
+            const logsCard = document.getElementById('logs-card');
+            
+            if (!jobId) {
+                errorContainer.style.display = 'block';
+                errorContainer.innerHTML = `
+                    <div class="error-message">
+                        <strong>Error:</strong> No job ID specified in URL
+                    </div>
+                `;
+                detailsContainer.style.display = 'none';
+                return;
+            }
+            
+            try {
+                // Call real API
+                const job = await apiClient.getJob(jobId);
+                
+                if (!job) {
+                    throw new Error('Job not found');
+                }
+                
+                // Update page title (API returns PascalCase)
+                const displayJobId = job.RowKey || job.JobId;
+                document.getElementById('job-id').textContent = `Job: ${displayJobId}`;
+                document.getElementById('job-status-badge').innerHTML = getStatusBadge(job.Status);
+                
+                // Show Run Job button if status is Pending
+                const runJobBtn = document.getElementById('run-job-btn');
+                if (job.Status === 0) { // Pending
+                    runJobBtn.style.display = 'inline-block';
+                } else {
+                    runJobBtn.style.display = 'none';
+                }
+                
+                // Show View Results button if status is Completed and has shares
+                const viewResultsBtn = document.getElementById('view-results-btn');
+                if (job.Status === 2 && (job.AzureFilesSharesFound > 0 || job.AnfVolumesFound > 0)) { // Completed
+                    viewResultsBtn.style.display = 'inline-block';
+                } else {
+                    viewResultsBtn.style.display = 'none';
+                }
+                
+                // Calculate duration
+                let duration = '-';
+                if (job.StartedAt && job.CompletedAt) {
+                    const start = new Date(job.StartedAt);
+                    const end = new Date(job.CompletedAt);
+                    const diffMs = end - start;
+                    const minutes = Math.floor(diffMs / 60000);
+                    duration = `${minutes}m`;
+                } else if (job.StartedAt) {
+                    duration = 'In progress';
+                }
+                
+                // Display job details
+                detailsContainer.innerHTML = `
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <label>Job ID</label>
+                            <strong>${displayJobId}</strong>
+                        </div>
+                        <div class="info-item">
+                            <label>Type</label>
+                            <strong>Discovery</strong>
+                        </div>
+                        <div class="info-item">
+                            <label>Status</label>
+                            <strong>${getStatusBadge(job.Status).replace(/<[^>]*>/g, (tag) => tag.includes('badge') ? '' : tag).replace('</span>', '')}</strong>
+                        </div>
+                        <div class="info-item">
+                            <label>Duration</label>
+                            <strong>${duration}</strong>
+                        </div>
+                        <div class="info-item">
+                            <label>Created</label>
+                            <strong>${formatDate(job.CreatedAt)}</strong>
+                        </div>
+                        <div class="info-item">
+                            <label>Last Updated</label>
+                            <strong>${job.UpdatedAt ? formatDate(job.UpdatedAt) : '-'}</strong>
+                        </div>
+                    </div>
+                    
+                    <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem;">Scope</h3>
+                    <div style="background: var(--surface); padding: 1rem; border-radius: 4px;">
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Subscription ID:</strong> ${job.SubscriptionId || '-'}
+                        </div>
+                        ${job.ResourceGroupNames && job.ResourceGroupNames.length > 0 ? `
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Resource Groups:</strong> ${job.ResourceGroupNames.join(', ')}
+                        </div>
+                        ` : ''}
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Tenant ID:</strong> ${job.TenantId || '-'}
+                        </div>
+                    </div>
+                    
+                    ${job.ErrorMessage ? `
+                    <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem;">Error Details</h3>
+                    <div style="background: var(--surface); padding: 1rem; border-radius: 4px; color: var(--error);">
+                        <strong>${job.ErrorMessage}</strong>
+                        ${job.ErrorDetails ? `<pre style="margin-top: 0.5rem; white-space: pre-wrap;">${job.ErrorDetails}</pre>` : ''}
+                    </div>
+                    ` : ''}
+                `;
+                
+                // Show results summary
+                const statusNum = typeof job.Status === 'number' ? job.Status : 0;
+                if (statusNum >= 1) { // Running or completed
+                    resultsCard.style.display = 'block';
+                    document.getElementById('results-container').innerHTML = `
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <label>Azure Files Shares Found</label>
+                                <strong>${job.AzureFilesSharesFound || 0}</strong>
+                            </div>
+                            <div class="info-item">
+                                <label>ANF Volumes Found</label>
+                                <strong>${job.AnfVolumesFound || 0}</strong>
+                            </div>
+                            <div class="info-item">
+                                <label>ANF Accounts Found</label>
+                                <strong>${job.AnfAccountsFound || 0}</strong>
+                            </div>
+                            <div class="info-item">
+                                <label>Total Capacity</label>
+                                <strong>${job.TotalCapacityBytes ? (job.TotalCapacityBytes / (1024**4)).toFixed(2) + ' TB' : '0 TB'}</strong>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Load and display logs
+                await loadLogs();
+                
+                // Auto-refresh logs if job is running
+                if (job.Status === 1) { // Running
+                    if (!window.logRefreshInterval) {
+                        window.logRefreshInterval = setInterval(async () => {
+                            await loadLogs();
+                            // Also refresh job status
+                            const currentJob = await apiClient.getJob(jobId);
+                            if (currentJob.Status !== 1) {
+                                clearInterval(window.logRefreshInterval);
+                                window.logRefreshInterval = null;
+                                loadJobDetails(); // Final refresh
+                            }
+                        }, 3000); // Refresh every 3 seconds
+                    }
+                } else if (window.logRefreshInterval) {
+                    clearInterval(window.logRefreshInterval);
+                    window.logRefreshInterval = null;
+                }
+                
+            } catch (error) {
+                detailsContainer.style.display = 'none';
+                errorContainer.style.display = 'block';
+                errorContainer.innerHTML = `
+                    <div class="error-message">
+                        <strong>Error loading job details:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        async function loadLogs() {
+            if (!jobId) return;
+            
+            const logsCard = document.getElementById('logs-card');
+            const logsContainer = document.getElementById('logs-container');
+            
+            try {
+                const logs = await apiClient.getJobLogs(jobId);
+                
+                if (logs && logs.length > 0) {
+                    logsCard.style.display = 'block';
+                    logsContainer.innerHTML = logs
+                        .map(log => `<div style="margin-bottom: 0.25rem;">${log.Message}</div>`)
+                        .join('');
+                    // Auto-scroll to bottom
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                } else {
+                    logsCard.style.display = 'block';
+                    logsContainer.innerHTML = '<p style="color: var(--text-secondary);">No logs available yet.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading logs:', error);
+            }
+        }
+        
+        function viewResults() {
+            if (!jobId) return;
+            window.location.href = `job-results.html?id=${jobId}`;
+        }
+        
+        async function runJob() {
+            if (!jobId) return;
+            
+            const runJobBtn = document.getElementById('run-job-btn');
+            runJobBtn.disabled = true;
+            runJobBtn.textContent = 'Starting...';
+            
+            try {
+                await apiClient.triggerJob(jobId);
+                Toast.success('Job started successfully! It will run in the background.');
+                
+                // Reload job details after a short delay
+                setTimeout(() => loadJobDetails(), 2000);
+            } catch (error) {
+                Toast.error('Failed to start job: ' + error.message);
+                runJobBtn.disabled = false;
+                runJobBtn.textContent = '▶ Run Job';
+            }
+        }
+        
+        async function deleteJob() {
+            if (!jobId) return;
+            
+            const confirmed = await Toast.confirm(
+                'Are you sure you want to delete this job? This action cannot be undone.',
+                'Delete Job',
+                'Delete',
+                'Cancel'
+            );
+            
+            if (!confirmed) return;
+            
+            const deleteBtn = document.getElementById('delete-job-btn');
+            deleteBtn.disabled = true;
+            deleteBtn.textContent = 'Deleting...';
+            
+            try {
+                await apiClient.deleteJob(jobId);
+                Toast.success('Job deleted successfully!');
+                setTimeout(() => {
+                    window.location.href = 'jobs.html';
+                }, 500);
+            } catch (error) {
+                Toast.error('Failed to delete job: ' + error.message);
+                deleteBtn.disabled = false;
+                deleteBtn.textContent = '🗑 Delete';
+            }
+        }
+        
+        // Initialize with auth guard
+        async function initialize() {
+            try {
+                await authManager.initialize();
+                
+                // Require authentication for this page
+                const isAuthenticated = await authManager.requireAuth();
+                if (!isAuthenticated) return;
+                
+                loadJobDetails();
+            } catch (error) {
+                console.error('Initialization failed:', error);
+                Toast.error('Failed to initialize. Please refresh the page.');
+            }
+        }
+        
+        initialize();
+    </script>
+</body>
+</html>
