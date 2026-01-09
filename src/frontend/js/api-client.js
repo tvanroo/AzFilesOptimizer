@@ -107,6 +107,15 @@ class ApiClient {
     }
 
     /**
+     * Re-run a discovery job
+     */
+    async rerunJob(jobId) {
+        return this.fetchJson(`/jobs/${jobId}/rerun`, {
+            method: 'POST'
+        });
+    }
+    
+    /**
      * Delete a job
      */
     async deleteJob(jobId) {

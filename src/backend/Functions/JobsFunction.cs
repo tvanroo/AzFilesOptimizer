@@ -192,6 +192,62 @@ public class JobsFunction
         }
     }
 
+    [Function("RerunDiscoveryJob")]
+    public async Task<HttpResponseData> RerunDiscoveryJob(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "jobs/{jobId}/rerun")] HttpRequestData req,
+        string jobId)
+    {
+        _logger.LogInformation("Re-running discovery job: {JobId}", jobId);
+
+        try
+        {
+            // Get existing job
+            var job = await _jobStorage.GetDiscoveryJobAsync(jobId);
+            if (job == null)
+            {
+                var notFoundResponse = req.CreateResponse(HttpStatusCode.NotFound);
+                await notFoundResponse.WriteAsJsonAsync(new { error = "Job not found" });
+                return notFoundResponse;
+            }
+            
+            // Don't allow re-run if job is currently running
+            if (job.Status == JobStatus.Running || job.Status == JobStatus.Pending)
+            {
+                var conflictResponse = req.CreateResponse(HttpStatusCode.Conflict);
+                await conflictResponse.WriteAsJsonAsync(new { error = "Job is already running" });
+                return conflictResponse;
+            }
+            
+            // Clear job logs for new run
+            await _jobLogService.DeleteLogsAsync(jobId);
+            
+            // Reset job status and timestamps
+            job.Status = JobStatus.Pending;
+            job.StartedAt = null;
+            job.CompletedAt = null;
+            job.ErrorMessage = null;
+            job.ErrorDetails = null;
+            job.UpdatedAt = DateTime.UtcNow;
+            
+            await _jobStorage.UpdateDiscoveryJobAsync(job);
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Re-running discovery for job {jobId}");
+            
+            // Execute job immediately in background
+            _ = Task.Run(async () => await ExecuteDiscoveryJobAsync(jobId));
+            
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new { message = "Discovery job re-started", jobId });
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error re-running discovery job {JobId}", jobId);
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new { error = "Failed to re-run job", details = ex.Message });
+            return errorResponse;
+        }
+    }
+
     [Function("DeleteJob")]
     public async Task<HttpResponseData> DeleteJob(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "jobs/{jobId}")] HttpRequestData req,

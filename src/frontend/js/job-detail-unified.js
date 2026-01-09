@@ -7,6 +7,8 @@ const jobDetail = {
     jobId: JOB_ID,
     currentTab: 'overview',
     jobData: null,
+    discoveryLogPollInterval: null,
+    isLogConsoleCollapsed: false,
     
     // Volume Analysis state
     volumes: [],
@@ -120,10 +122,47 @@ const jobDetail = {
             document.getElementById('job-id').textContent = `Job: ${displayJobId}`;
             document.getElementById('job-status-badge').innerHTML = this.getStatusBadge(this.jobData.Status);
             
+            // Update button states based on job status
+            this.updateButtonStates();
+            
             // Display overview
             this.renderOverview();
         } catch (error) {
             Toast.error('Failed to load job: ' + error.message);
+        }
+    },
+    
+    updateButtonStates() {
+        const rerunBtn = document.getElementById('rerun-btn');
+        if (rerunBtn) {
+            // Disable rerun button if job is running or pending
+            const isRunning = this.jobData.Status === 0 || this.jobData.Status === 1;
+            rerunBtn.disabled = isRunning;
+            if (isRunning) {
+                rerunBtn.style.opacity = '0.5';
+                rerunBtn.style.cursor = 'not-allowed';
+            } else {
+                rerunBtn.style.opacity = '1';
+                rerunBtn.style.cursor = 'pointer';
+            }
+        }
+    },
+    
+    async rerunJob() {
+        if (!confirm('Re-run discovery for this job? This will update all volumes and discover any new ones in the same scope.')) {
+            return;
+        }
+        
+        try {
+            await apiClient.rerunJob(this.jobId);
+            Toast.success('Discovery job re-started! Refreshing...');
+            
+            // Reload job to show updated status
+            setTimeout(() => {
+                this.loadJob();
+            }, 1000);
+        } catch (error) {
+            Toast.error('Failed to re-run job: ' + error.message);
         }
     },
     
@@ -180,6 +219,17 @@ const jobDetail = {
                 </div>
             </div>
         `;
+        
+        // Start discovery log polling if job is running or pending
+        if (job.Status === 0 || job.Status === 1) { // Pending or Running
+            this.startDiscoveryLogPolling();
+        } else {
+            this.stopDiscoveryLogPolling();
+            // Show logs one final time for completed jobs
+            if (job.Status === 2 || job.Status === 3) { // Completed or Failed
+                this.fetchDiscoveryLogs();
+            }
+        }
     },
     
     // Volume Analysis Functions
@@ -713,6 +763,96 @@ const jobDetail = {
         };
         
         setTimeout(checkStatus, 3000);
+    },
+    
+    // Discovery Log Functions
+    startDiscoveryLogPolling() {
+        this.stopDiscoveryLogPolling();
+        this.discoveryLogPollInterval = setInterval(() => this.fetchDiscoveryLogs(), 2000);
+        this.fetchDiscoveryLogs();
+    },
+    
+    stopDiscoveryLogPolling() {
+        if (this.discoveryLogPollInterval) {
+            clearInterval(this.discoveryLogPollInterval);
+            this.discoveryLogPollInterval = null;
+        }
+    },
+    
+    async fetchDiscoveryLogs() {
+        try {
+            const logs = await apiClient.getJobLogs(this.jobId);
+            
+            if (!logs || logs.length === 0) {
+                return;
+            }
+            
+            // Show the log console if we have logs
+            const logConsole = document.getElementById('discovery-log-console');
+            if (logConsole && logConsole.style.display === 'none') {
+                logConsole.style.display = 'block';
+            }
+            
+            // Update status indicator
+            const indicator = document.getElementById('log-status-indicator');
+            if (indicator && this.jobData) {
+                indicator.className = 'log-status-indicator';
+                if (this.jobData.Status === 0 || this.jobData.Status === 1) {
+                    indicator.classList.add('running');
+                } else if (this.jobData.Status === 2) {
+                    indicator.classList.add('completed');
+                } else if (this.jobData.Status === 3) {
+                    indicator.classList.add('failed');
+                }
+            }
+            
+            // Render logs
+            const logBody = document.getElementById('discovery-log-body');
+            if (!logBody) return;
+            
+            logBody.innerHTML = logs.map(log => {
+                const timestamp = new Date(log.Timestamp).toLocaleTimeString();
+                let cssClass = 'discovery-log-entry';
+                
+                // Determine log level styling
+                const message = log.Message || '';
+                if (message.includes('ERROR') || message.includes('✗') || message.includes('Failed')) {
+                    cssClass += ' error';
+                } else if (message.includes('WARNING') || message.includes('⚠')) {
+                    cssClass += ' warning';
+                } else if (message.includes('✓') || message.includes('complete') || message.includes('Found')) {
+                    cssClass += ' success';
+                }
+                
+                return `<div class="${cssClass}"><span class="discovery-log-timestamp">${timestamp}</span>${this.escapeHtml(message)}</div>`;
+            }).join('');
+            
+            // Auto-scroll to bottom
+            logBody.scrollTop = logBody.scrollHeight;
+        } catch (error) {
+            console.error('Error fetching discovery logs:', error);
+        }
+    },
+    
+    toggleLogConsole() {
+        const logBody = document.getElementById('discovery-log-body');
+        const toggleBtn = event.target;
+        
+        if (this.isLogConsoleCollapsed) {
+            logBody.style.display = 'block';
+            toggleBtn.textContent = 'Collapse';
+            this.isLogConsoleCollapsed = false;
+        } else {
+            logBody.style.display = 'none';
+            toggleBtn.textContent = 'Expand';
+            this.isLogConsoleCollapsed = true;
+        }
+    },
+    
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     },
     
     // Chat Functions
