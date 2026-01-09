@@ -445,16 +445,35 @@ public class VolumeAnalysisService
             else
             {
                 // For OpenAI, send the selected model in the body
-                requestPayload = new
+                // Newer GPT-5 / O-series models require max_completion_tokens instead of max_tokens
+                var useMaxCompletionTokens = ModelRequiresMaxCompletionTokens(modelToUse);
+
+                if (useMaxCompletionTokens)
                 {
-                    model = modelToUse,
-                    messages = new[]
+                    requestPayload = new
                     {
-                        new { role = "user", content = prompt }
-                    },
-                    temperature = 0.3,
-                    max_tokens = 500
-                };
+                        model = modelToUse,
+                        messages = new[]
+                        {
+                            new { role = "user", content = prompt }
+                        },
+                        temperature = 0.3,
+                        max_completion_tokens = 500
+                    };
+                }
+                else
+                {
+                    requestPayload = new
+                    {
+                        model = modelToUse,
+                        messages = new[]
+                        {
+                            new { role = "user", content = prompt }
+                        },
+                        temperature = 0.3,
+                        max_tokens = 500
+                    };
+                }
             }
 
             var requestBody = JsonSerializer.Serialize(requestPayload);
@@ -572,6 +591,19 @@ public class VolumeAnalysisService
         }
         
         return evidence.ToArray();
+    }
+
+    private static bool ModelRequiresMaxCompletionTokens(string modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+            return false;
+
+        modelName = modelName.Trim().ToLowerInvariant();
+
+        // All GPT-5 family models and O-series reasoning models use max_completion_tokens
+        return modelName.StartsWith("gpt-5")
+               || modelName.StartsWith("o3")
+               || modelName.StartsWith("o4");
     }
 
     private double CalculateConfidence(List<PromptExecutionResult> prompts)
