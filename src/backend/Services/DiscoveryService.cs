@@ -32,7 +32,7 @@ public class DiscoveryService
 
     public async Task<DiscoveryResult> DiscoverResourcesAsync(
         string subscriptionId,
-        string? resourceGroupName,
+        string[]? resourceGroupNames,
         TokenCredential credential,
         string? tenantId = null)
     {
@@ -53,13 +53,13 @@ public class DiscoveryService
             // Discover Azure Files shares
             await LogProgressAsync("Step 1/2: Discovering Azure Files shares...");
             result.AzureFileShares = await DiscoverAzureFilesSharesAsync(
-                subscription.Value, resourceGroupName, tenantId);
+                subscription.Value, resourceGroupNames, tenantId);
             await LogProgressAsync($"✓ Found {result.AzureFileShares.Count} Azure Files shares");
 
             // Discover ANF volumes
             await LogProgressAsync("Step 2/2: Discovering Azure NetApp Files volumes...");
             result.AnfVolumes = await DiscoverAnfVolumesAsync(
-                subscription.Value, resourceGroupName);
+                subscription.Value, resourceGroupNames);
             await LogProgressAsync($"✓ Found {result.AnfVolumes.Count} ANF volumes");
 
             await LogProgressAsync($"Discovery completed successfully. Total: {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes");
@@ -76,7 +76,7 @@ public class DiscoveryService
 
     private async Task<List<DiscoveredAzureFileShare>> DiscoverAzureFilesSharesAsync(
         Azure.ResourceManager.Resources.SubscriptionResource subscription,
-        string? resourceGroupFilter,
+        string[]? resourceGroupFilters,
         string? tenantId = null)
     {
         static int ClampInt(int value, int min, int max) => Math.Max(min, Math.Min(max, value));
@@ -124,10 +124,21 @@ public class DiscoveryService
                 storageAccountCount++;
                 
                 // Apply resource group filter if specified
-                if (resourceGroupFilter != null && 
-                    !storageAccount.Id.ResourceGroupName.Equals(resourceGroupFilter, StringComparison.OrdinalIgnoreCase))
+                if (resourceGroupFilters != null && resourceGroupFilters.Length > 0)
                 {
-                    continue;
+                    bool matchesAnyRg = false;
+                    foreach (var rgFilter in resourceGroupFilters)
+                    {
+                        if (storageAccount.Id.ResourceGroupName.Equals(rgFilter, StringComparison.OrdinalIgnoreCase))
+                        {
+                            matchesAnyRg = true;
+                            break;
+                        }
+                    }
+                    if (!matchesAnyRg)
+                    {
+                        continue;
+                    }
                 }
 
                 await LogProgressAsync($"  • Checking storage account: {storageAccount.Data.Name} (RG: {storageAccount.Id.ResourceGroupName})");
@@ -350,7 +361,7 @@ public class DiscoveryService
 
     private async Task<List<DiscoveredAnfVolume>> DiscoverAnfVolumesAsync(
         Azure.ResourceManager.Resources.SubscriptionResource subscription,
-        string? resourceGroupFilter)
+        string[]? resourceGroupFilters)
     {
         static (int? iops, double? mibps) EstimateAnfPerformance(
             string serviceLevel,
@@ -408,10 +419,21 @@ public class DiscoveryService
             await foreach (var netAppAccount in subscription.GetNetAppAccountsAsync())
             {
                 // Apply resource group filter if specified
-                if (resourceGroupFilter != null && 
-                    !netAppAccount.Id.ResourceGroupName.Equals(resourceGroupFilter, StringComparison.OrdinalIgnoreCase))
+                if (resourceGroupFilters != null && resourceGroupFilters.Length > 0)
                 {
-                    continue;
+                    bool matchesAnyRg = false;
+                    foreach (var rgFilter in resourceGroupFilters)
+                    {
+                        if (netAppAccount.Id.ResourceGroupName.Equals(rgFilter, StringComparison.OrdinalIgnoreCase))
+                        {
+                            matchesAnyRg = true;
+                            break;
+                        }
+                    }
+                    if (!matchesAnyRg)
+                    {
+                        continue;
+                    }
                 }
 
                 await LogProgressAsync($"  • Checking NetApp account: {netAppAccount.Data.Name} (RG: {netAppAccount.Id.ResourceGroupName})");

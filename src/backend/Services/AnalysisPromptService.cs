@@ -136,13 +136,35 @@ public class AnalysisPromptService
                 Name = "CloudShell Exclusion",
                 Priority = 10,
                 Category = PromptCategory.Exclusion.ToString(),
-                PromptTemplate = "Is this Azure Files share named '{VolumeName}' in resource group '{ResourceGroup}' used for Azure CloudShell? CloudShell shares typically have 'cloudshell' or 'cs-' in the name and are small (usually 5-6 GB). Answer with YES or NO and provide reasoning.",
+                PromptTemplate = @"Determine if this Azure Files share is used for Azure CloudShell and should be excluded from migration analysis.
+
+Share Details:
+- Name: {VolumeName}
+- Resource Group: {ResourceGroup}
+- Location: {Location}
+- Size: {SizeGB} GB
+- Usage: {UsedCapacity}
+- Access Tier: {AccessTier}
+- Storage Account: {StorageAccount} ({StorageAccountKind})
+- Protocols: {Protocols}
+- Tags: {Tags}
+- Metadata: {Metadata}
+
+CloudShell Indicators:
+- Naming: Usually contains 'cloudshell', 'cs-', 'cloud-shell-storage'
+- Size: Typically 5-6 GB quota
+- Usage: Usually low (<500 MB)
+- Resource Group: Often named like 'cloud-shell-storage-*' or contains region codes
+- Tags: May have 'ms-resource-usage' = 'azure-cloud-shell'
+- Storage Account Kind: Usually StorageV2
+
+Answer with YES if this is CloudShell storage (should be excluded), or NO if not. Provide clear reasoning based on the indicators above.",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
                     StopOnMatch = true,
-                    ActionOnMatch = "ExcludeVolume",
-                    TargetWorkloadId = (string?)null
+                    ActionOnMatch = "SetWorkload",
+                    TargetWorkloadId = "cloudshell-profile"
                 })
             },
             new AnalysisPrompt
@@ -150,7 +172,46 @@ public class AnalysisPromptService
                 Name = "FSLogix Profile Detection",
                 Priority = 20,
                 Category = PromptCategory.WorkloadDetection.ToString(),
-                PromptTemplate = "Analyze this Azure Files share: Name='{VolumeName}', Size={SizeGB}GB, Tags={Tags}. Does this appear to be an FSLogix profile container or VDI user profile share? Look for indicators like: share names containing 'fslogix', 'profile', 'vdi', 'wvd', 'avd'; appropriate size (100GB-2TB typical); or relevant tags. Provide a confidence score (0-1) and evidence.",
+                PromptTemplate = @"Analyze if this Azure Files share is used for FSLogix profiles or VDI user profiles.
+
+Share Configuration:
+- Name: {VolumeName}
+- Storage Account: {StorageAccount} ({StorageAccountKind}, {StorageAccountSku})
+- Resource Group: {ResourceGroup}
+- Location: {Location}
+- Size: {SizeGB} GB (Usage: {UsedCapacity})
+- Access Tier: {AccessTier}
+- Protocols: {Protocols}
+- Provisioned Performance: {ProvisionedIOPS} IOPS, {ProvisionedBandwidth} MiB/s
+- Estimated Performance: {EstimatedIOPS} IOPS, {EstimatedThroughputMiBps} MiB/s
+- Tags: {Tags}
+- Metadata: {Metadata}
+
+Snapshot/Backup Info:
+- Snapshot Count: {SnapshotCount}
+- Total Snapshot Size: {TotalSnapshotSizeBytes} bytes
+- Data Churn Rate: {ChurnRateBytesPerDay} bytes/day
+- Backup Policy: {BackupPolicyConfigured}
+
+Monitoring:
+- Monitoring Enabled: {MonitoringEnabled}
+- Historical Data: {MonitoringDataAvailableDays} days
+- Metrics Summary: {MetricsSummary}
+
+FSLogix Profile Indicators:
+- Naming: Contains 'fslogix', 'profile', 'profiles', 'vdi', 'wvd', 'avd', 'citrix', 'vda'
+- Size: 100GB-2TB typical (depends on user count)
+- Performance: Premium tier common; high IOPS for user logins
+- Usage Pattern: Many small files, high churn rate during business hours
+- Protocols: SMB (NFS not typical for FSLogix)
+- Tags: May include 'workload=vdi', 'fslogix=true', 'avd-*'
+- Snapshots: Often configured for profile backup/recovery
+
+Provide:
+1. MATCH or NO_MATCH
+2. Confidence score (0-100)
+3. Key evidence from the data above
+4. If MATCH, specify if this is FSLogix Profile Container, Office Container, or general VDI profiles",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -164,7 +225,48 @@ public class AnalysisPromptService
                 Name = "Database Workload Detection",
                 Priority = 30,
                 Category = PromptCategory.WorkloadDetection.ToString(),
-                PromptTemplate = "Examine this storage: Name='{VolumeName}', Size={SizeGB}GB, Performance Tier={PerformanceTier}, IOPS={ProvisionedIOPS}, Tags={Tags}. Could this be hosting database files (SQL Server, Oracle, SAP HANA)? Indicators: names with 'db', 'database', 'sql', 'oracle', 'hana'; large size (500GB+); high IOPS provisioning; premium tiers. Rate confidence (0-1) and identify which database type if applicable.",
+                PromptTemplate = @"Analyze if this share hosts database files (SQL Server, Oracle, SAP HANA, PostgreSQL, MySQL, etc.).
+
+Share Configuration:
+- Name: {VolumeName}
+- Storage Account: {StorageAccount} ({StorageAccountKind}, {StorageAccountSku})
+- Resource Group: {ResourceGroup}
+- Location: {Location}
+- Size: {SizeGB} GB (Usage: {UsedCapacity})
+- Access Tier: {AccessTier}
+- Protocols: {Protocols}
+- Provisioned Performance: {ProvisionedIOPS} IOPS, {ProvisionedBandwidth} MiB/s
+- Estimated Performance: {EstimatedIOPS} IOPS, {EstimatedThroughputMiBps} MiB/s
+- Tags: {Tags}
+- Metadata: {Metadata}
+
+Snapshot/Backup Info:
+- Snapshot Count: {SnapshotCount}
+- Data Churn Rate: {ChurnRateBytesPerDay} bytes/day
+- Backup Policy: {BackupPolicyConfigured}
+
+Monitoring:
+- Monitoring Enabled: {MonitoringEnabled}
+- Historical Data: {MonitoringDataAvailableDays} days
+- Metrics Summary: {MetricsSummary}
+
+Database Workload Indicators:
+- Naming: Contains 'db', 'database', 'sql', 'oracle', 'hana', 'postgres', 'mysql', 'data', 'mdf', 'ldf'
+- Size: Typically 500GB+ (can be smaller for dev/test)
+- Performance: Premium or Ultra tier; high IOPS (10K+); high throughput
+- Protocol: SMB for SQL Server, NFS for Oracle/SAP HANA
+- Usage: High and consistent utilization
+- Churn: Variable - high for transaction logs, moderate for data files
+- Snapshots: Critical - often configured for point-in-time recovery
+- Tags: May include 'workload=database', 'app=sql', 'tier=production'
+- Lease State: May be leased if actively mounted by database server
+
+Provide:
+1. MATCH or NO_MATCH
+2. Confidence score (0-100)
+3. Evidence from above indicators
+4. If MATCH, identify likely database type (SQL Server, Oracle, SAP HANA, PostgreSQL, MySQL, other)
+5. If MATCH, assess if this is production, dev/test, or backup/archive based on indicators",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -178,7 +280,44 @@ public class AnalysisPromptService
                 Name = "Kubernetes/Container Storage Detection",
                 Priority = 40,
                 Category = PromptCategory.WorkloadDetection.ToString(),
-                PromptTemplate = "Review this share: Name='{VolumeName}', Size={SizeGB}GB, Location={Location}, Tags={Tags}. Is this likely used for Kubernetes persistent volumes or container storage? Look for: names with 'k8s', 'aks', 'kubernetes', 'pv', 'pvc'; tags indicating AKS or container use; multiple smaller volumes in the same resource group. Confidence (0-1) and reasoning.",
+                PromptTemplate = @"Determine if this share is used for Kubernetes persistent volumes or container orchestration storage.
+
+Share Configuration:
+- Name: {VolumeName}
+- Storage Account: {StorageAccount} ({StorageAccountKind}, {StorageAccountSku})
+- Resource Group: {ResourceGroup}
+- Location: {Location}
+- Size: {SizeGB} GB (Usage: {UsedCapacity})
+- Access Tier: {AccessTier}
+- Protocols: {Protocols}
+- Provisioned Performance: {ProvisionedIOPS} IOPS, {ProvisionedBandwidth} MiB/s
+- Estimated Performance: {EstimatedIOPS} IOPS, {EstimatedThroughputMiBps} MiB/s
+- Tags: {Tags}
+- Metadata: {Metadata}
+
+Snapshot/Backup Info:
+- Snapshot Count: {SnapshotCount}
+- Data Churn Rate: {ChurnRateBytesPerDay} bytes/day
+
+Monitoring:
+- Monitoring Enabled: {MonitoringEnabled}
+- Metrics Summary: {MetricsSummary}
+
+Kubernetes/Container Storage Indicators:
+- Naming: Contains 'k8s', 'aks', 'kubernetes', 'pv', 'pvc', 'container', 'docker', 'pods'
+- Size: Often smaller volumes (10-500GB) unless for databases/stateful sets
+- Performance: Variable - depends on workload (Standard to Premium)
+- Protocol: NFS common for multi-pod access; SMB for Windows containers
+- Resource Group: Often named with 'aks', 'kubernetes', 'k8s', or 'MC_' prefix (managed cluster RG)
+- Tags: May include 'aks-managed=true', 'kubernetes.io/*', 'orchestrator=kubernetes'
+- Pattern: Multiple volumes with similar naming in same RG suggests PV provisioning
+- Usage: Varies by application - can have high churn for logging/temp storage
+
+Provide:
+1. MATCH or NO_MATCH
+2. Confidence score (0-100)
+3. Key evidence supporting the classification
+4. If MATCH, specify likely use case (stateful application storage, shared config/data, logging, or general PV)",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -192,7 +331,45 @@ public class AnalysisPromptService
                 Name = "HPC/Scientific Workload Detection",
                 Priority = 50,
                 Category = PromptCategory.WorkloadDetection.ToString(),
-                PromptTemplate = "Analyze this volume: Name='{VolumeName}', Size={SizeGB}GB, Performance={PerformanceTier}, Location={Location}, Tags={Tags}. Does this appear to be High Performance Computing (HPC) or scientific computing storage? Indicators: names with 'hpc', 'batch', 'compute', 'research'; very large capacity (multi-TB); high-performance tiers; specific Azure regions known for HPC. Confidence score and evidence.",
+                PromptTemplate = @"Assess if this share is used for High Performance Computing (HPC), batch processing, or scientific computing workloads.
+
+Share Configuration:
+- Name: {VolumeName}
+- Storage Account: {StorageAccount} ({StorageAccountKind}, {StorageAccountSku})
+- Resource Group: {ResourceGroup}
+- Location: {Location}
+- Size: {SizeGB} GB (Usage: {UsedCapacity})
+- Access Tier: {AccessTier}
+- Protocols: {Protocols}
+- Provisioned Performance: {ProvisionedIOPS} IOPS, {ProvisionedBandwidth} MiB/s
+- Estimated Performance: {EstimatedIOPS} IOPS, {EstimatedThroughputMiBps} MiB/s
+- Tags: {Tags}
+- Metadata: {Metadata}
+
+Snapshot/Backup Info:
+- Snapshot Count: {SnapshotCount}
+- Data Churn Rate: {ChurnRateBytesPerDay} bytes/day
+
+Monitoring:
+- Monitoring Enabled: {MonitoringEnabled}
+- Metrics Summary: {MetricsSummary}
+
+HPC/Scientific Computing Indicators:
+- Naming: Contains 'hpc', 'batch', 'compute', 'research', 'simulation', 'render', 'scratch', 'genomics', 'ai', 'ml', 'training'
+- Size: Often very large (multi-TB) for datasets, simulations, or scratch space
+- Performance: Premium or Ultra tier; very high throughput (hundreds of MiB/s)
+- Protocol: NFS common for Linux-based HPC clusters; SMB for Windows HPC
+- Location: May be in regions with HPC-specific capabilities or near compute clusters
+- Usage: Can be high with large datasets, or sporadic for burst compute jobs
+- Churn: High during active jobs; low between runs
+- Tags: May include 'workload=hpc', 'batch=true', 'project=research'
+- Pattern: Often paired with Azure Batch, CycleCloud, or HPC Pack resources in same RG
+
+Provide:
+1. MATCH or NO_MATCH
+2. Confidence score (0-100)
+3. Evidence supporting classification
+4. If MATCH, identify likely use case (scratch storage, dataset repository, simulation output, ML training data, rendering, genomics, other)",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -206,7 +383,50 @@ public class AnalysisPromptService
                 Name = "General File Share Classification",
                 Priority = 60,
                 Category = PromptCategory.WorkloadDetection.ToString(),
-                PromptTemplate = "This share hasn't matched specific workload patterns: Name='{VolumeName}', Size={SizeGB}GB, Tier={PerformanceTier}. Classify as general-purpose file share and assess ANF migration suitability based on: size, performance requirements, access patterns. Is this a good candidate for Azure NetApp Files migration? Confidence (0-1) and recommendation.",
+                PromptTemplate = @"This share hasn't matched specific specialized workload patterns. Classify it as a general-purpose file share and provide insights.
+
+Share Configuration:
+- Name: {VolumeName}
+- Storage Account: {StorageAccount} ({StorageAccountKind}, {StorageAccountSku})
+- Resource Group: {ResourceGroup}
+- Location: {Location}
+- Size: {SizeGB} GB (Usage: {UsedCapacity})
+- Access Tier: {AccessTier}
+- Protocols: {Protocols}
+- Provisioned Performance: {ProvisionedIOPS} IOPS, {ProvisionedBandwidth} MiB/s
+- Estimated Performance: {EstimatedIOPS} IOPS, {EstimatedThroughputMiBps} MiB/s
+- Lease Status: {LeaseStatus} / {LeaseState}
+- Tags: {Tags}
+- Metadata: {Metadata}
+
+Snapshot/Backup Info:
+- Snapshot Count: {SnapshotCount}
+- Data Churn Rate: {ChurnRateBytesPerDay} bytes/day
+- Backup Policy: {BackupPolicyConfigured}
+
+Monitoring:
+- Monitoring Enabled: {MonitoringEnabled}
+- Historical Data: {MonitoringDataAvailableDays} days
+- Metrics Summary: {MetricsSummary}
+
+Timestamps:
+- Created: {CreationTime}
+- Last Modified: {LastModifiedTime}
+
+Common General File Share Types:
+- Departmental/Team Shares: Shared folders for collaboration (HR, Finance, Engineering, etc.)
+- Home Directories: User home folders
+- Application Data: Non-specialized application file storage
+- Backup/Archive: Long-term file storage, backups
+- Media Files: Videos, images, documents
+- Software Distribution: Installation files, updates, patches
+
+Based on all available data, provide:
+1. Most likely general file share category from list above
+2. Confidence score (0-100)
+3. Key characteristics observed (naming, size, usage patterns, tags, metrics)
+4. Preliminary ANF migration suitability (Yes/No/Maybe) with brief rationale
+5. Any special considerations (e.g., active lease, high churn, snapshots, protocols)",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -220,7 +440,83 @@ public class AnalysisPromptService
                 Name = "ANF Migration Assessment",
                 Priority = 70,
                 Category = PromptCategory.MigrationAssessment.ToString(),
-                PromptTemplate = "Final migration assessment for: Name='{VolumeName}', Size={SizeGB}GB, Tier={PerformanceTier}, IOPS={ProvisionedIOPS}, Workload={Tags}. Evaluate: 1) Performance benefits of ANF, 2) Cost implications, 3) Feature advantages (snapshots, replication), 4) Any migration blockers, 5) Recommended ANF service level (Standard/Premium/Ultra). Provide detailed migration readiness score (0-1) and specific recommendations.",
+                PromptTemplate = @"Provide comprehensive Azure NetApp Files (ANF) migration assessment for this share.
+
+Complete Share Profile:
+- Name: {VolumeName}
+- Storage Account: {StorageAccount} ({StorageAccountKind}, {StorageAccountSku})
+- Resource Group: {ResourceGroup}
+- Location: {Location}
+- Size: {SizeGB} GB (Current Usage: {UsedCapacity})
+- Access Tier: {AccessTier}
+- Protocols: {Protocols}
+- Root Squash: {RootSquash}
+- TLS Version: {MinimumTlsVersion}
+- HTTPS Only: {EnableHttpsTrafficOnly}
+
+Performance Profile:
+- Provisioned: {ProvisionedIOPS} IOPS, {ProvisionedBandwidth} MiB/s
+- Estimated: {EstimatedIOPS} IOPS, {EstimatedThroughputMiBps} MiB/s
+- Storage Account SKU: {StorageAccountSku}
+
+Data Management:
+- Snapshot Count: {SnapshotCount}
+- Total Snapshot Size: {TotalSnapshotSizeBytes} bytes
+- Data Churn Rate: {ChurnRateBytesPerDay} bytes/day
+- Backup Policy: {BackupPolicyConfigured}
+- Lease Status: {LeaseStatus} / {LeaseState}
+
+Monitoring & Metrics:
+- Monitoring Enabled: {MonitoringEnabled}
+- Historical Data Available: {MonitoringDataAvailableDays} days
+- Metrics Summary: {MetricsSummary}
+
+Resource Context:
+- Tags: {Tags}
+- Metadata: {Metadata}
+- Created: {CreationTime}
+- Last Modified: {LastModifiedTime}
+- Soft Deleted: {IsDeleted}
+
+Provide comprehensive migration assessment:
+
+1. **ANF Migration Suitability** (High/Medium/Low/Not Recommended)
+   - Overall readiness score (0-100)
+   - Primary justification
+
+2. **Recommended ANF Service Level** (Standard/Premium/Ultra/Not Applicable)
+   - Rationale based on performance requirements and workload
+
+3. **Performance Benefits**
+   - Expected performance improvements
+   - Latency considerations
+   - Throughput advantages
+
+4. **Cost Analysis**
+   - Estimated cost impact (Higher/Similar/Lower)
+   - Cost optimization opportunities
+   - Capacity efficiency considerations
+
+5. **Feature Advantages**
+   - Snapshot benefits (frequency, retention, performance)
+   - Cross-region replication opportunities
+   - Backup and DR improvements
+   - Protocol support benefits
+
+6. **Migration Considerations**
+   - Any blockers or challenges
+   - Downtime requirements
+   - Application compatibility
+   - Protocol considerations (SMB/NFS)
+
+7. **Specific Recommendations**
+   - Pre-migration steps
+   - Optimal ANF volume size
+   - QoS type (Auto/Manual)
+   - Cool access tier opportunities (if applicable)
+   - Snapshot policy recommendations
+
+Provide detailed, actionable guidance based on ALL available data above.",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
