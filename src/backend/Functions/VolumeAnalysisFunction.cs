@@ -169,6 +169,48 @@ public class VolumeAnalysisFunction
         }
     }
 
+    [Function("GetVolumeDetail")]
+    public async Task<HttpResponseData> GetVolumeDetail(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "discovery/{jobId}/volumes/{volumeId}")] HttpRequestData req,
+        string jobId,
+        string volumeId)
+    {
+        try
+        {
+            // Ensure discovery data exists in Blob storage
+            await _migrationService.MigrateJobVolumesToBlobAsync(jobId);
+
+            var data = await _annotationService.GetDiscoveryDataAsync(jobId);
+            var volume = data?.Volumes.FirstOrDefault(v => v.VolumeId == volumeId);
+            if (volume == null)
+            {
+                var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+                await notFound.WriteStringAsync($"Volume {volumeId} not found in job {jobId}");
+                return notFound;
+            }
+
+            var dto = new VolumeWithAnalysis
+            {
+                VolumeId = volume.VolumeId,
+                VolumeData = volume.Volume,
+                AiAnalysis = volume.AiAnalysis,
+                UserAnnotations = volume.UserAnnotations,
+                AnnotationHistory = volume.AnnotationHistory
+            };
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(dto);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting volume detail for {VolumeId} in job {JobId}", volumeId, jobId);
+            var response = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await response.WriteStringAsync($"Error: {ex.Message}");
+            return response;
+        }
+    }
+
     [Function("UpdateVolumeAnnotations")]
     public async Task<HttpResponseData> UpdateAnnotations(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "discovery/{jobId}/volumes/{volumeId}/annotations")] HttpRequestData req,

@@ -54,7 +54,8 @@ public class DiscoveryMigrationService
                 {
                     Volume = share,
                     AiAnalysis = null, // No analysis yet
-                    UserAnnotations = new UserAnnotations() // Initialize empty
+                    UserAnnotations = new UserAnnotations(), // Initialize empty
+                    AnnotationHistory = new List<AnnotationHistoryEntry>()
                 }).ToList()
             };
 

@@ -86,7 +86,9 @@ public class VolumeAnnotationService
             VolumeId = v.VolumeId,
             VolumeData = v.Volume,
             AiAnalysis = v.AiAnalysis,
-            UserAnnotations = v.UserAnnotations
+            UserAnnotations = v.UserAnnotations,
+            // List view does not currently need full history; omit for payload size.
+            AnnotationHistory = null
         }).ToList();
 
         return new VolumeListResponse
@@ -115,6 +117,20 @@ public class VolumeAnnotationService
         annotations.ReviewedBy = userId;
         annotations.ReviewedAt = DateTime.UtcNow;
         volume.UserAnnotations = annotations;
+
+        // Append history entry
+        volume.AnnotationHistory ??= new List<AnnotationHistoryEntry>();
+        volume.AnnotationHistory.Add(new AnnotationHistoryEntry
+        {
+            Timestamp = annotations.ReviewedAt ?? DateTime.UtcNow,
+            UserId = userId,
+            ConfirmedWorkloadId = annotations.ConfirmedWorkloadId,
+            ConfirmedWorkloadName = annotations.ConfirmedWorkloadName,
+            MigrationStatus = annotations.MigrationStatus,
+            CustomTags = annotations.CustomTags,
+            Notes = annotations.Notes,
+            Source = "Update"
+        });
 
         await SaveDiscoveryDataAsync(data);
         
@@ -152,6 +168,20 @@ public class VolumeAnnotationService
                 
                 volume.UserAnnotations.ReviewedBy = userId;
                 volume.UserAnnotations.ReviewedAt = DateTime.UtcNow;
+
+                // Append history entry per volume
+                volume.AnnotationHistory ??= new List<AnnotationHistoryEntry>();
+                volume.AnnotationHistory.Add(new AnnotationHistoryEntry
+                {
+                    Timestamp = volume.UserAnnotations.ReviewedAt ?? DateTime.UtcNow,
+                    UserId = userId,
+                    ConfirmedWorkloadId = volume.UserAnnotations.ConfirmedWorkloadId,
+                    ConfirmedWorkloadName = volume.UserAnnotations.ConfirmedWorkloadName,
+                    MigrationStatus = volume.UserAnnotations.MigrationStatus,
+                    CustomTags = volume.UserAnnotations.CustomTags,
+                    Notes = volume.UserAnnotations.Notes,
+                    Source = "BulkUpdate"
+                });
             }
         }
 

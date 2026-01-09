@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volume Details - AzFilesOptimizer</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            gap: 6px;
+        }
+        .breadcrumb a { color: var(--primary-color); text-decoration: none; }
+        .breadcrumb-separator { opacity: 0.7; }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .summary-card {
+            background: var(--surface);
+            padding: 1rem;
+            border-radius: 8px;
+        }
+        .summary-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.35rem;
+        }
+        .summary-value {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+        .layout-two-column {
+            display: grid;
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr);
+            gap: 1.5rem;
+        }
+        .metadata-section {
+            margin-bottom: 1.5rem;
+        }
+        .metadata-section h3 {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+            color: var(--primary-color);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 6px 12px;
+            font-size: 0.875rem;
+        }
+        .metadata-label {
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .metadata-value {
+            word-break: break-all;
+        }
+        .tag-pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #e3f2fd;
+            color: #1565c0;
+            font-size: 0.75rem;
+            margin: 2px 4px 2px 0;
+        }
+        .timeline {
+            border-left: 2px solid var(--border);
+            margin-left: 8px;
+            padding-left: 16px;
+        }
+        .timeline-item {
+            margin-bottom: 1rem;
+            position: relative;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -10px;
+            top: 4px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--primary-color);
+        }
+        .timeline-title {
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+        .timeline-meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .timeline-body {
+            font-size: 0.85rem;
+        }
+        .badge-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+        }
+        .badge-status.Candidate { background: #e3f2fd; color: #1565c0; }
+        .badge-status.Excluded { background: #ffebee; color: #c62828; }
+        .badge-status.UnderReview { background: #fff3e0; color: #ef6c00; }
+        .badge-status.Approved { background: #e8f5e9; color: #2e7d32; }
+        .metrics-panel {
+            margin-top: 0.5rem;
+            padding: 0.75rem;
+            background: #f0f7ff;
+            border-radius: 4px;
+            border-left: 4px solid var(--primary-color);
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+        }
+        .metrics-card {
+            background: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .metrics-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.15rem;
+        }
+        .metrics-value {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+        .metrics-subvalue {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>AzFilesOptimizer</h1>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="jobs.html">Jobs</a></li>
+            <li><a href="workload-profiles.html">Workload Profiles</a></li>
+            <li><a href="analysis-prompts.html">Analysis Prompts</a></li>
+            <li><a href="settings.html">Settings</a></li>
+        </ul>
+    </nav>
+
+    <main>
+        <div class="breadcrumb">
+            <a href="jobs.html">Jobs</a>
+            <span class="breadcrumb-separator">/</span>
+            <a id="breadcrumb-job" href="#">Job</a>
+            <span class="breadcrumb-separator">/</span>
+            <span id="breadcrumb-volume">Volume</span>
+        </div>
+
+        <div class="card">
+            <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                    <h2 id="volume-title">Volume Details</h2>
+                    <div id="volume-subtitle" style="color: var(--text-secondary); font-size: 0.9rem;"></div>
+                </div>
+                <button class="btn" id="back-to-job-btn">← Back to Job</button>
+            </div>
+
+            <div id="volume-loading" style="text-align:center; padding: 2rem;">
+                <div class="loading"></div>
+                <p style="margin-top:1rem; color: var(--text-secondary);">Loading volume details...</p>
+            </div>
+
+            <div id="volume-content" style="display:none;">
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <div class="summary-label">AI Workload</div>
+                        <div class="summary-value" id="summary-ai-workload">-</div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:0.25rem;">
+                            Confidence: <span id="summary-ai-confidence">-</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">User Classification</div>
+                        <div class="summary-value" id="summary-user-workload">Not confirmed</div>
+                        <div style="margin-top:0.25rem;">
+                            <span id="summary-migration-status" class="badge-status">Candidate</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">Capacity</div>
+                        <div class="summary-value" id="summary-capacity">-</div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:0.25rem;">
+                            Used: <span id="summary-used">-</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">Location & Tier</div>
+                        <div class="summary-value" id="summary-location">-</div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:0.25rem;">
+                            Tier: <span id="summary-tier">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="layout-two-column">
+                    <div>
+                        <div class="metadata-section">
+                            <h3>Volume Properties</h3>
+                            <div class="metadata-grid">
+                                <div class="metadata-label">Share Name</div>
+                                <div class="metadata-value" id="prop-share-name"></div>
+
+                                <div class="metadata-label">Storage Account</div>
+                                <div class="metadata-value" id="prop-storage-account"></div>
+
+                                <div class="metadata-label">Resource Group</div>
+                                <div class="metadata-value" id="prop-resource-group"></div>
+
+                                <div class="metadata-label">Subscription</div>
+                                <div class="metadata-value" id="prop-subscription"></div>
+
+                                <div class="metadata-label">Location</div>
+                                <div class="metadata-value" id="prop-location"></div>
+
+                                <div class="metadata-label">Access Tier</div>
+                                <div class="metadata-value" id="prop-access-tier"></div>
+
+                                <div class="metadata-label">Protocols</div>
+                                <div class="metadata-value" id="prop-protocols"></div>
+
+                                <div class="metadata-label">SKU</div>
+                                <div class="metadata-value" id="prop-sku"></div>
+
+                                <div class="metadata-label">Quota (GiB)</div>
+                                <div class="metadata-value" id="prop-quota"></div>
+
+                                <div class="metadata-label">Used Capacity</div>
+                                <div class="metadata-value" id="prop-used"></div>
+
+                                <div class="metadata-label">Tags</div>
+                                <div class="metadata-value" id="prop-tags"></div>
+                            </div>
+                        </div>
+
+                        <div class="metadata-section">
+                            <h3>Historical Metrics</h3>
+                            <div id="metrics-container"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="metadata-section">
+                            <h3>AI Categorization</h3>
+                            <div class="metadata-grid">
+                                <div class="metadata-label">Suggested Workload</div>
+                                <div class="metadata-value" id="ai-suggested"></div>
+
+                                <div class="metadata-label">Confidence</div>
+                                <div class="metadata-value" id="ai-confidence"></div>
+
+                                <div class="metadata-label">Last Analyzed</div>
+                                <div class="metadata-value" id="ai-last-analyzed"></div>
+
+                                <div class="metadata-label">Error</div>
+                                <div class="metadata-value" id="ai-error"></div>
+                            </div>
+                            <div id="ai-prompts" style="margin-top:0.75rem;"></div>
+                        </div>
+
+                        <div class="metadata-section">
+                            <h3>Human Decisions</h3>
+                            <div class="metadata-grid">
+                                <div class="metadata-label">Confirmed Workload</div>
+                                <div class="metadata-value" id="user-workload"></div>
+
+                                <div class="metadata-label">Migration Status</div>
+                                <div class="metadata-value" id="user-status"></div>
+
+                                <div class="metadata-label">Custom Tags</div>
+                                <div class="metadata-value" id="user-tags"></div>
+
+                                <div class="metadata-label">Reviewed By</div>
+                                <div class="metadata-value" id="user-reviewed-by"></div>
+
+                                <div class="metadata-label">Reviewed At</div>
+                                <div class="metadata-value" id="user-reviewed-at"></div>
+                            </div>
+                            <div style="margin-top:0.5rem; font-size:0.85rem;" id="user-notes"></div>
+                        </div>
+
+                        <div class="metadata-section">
+                            <h3>Decision & Value History</h3>
+                            <div class="timeline" id="history-timeline"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script src="js/lib/msal-browser.min.js"></script>
+    <script src="js/auth-config.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/api-client.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/volume-detail.js"></script>
+</body>
+</html>

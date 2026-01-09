@@ -152,4 +152,10 @@ public class VolumeWithAnalysis
     public DiscoveredAzureFileShare VolumeData { get; set; } = new();
     public AiAnalysisResult? AiAnalysis { get; set; }
     public UserAnnotations? UserAnnotations { get; set; }
+
+    /// <summary>
+    /// Optional history of user annotation changes for this volume.
+    /// Populated for detail views.
+    /// </summary>
+    public List<AnnotationHistoryEntry>? AnnotationHistory { get; set; }
 }

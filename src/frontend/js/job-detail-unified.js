@@ -16,7 +16,34 @@ const jobDetail = {
     totalCount: 0,
     currentAnalysisJobId: null,
     logPollInterval: null,
-    
+
+    // Volume table view state (persisted across jobs)
+    volumeViewStorageKey: 'azfo-volume-analysis-view',
+    volumeColumns: [
+        { key: 'select', label: '', sortable: false },
+        { key: 'VolumeName', label: 'Volume Name', sortable: true },
+        { key: 'StorageAccountName', label: 'Storage Account', sortable: true },
+        { key: 'ResourceGroup', label: 'Resource Group', sortable: true },
+        { key: 'SubscriptionId', label: 'Subscription', sortable: true },
+        { key: 'Location', label: 'Location', sortable: true },
+        { key: 'CapacityGiB', label: 'Capacity (GiB)', sortable: true },
+        { key: 'UsedCapacity', label: 'Used Capacity', sortable: true },
+        { key: 'AccessTier', label: 'Access Tier', sortable: true },
+        { key: 'Protocols', label: 'Protocols', sortable: false },
+        { key: 'StorageAccountSku', label: 'SKU', sortable: true },
+        { key: 'AiWorkload', label: 'AI Workload', sortable: true },
+        { key: 'AiConfidence', label: 'AI Confidence', sortable: true },
+        { key: 'AiLastAnalyzed', label: 'AI Last Analyzed', sortable: true },
+        { key: 'UserWorkload', label: 'User Workload', sortable: true },
+        { key: 'MigrationStatus', label: 'Migration Status', sortable: true },
+        { key: 'ReviewedBy', label: 'Reviewed By', sortable: true },
+        { key: 'ReviewedAt', label: 'Reviewed At', sortable: true }
+    ],
+    defaultVisibleVolumeColumns: ['select','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','AiWorkload','UserWorkload','AiConfidence','MigrationStatus'],
+    visibleVolumeColumns: null,
+    volumeSortColumn: null,
+    volumeSortDirection: 'asc',
+
     // Chat state
     conversationHistory: [],
     
@@ -33,6 +60,7 @@ const jobDetail = {
         if (!isAuthenticated) return;
         
         await this.loadJob();
+        this.loadVolumeViewState();
         this.setupEventListeners();
     },
     
@@ -174,6 +202,62 @@ const jobDetail = {
     },
     
     // Volume Analysis Functions
+    loadVolumeViewState() {
+        try {
+            const raw = localStorage.getItem(this.volumeViewStorageKey);
+            if (!raw) {
+                this.visibleVolumeColumns = [...this.defaultVisibleVolumeColumns];
+                return;
+            }
+            const parsed = JSON.parse(raw);
+            this.visibleVolumeColumns = parsed.visibleColumns || [...this.defaultVisibleVolumeColumns];
+            this.volumeSortColumn = parsed.sortColumn || null;
+            this.volumeSortDirection = parsed.sortDirection || 'asc';
+            const workloadFilter = parsed.workloadFilter || '';
+            const statusFilter = parsed.statusFilter || '';
+            const confidenceMin = typeof parsed.confidenceMin === 'number' ? parsed.confidenceMin : 0;
+            const searchTerm = parsed.searchTerm || '';
+
+            const workloadSelect = document.getElementById('workloadFilter');
+            const statusSelect = document.getElementById('statusFilter');
+            const confidenceSlider = document.getElementById('confidenceSlider');
+            const searchInput = document.getElementById('volumeSearchInput');
+
+            if (workloadSelect) workloadSelect.value = workloadFilter;
+            if (statusSelect) statusSelect.value = statusFilter;
+            if (confidenceSlider) {
+                confidenceSlider.value = Math.round(confidenceMin * 100);
+                const label = document.getElementById('confidenceValue');
+                if (label) label.textContent = `${confidenceSlider.value}%`;
+            }
+            if (searchInput) searchInput.value = searchTerm;
+        } catch {
+            this.visibleVolumeColumns = [...this.defaultVisibleVolumeColumns];
+        }
+    },
+
+    saveVolumeViewState() {
+        const workloadFilter = document.getElementById('workloadFilter')?.value || '';
+        const statusFilter = document.getElementById('statusFilter')?.value || '';
+        const confidenceMin = parseInt(document.getElementById('confidenceSlider')?.value || 0) / 100;
+        const searchTerm = document.getElementById('volumeSearchInput')?.value || '';
+
+        const payload = {
+            visibleColumns: this.visibleVolumeColumns || this.defaultVisibleVolumeColumns,
+            sortColumn: this.volumeSortColumn,
+            sortDirection: this.volumeSortDirection,
+            workloadFilter,
+            statusFilter,
+            confidenceMin,
+            searchTerm
+        };
+        try {
+            localStorage.setItem(this.volumeViewStorageKey, JSON.stringify(payload));
+        } catch {
+            // ignore storage errors
+        }
+    },
+
     async loadWorkloadProfiles() {
         try {
             const response = await fetch(`${API_BASE_URL}/workload-profiles`);
@@ -201,11 +285,14 @@ const jobDetail = {
         const workloadFilter = document.getElementById('workloadFilter')?.value || '';
         const statusFilter = document.getElementById('statusFilter')?.value || '';
         const confidenceMin = parseInt(document.getElementById('confidenceSlider')?.value || 0) / 100;
+
+        // Persist filter portion of view state immediately
+        this.saveVolumeViewState();
         
         try {
             let url = `${API_BASE_URL}/discovery/${this.jobId}/volumes?page=${this.currentPage}&pageSize=${this.pageSize}`;
-            if (workloadFilter) url += `&workloadFilter=${workloadFilter}`;
-            if (statusFilter) url += `&statusFilter=${statusFilter}`;
+            if (workloadFilter) url += `&workloadFilter=${encodeURIComponent(workloadFilter)}`;
+            if (statusFilter) url += `&statusFilter=${encodeURIComponent(statusFilter)}`;
             if (confidenceMin > 0) url += `&confidenceMin=${confidenceMin}`;
             
             const response = await fetch(url);
@@ -215,43 +302,244 @@ const jobDetail = {
             this.volumes = data.Volumes || [];
             this.totalCount = data.TotalCount || 0;
             
-            this.renderVolumeGrid();
+            this.renderVolumeTable();
+            this.renderVolumePagination();
         } catch (error) {
             console.error('Error loading volumes:', error);
-            document.getElementById('volumesGrid').innerHTML = '<div style="padding: 20px; text-align: center;">Error loading volumes</div>';
+            const tbody = document.getElementById('volumesTableBody');
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="10" style="padding: 20px; text-align: center;">Error loading volumes</td></tr>';
+            }
         }
     },
-    
-    renderVolumeGrid() {
-        const grid = document.getElementById('volumesGrid');
-        
-        if (this.volumes.length === 0) {
-            grid.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">No volumes found</div>';
+
+    getVisibleVolumeColumns() {
+        if (!this.visibleVolumeColumns || !Array.isArray(this.visibleVolumeColumns)) {
+            this.visibleVolumeColumns = [...this.defaultVisibleVolumeColumns];
+        }
+        return this.visibleVolumeColumns;
+    },
+
+    toggleVolumeColumnSelector() {
+        const list = document.getElementById('volumeColumnList');
+        const header = document.querySelector('#volumeColumnSelector .column-selector-header strong');
+        if (!list || !header) return;
+        const isVisible = list.style.display !== 'none';
+        list.style.display = isVisible ? 'none' : 'block';
+        header.textContent = isVisible ? '▶ Show/Hide Columns' : '▼ Show/Hide Columns';
+    },
+
+    renderVolumeColumnSelector() {
+        const list = document.getElementById('volumeColumnList');
+        if (!list) return;
+        const visible = new Set(this.getVisibleVolumeColumns());
+        list.innerHTML = this.volumeColumns
+            .filter(c => c.key !== 'select')
+            .map(col => `
+                <div class="column-checkbox">
+                    <input type="checkbox" id="vol-col-${col.key}" value="${col.key}" ${visible.has(col.key) ? 'checked' : ''}
+                        onchange="jobDetail.onToggleVolumeColumn('${col.key}')">
+                    <label for="vol-col-${col.key}">${col.label}</label>
+                </div>
+            `).join('');
+    },
+
+    onToggleVolumeColumn(key) {
+        const current = new Set(this.getVisibleVolumeColumns());
+        if (current.has(key)) {
+            current.delete(key);
+        } else {
+            current.add(key);
+        }
+        this.visibleVolumeColumns = Array.from(current);
+        this.saveVolumeViewState();
+        this.renderVolumeTable();
+    },
+
+    sortByVolumeColumn(key) {
+        const colDef = this.volumeColumns.find(c => c.key === key);
+        if (!colDef || !colDef.sortable) return;
+        if (this.volumeSortColumn === key) {
+            this.volumeSortDirection = this.volumeSortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.volumeSortColumn = key;
+            this.volumeSortDirection = 'asc';
+        }
+        this.saveVolumeViewState();
+        this.renderVolumeTable();
+    },
+
+    getVolumeCellValue(columnKey, v) {
+        switch (columnKey) {
+            case 'VolumeName':
+                return v.VolumeData?.ShareName || 'Unknown';
+            case 'StorageAccountName':
+                return v.VolumeData?.StorageAccountName || '-';
+            case 'ResourceGroup':
+                return v.VolumeData?.ResourceGroup || '-';
+            case 'SubscriptionId':
+                return v.VolumeData?.SubscriptionId || '-';
+            case 'Location':
+                return v.VolumeData?.Location || '-';
+            case 'CapacityGiB':
+                return v.VolumeData?.ShareQuotaGiB ?? 0;
+            case 'UsedCapacity': {
+                const bytes = v.VolumeData?.ShareUsageBytes ?? 0;
+                if (!bytes) return '0 B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                const val = parseFloat((bytes / Math.pow(k, i)).toFixed(2));
+                return `${val} ${sizes[i]}`;
+            }
+            case 'AccessTier':
+                return v.VolumeData?.AccessTier || 'N/A';
+            case 'Protocols':
+                return v.VolumeData?.EnabledProtocols?.join(', ') || 'SMB';
+            case 'StorageAccountSku':
+                return v.VolumeData?.StorageAccountSku || 'N/A';
+            case 'AiWorkload':
+                return v.AiAnalysis?.SuggestedWorkloadName || '-';
+            case 'AiConfidence':
+                return ((v.AiAnalysis?.ConfidenceScore || 0) * 100).toFixed(0) + '%';
+            case 'AiLastAnalyzed':
+                return v.AiAnalysis?.LastAnalyzed ? new Date(v.AiAnalysis.LastAnalyzed).toLocaleString() : '-';
+            case 'UserWorkload':
+                return v.UserAnnotations?.ConfirmedWorkloadName || '-';
+            case 'MigrationStatus':
+                return v.UserAnnotations?.MigrationStatus || 'Candidate';
+            case 'ReviewedBy':
+                return v.UserAnnotations?.ReviewedBy || '-';
+            case 'ReviewedAt':
+                return v.UserAnnotations?.ReviewedAt ? new Date(v.UserAnnotations.ReviewedAt).toLocaleString() : '-';
+            default:
+                return '';
+        }
+    },
+
+    renderVolumeTable() {
+        const table = document.getElementById('volumesTable');
+        const thead = document.getElementById('volumesTableHeader');
+        const tbody = document.getElementById('volumesTableBody');
+        if (!table || !thead || !tbody) return;
+
+        // Column selector UI
+        this.renderVolumeColumnSelector();
+
+        if (!this.volumes || this.volumes.length === 0) {
+            thead.innerHTML = '';
+            tbody.innerHTML = '<tr><td colspan="10" style="padding: 40px; text-align: center; color: #999;">No volumes found</td></tr>';
             return;
         }
-        
-        grid.innerHTML = this.volumes.map(v => {
+
+        const searchTerm = (document.getElementById('volumeSearchInput')?.value || '').toLowerCase();
+        const visibleCols = this.getVisibleVolumeColumns();
+
+        // Filter client-side by search term
+        let rows = this.volumes.slice();
+        if (searchTerm) {
+            rows = rows.filter(v => {
+                const fields = [
+                    v.VolumeData?.ShareName,
+                    v.VolumeData?.StorageAccountName,
+                    v.VolumeData?.ResourceGroup,
+                    v.AiAnalysis?.SuggestedWorkloadName,
+                    v.UserAnnotations?.ConfirmedWorkloadName,
+                    v.UserAnnotations?.MigrationStatus?.toString() || ''
+                ].map(x => (x || '').toString().toLowerCase());
+                return fields.some(f => f.includes(searchTerm));
+            });
+        }
+
+        // Sort client-side by selected column (within current page)
+        if (this.volumeSortColumn) {
+            const key = this.volumeSortColumn;
+            const dir = this.volumeSortDirection === 'asc' ? 1 : -1;
+            rows.sort((a, b) => {
+                if (key === 'CapacityGiB') {
+                    const av = a.VolumeData?.ShareQuotaGiB ?? 0;
+                    const bv = b.VolumeData?.ShareQuotaGiB ?? 0;
+                    return (av - bv) * dir;
+                }
+                if (key === 'AiConfidence') {
+                    const av = a.AiAnalysis?.ConfidenceScore ?? 0;
+                    const bv = b.AiAnalysis?.ConfidenceScore ?? 0;
+                    return (av - bv) * dir;
+                }
+                const avRaw = this.getVolumeCellValue(key, a) || '';
+                const bvRaw = this.getVolumeCellValue(key, b) || '';
+                const av = avRaw.toString().toLowerCase();
+                const bv = bvRaw.toString().toLowerCase();
+                if (av < bv) return -1 * dir;
+                if (av > bv) return 1 * dir;
+                return 0;
+            });
+        }
+
+        // Render header
+        const headerCols = this.volumeColumns.filter(c => visibleCols.includes(c.key));
+        const sortCol = this.volumeSortColumn;
+        const sortDir = this.volumeSortDirection;
+        thead.innerHTML = '<tr>' + headerCols.map(col => {
+            if (col.key === 'select') {
+                return `<th><input type="checkbox" id="selectAll" onchange="jobDetail.toggleSelectAll()"></th>`;
+            }
+            const sortClass = sortCol === col.key ? (sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc') : '';
+            return `<th class="${sortClass}" onclick="jobDetail.sortByVolumeColumn('${col.key}')">${col.label}<span class="sort-indicator"></span></th>`;
+        }).join('') + '</tr>';
+
+        // Render body
+        tbody.innerHTML = rows.map(v => {
             const isSelected = this.selectedVolumes.has(v.VolumeId);
-            const confidence = (v.AiAnalysis?.ConfidenceScore || 0) * 100;
-            
-            return `
-                <div class="grid-row ${isSelected ? 'selected' : ''}" data-id="${v.VolumeId}">
-                    <div><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="jobDetail.toggleSelect('${v.VolumeId}')"></div>
-                    <div onclick="jobDetail.showVolumeDetail('${v.VolumeId}')">${v.VolumeData.ShareName || 'Unknown'}</div>
-                    <div onclick="jobDetail.showVolumeDetail('${v.VolumeId}')">${v.VolumeData.StorageAccountName || '-'}</div>
-                    <div onclick="jobDetail.showVolumeDetail('${v.VolumeId}')">${v.VolumeData.ShareQuotaGiB || 0}</div>
-                    <div onclick="jobDetail.showVolumeDetail('${v.VolumeId}')">${v.AiAnalysis?.SuggestedWorkloadName || '-'}</div>
-                    <div onclick="jobDetail.showVolumeDetail('${v.VolumeId}')">${v.UserAnnotations?.ConfirmedWorkloadName || '-'}</div>
-                    <div onclick="jobDetail.showVolumeDetail('${v.VolumeId}')">
-                        <div class="confidence-bar">
-                            <div class="confidence-fill" style="width: ${confidence}%"></div>
-                        </div>
-                        <small>${confidence.toFixed(0)}%</small>
-                    </div>
-                    <div>${v.UserAnnotations?.MigrationStatus || 'Candidate'}</div>
-                </div>
-            `;
+            const cells = headerCols.map(col => {
+                if (col.key === 'select') {
+                    return `<td><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="jobDetail.toggleSelect('${v.VolumeId}')"></td>`;
+                }
+                if (col.key === 'VolumeName') {
+                    const name = this.getVolumeCellValue('VolumeName', v);
+                    const url = `volume-detail.html?jobId=${encodeURIComponent(this.jobId)}&volumeId=${encodeURIComponent(v.VolumeId)}`;
+                    return `<td><a href="${url}">${name}</a></td>`;
+                }
+                const value = this.getVolumeCellValue(col.key, v);
+                return `<td>${value}</td>`;
+            }).join('');
+            return `<tr>${cells}</tr>`;
         }).join('');
+    },
+
+    renderVolumePagination() {
+        const pagination = document.getElementById('pagination');
+        if (!pagination) return;
+        const totalPages = Math.ceil(this.totalCount / this.pageSize);
+        if (!totalPages || totalPages <= 1) {
+            pagination.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+        if (this.currentPage > 1) {
+            html += `<button class="page-btn" onclick="jobDetail.goToPage(${this.currentPage - 1})">Previous</button>`;
+        }
+
+        const start = Math.max(1, this.currentPage - 2);
+        const end = Math.min(totalPages, this.currentPage + 2);
+        for (let i = start; i <= end; i++) {
+            html += `<button class="page-btn ${i === this.currentPage ? 'active' : ''}" onclick="jobDetail.goToPage(${i})">${i}</button>`;
+        }
+
+        if (this.currentPage < totalPages) {
+            html += `<button class="page-btn" onclick="jobDetail.goToPage(${this.currentPage + 1})">Next</button>`;
+        }
+
+        pagination.innerHTML = html;
+    },
+
+    goToPage(page) {
+        if (page < 1) return;
+        const totalPages = Math.ceil(this.totalCount / this.pageSize);
+        if (page > totalPages) return;
+        this.currentPage = page;
+        this.applyFilters();
     },
     
     toggleSelect(volumeId) {
@@ -261,64 +549,52 @@ const jobDetail = {
             this.selectedVolumes.add(volumeId);
         }
         this.updateBulkToolbar();
-        this.renderVolumeGrid();
+        this.renderVolumeTable();
     },
     
     toggleSelectAll() {
-        const checked = document.getElementById('selectAll').checked;
+        const checked = document.getElementById('selectAll')?.checked;
         this.selectedVolumes.clear();
         if (checked) {
             this.volumes.forEach(v => this.selectedVolumes.add(v.VolumeId));
         }
         this.updateBulkToolbar();
-        this.renderVolumeGrid();
+        this.renderVolumeTable();
     },
     
     clearSelection() {
         this.selectedVolumes.clear();
-        document.getElementById('selectAll').checked = false;
+        const selectAll = document.getElementById('selectAll');
+        if (selectAll) selectAll.checked = false;
         this.updateBulkToolbar();
-        this.renderVolumeGrid();
+        this.renderVolumeTable();
     },
     
     updateBulkToolbar() {
         const toolbar = document.getElementById('bulkToolbar');
+        if (!toolbar) return;
         const count = this.selectedVolumes.size;
         
         if (count > 0) {
             toolbar.classList.add('show');
-            document.getElementById('selectedCount').textContent = `${count} selected`;
+            const label = document.getElementById('selectedCount');
+            if (label) label.textContent = `${count} selected`;
         } else {
             toolbar.classList.remove('show');
         }
     },
     
     showVolumeDetail(volumeId) {
-        const volume = this.volumes.find(v => v.VolumeId === volumeId);
-        if (!volume) return;
-        
-        document.getElementById('detailTitle').textContent = volume.VolumeData.ShareName;
-        document.getElementById('detailContent').innerHTML = `
-            <h3>Volume Properties</h3>
-            <div class="property-grid">
-                <div class="property-label">Name</div>
-                <div>${volume.VolumeData.ShareName}</div>
-                <div class="property-label">Storage Account</div>
-                <div>${volume.VolumeData.StorageAccountName}</div>
-                <div class="property-label">Size</div>
-                <div>${volume.VolumeData.ShareQuotaGiB} GiB</div>
-                <div class="property-label">AI Workload</div>
-                <div>${volume.AiAnalysis?.SuggestedWorkloadName || 'Not analyzed'}</div>
-                <div class="property-label">Confidence</div>
-                <div>${((volume.AiAnalysis?.ConfidenceScore || 0) * 100).toFixed(0)}%</div>
-            </div>
-        `;
-        
-        document.getElementById('detailPanel').classList.add('show');
+        // Deprecated: detail panel replaced by dedicated volume-detail page.
+        const url = `volume-detail.html?jobId=${encodeURIComponent(this.jobId)}&volumeId=${encodeURIComponent(volumeId)}`;
+        window.location.href = url;
     },
     
     closeDetail() {
-        document.getElementById('detailPanel').classList.remove('show');
+        const panel = document.getElementById('detailPanel');
+        if (panel) {
+            panel.classList.remove('show');
+        }
     },
     
     async bulkExclude() {

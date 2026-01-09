@@ -421,21 +421,25 @@
                     <button class="btn" onclick="jobDetail.bulkExclude()">Exclude Selected</button>
                     <button class="btn" onclick="jobDetail.clearSelection()">Clear Selection</button>
                 </div>
-                
-                <div class="volumes-grid">
-                    <div class="grid-header">
-                        <div><input type="checkbox" id="selectAll" onchange="jobDetail.toggleSelectAll()"></div>
-                        <div>Volume Name</div>
-                        <div>Storage Account</div>
-                        <div>Size (GiB)</div>
-                        <div>AI Workload</div>
-                        <div>User Workload</div>
-                        <div>Confidence</div>
-                        <div>Status</div>
+
+                <div class="column-selector" id="volumeColumnSelector" style="margin: 1rem 0;">
+                    <div class="column-selector-header" style="cursor: pointer;" onclick="jobDetail.toggleVolumeColumnSelector()">
+                        <strong>▶ Show/Hide Columns</strong>
                     </div>
-                    <div id="volumesGrid"></div>
+                    <div class="column-list" id="volumeColumnList" style="display: none; margin-top: 0.75rem;"></div>
                 </div>
-                
+
+                <div class="search-filter" style="margin-bottom: 1rem;">
+                    <input type="text" id="volumeSearchInput" class="search-input" placeholder="Search volumes..." onkeyup="jobDetail.applyFilters()">
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table" id="volumesTable">
+                        <thead id="volumesTableHeader"></thead>
+                        <tbody id="volumesTableBody"></tbody>
+                    </table>
+                </div>
+
                 <div id="pagination" style="text-align: center; padding: 20px;"></div>
             </div>
             

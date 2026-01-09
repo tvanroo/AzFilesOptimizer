@@ -13,6 +13,25 @@ public class DiscoveryData
 }
 
 /// <summary>
+/// History entry for user annotations on a volume.
+/// Stored inside DiscoveryData so we have a per-volume audit trail.
+/// </summary>
+public class AnnotationHistoryEntry
+{
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public string UserId { get; set; } = string.Empty;
+    public string? ConfirmedWorkloadId { get; set; }
+    public string? ConfirmedWorkloadName { get; set; }
+    public MigrationStatus? MigrationStatus { get; set; }
+    public string[]? CustomTags { get; set; }
+    public string? Notes { get; set; }
+    /// <summary>
+    /// Source of the change, e.g. "Update" or "BulkUpdate".
+    /// </summary>
+    public string? Source { get; set; }
+}
+
+/// <summary>
 /// Wraps a DiscoveredAzureFileShare with its analysis and annotation data
 /// </summary>
 public class DiscoveredVolumeWithAnalysis
@@ -20,6 +39,11 @@ public class DiscoveredVolumeWithAnalysis
     public DiscoveredAzureFileShare Volume { get; set; } = new();
     public AiAnalysisResult? AiAnalysis { get; set; }
     public UserAnnotations? UserAnnotations { get; set; }
+
+    /// <summary>
+    /// History of user annotation changes for this volume.
+    /// </summary>
+    public List<AnnotationHistoryEntry> AnnotationHistory { get; set; } = new();
     
     /// <summary>
     /// Computed unique identifier for this volume (hash of ResourceId)
