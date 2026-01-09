@@ -606,6 +606,9 @@ const jobDetail = {
     async runAnalysis() {
         if (!confirm('Run AI analysis on all volumes in this job?')) return;
         
+        // Open the log modal immediately so the user can see progress while the request is in flight
+        this.showLogModal();
+        
         try {
             const response = await fetch(`${API_BASE_URL}/discovery/${this.jobId}/analyze`, {
                 method: 'POST'
@@ -617,7 +620,7 @@ const jobDetail = {
             this.currentAnalysisJobId = result.AnalysisJobId;
             
             document.getElementById('view-logs-btn').style.display = 'inline-block';
-            this.showLogModal();
+            // The log modal is already open; just begin status polling
             this.pollAnalysisStatus(result.AnalysisJobId);
         } catch (error) {
             Toast.error('Failed to start analysis: ' + error.message);
