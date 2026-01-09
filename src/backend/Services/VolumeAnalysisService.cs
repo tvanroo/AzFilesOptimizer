@@ -32,7 +32,7 @@ public class VolumeAnalysisService
         _blobContainer.CreateIfNotExists();
     }
 
-    public async Task AnalyzeVolumesAsync(string discoveryJobId, string userId, string apiKey, string provider, string? endpoint, string? analysisJobId = null)
+    public async Task AnalyzeVolumesAsync(string discoveryJobId, string userId, string apiKey, string provider, string? endpoint, string? analysisJobId = null, string? preferredModel = null)
     {
         _logger.LogInformation("Starting analysis for discovery job: {JobId}", discoveryJobId);
         
@@ -89,7 +89,8 @@ public class VolumeAnalysisService
                     provider,
                     endpoint,
                     analysisJobId,
-                    volumeWrapper.Volume.ShareName ?? "Unknown");
+                    volumeWrapper.Volume.ShareName ?? "Unknown",
+                    preferredModel);
                 
                 volumeWrapper.AiAnalysis = analysis;
                 volumeWrapper.UserAnnotations ??= new UserAnnotations();
@@ -135,7 +136,8 @@ public class VolumeAnalysisService
         string provider,
         string? endpoint,
         string? analysisJobId = null,
-        string? volumeName = null)
+        string? volumeName = null,
+        string? preferredModel = null)
     {
         var result = new AiAnalysisResult
         {
@@ -170,7 +172,7 @@ public class VolumeAnalysisService
                 var fullPrompt = BuildFullPrompt(processedPrompt, profiles);
 
                 // Call AI
-                var aiResponse = await CallAIForAnalysis(fullPrompt, apiKey, provider, endpoint);
+                var aiResponse = await CallAIForAnalysis(fullPrompt, apiKey, provider, endpoint, preferredModel);
                 
                 // Log prompt execution (both prompt and response, truncated for readability)
                 if (_logService != null && !string.IsNullOrEmpty(analysisJobId) && !string.IsNullOrEmpty(volumeName))
@@ -401,7 +403,7 @@ public class VolumeAnalysisService
         return sb.ToString();
     }
 
-    private async Task<string> CallAIForAnalysis(string prompt, string apiKey, string provider, string? endpoint)
+    private async Task<string> CallAIForAnalysis(string prompt, string apiKey, string provider, string? endpoint, string? preferredModel)
     {
         try
         {
@@ -411,10 +413,12 @@ public class VolumeAnalysisService
             string apiUrl;
             string requestBody;
 
+            var modelToUse = string.IsNullOrWhiteSpace(preferredModel) ? "gpt-4" : preferredModel.Trim();
+
             if (provider == "AzureOpenAI" && !string.IsNullOrEmpty(endpoint))
             {
                 // Azure OpenAI format
-                apiUrl = $"{endpoint.TrimEnd('/')}/openai/deployments/gpt-4/chat/completions?api-version=2024-02-15-preview";
+                apiUrl = $"{endpoint.TrimEnd('/')}/openai/deployments/{modelToUse}/chat/completions?api-version=2024-02-15-preview";
                 httpClient.DefaultRequestHeaders.Add("api-key", apiKey);
             }
             else
@@ -426,7 +430,7 @@ public class VolumeAnalysisService
 
             var requestPayload = new
             {
-                model = provider == "AzureOpenAI" ? "" : "gpt-4",
+                model = provider == "AzureOpenAI" ? "" : modelToUse,
                 messages = new[]
                 {
                     new { role = "user", content = prompt }

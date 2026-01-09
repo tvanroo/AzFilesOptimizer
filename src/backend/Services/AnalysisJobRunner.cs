@@ -1,6 +1,7 @@
 using Azure;
 using Azure.Data.Tables;
 using Microsoft.Extensions.Logging;
+using System.Linq;
 using AzFilesOptimizer.Backend.Models;
 
 namespace AzFilesOptimizer.Backend.Services;
@@ -76,6 +77,10 @@ public class AnalysisJobRunner
                 await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] API key config is missing KeyVaultSecretName", "ERROR");
                 throw new InvalidOperationException("API key not configured in Key Vault");
             }
+            var modelToUse = ResolvePreferredModel(apiKeyConfig);
+            await _analysisLogService.LogProgressAsync(
+                analysisJobId,
+                $"[Processor] Using preferred model '{modelToUse}' for provider {apiKeyConfig.Provider}.");
 
             // 3) Fetch API key from Key Vault
             await _analysisLogService.LogProgressAsync(analysisJobId, $"[Processor] Fetching API key secret '{apiKeyConfig.KeyVaultSecretName}' from Key Vault...");
@@ -105,7 +110,8 @@ public class AnalysisJobRunner
                 apiKey!,
                 apiKeyConfig.Provider,
                 apiKeyConfig.Endpoint,
-                analysisJobId);
+                analysisJobId,
+                modelToUse);
 
             // 5) Update job with completion
             analysisJob.Status = AnalysisJobStatus.Completed.ToString();
@@ -147,5 +153,28 @@ public class AnalysisJobRunner
         _profileService ??= new WorkloadProfileService(_connectionString, _logger);
         _promptService ??= new AnalysisPromptService(_connectionString, _logger);
         _apiKeyService ??= new ApiKeyStorageService(_connectionString);
+    }
+
+    private static string ResolvePreferredModel(ApiKeyConfiguration config)
+    {
+        var preferred = config.Preferences?.PreferredModels?.FirstOrDefault(m => !string.IsNullOrWhiteSpace(m));
+        if (!string.IsNullOrWhiteSpace(preferred))
+        {
+            return preferred.Trim();
+        }
+
+        var available = config.AvailableModels?.FirstOrDefault(m => !string.IsNullOrWhiteSpace(m));
+        if (!string.IsNullOrWhiteSpace(available))
+        {
+            return available.Trim();
+        }
+
+        // Fallbacks
+        if (string.Equals(config.Provider, "AzureOpenAI", StringComparison.OrdinalIgnoreCase))
+        {
+            return "gpt-4";
+        }
+
+        return "gpt-4";
     }
 }
