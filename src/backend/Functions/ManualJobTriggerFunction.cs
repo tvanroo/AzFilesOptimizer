@@ -56,10 +56,9 @@ public class ManualJobTriggerFunction
                         throw new InvalidOperationException("Subscription ID is required for discovery");
                     }
 
-                    var resourceGroupName = job.ResourceGroupNames?.FirstOrDefault();
                     var result = await discoveryService.DiscoverResourcesAsync(
                         job.SubscriptionId,
-                        resourceGroupName,
+                        job.ResourceGroupNames,
                         credential);
 
                     // Update job with results

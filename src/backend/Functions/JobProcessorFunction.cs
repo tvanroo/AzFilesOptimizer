@@ -80,10 +80,9 @@ public class JobProcessorFunction
             }
 
             // Execute discovery
-            var resourceGroupName = job.ResourceGroupNames?.FirstOrDefault();
             var result = await discoveryService.DiscoverResourcesAsync(
                 job.SubscriptionId,
-                resourceGroupName,
+                job.ResourceGroupNames,
                 credential);
 
             // Update job with results
