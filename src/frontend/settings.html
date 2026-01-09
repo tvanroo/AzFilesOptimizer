@@ -49,6 +49,7 @@
                         <button class="btn" onclick="copyApiKey()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">📋 Copy</button>
                     </div>
                     <div style="margin-bottom: 0.5rem;" id="status-endpoint-container"><strong>Endpoint:</strong> <span id="status-endpoint">-</span></div>
+                    <div style="margin-bottom: 0.5rem;"><strong>Selected Model:</strong> <span id="status-selected-model">-</span></div>
                     <div style="margin-bottom: 0.5rem;">
                         <strong>Available Models:</strong> 
                         <span id="status-models-count">-</span>
@@ -104,44 +105,20 @@
         </div>
         
         <div class="card" id="preferences-card" style="display: none;">
-            <h2>Model Preferences</h2>
-            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-                Organize your available AI models by preference. The system will prioritize preferred models, fall back to allowed models if needed, and never use blocked models.
+            <h2>Model Preference</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                Pick the single AI model or deployment you want AzFilesOptimizer to use for every analysis run.
             </p>
-            
             <div style="margin-bottom: 1rem;">
-                <input type="text" id="model-search" placeholder="Search models..." style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;">
+                <label for="preferred-model-select" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Select AI Model *</label>
+                <select id="preferred-model-select" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;">
+                    <option value="">No models available</option>
+                </select>
             </div>
-            
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-                <div>
-                    <h3 style="font-size: 0.875rem; margin-bottom: 0.5rem; color: var(--success-color);">✓ Preferred Models</h3>
-                    <div id="preferred-models" class="model-category" style="min-height: 100px; padding: 0.5rem; background: #f0f9f0; border: 2px solid var(--success-color); border-radius: 4px;">
-                        <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; margin: 1rem 0;">Drag models here or click to add</p>
-                    </div>
-                </div>
-                <div>
-                    <h3 style="font-size: 0.875rem; margin-bottom: 0.5rem; color: #2196F3;">○ Allowed Models</h3>
-                    <div id="allowed-models" class="model-category" style="min-height: 100px; padding: 0.5rem; background: #e3f2fd; border: 2px solid #2196F3; border-radius: 4px;">
-                        <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; margin: 1rem 0;">Drag models here or click to add</p>
-                    </div>
-                </div>
-                <div>
-                    <h3 style="font-size: 0.875rem; margin-bottom: 0.5rem; color: var(--error-color);">✕ Blocked Models</h3>
-                    <div id="blocked-models" class="model-category" style="min-height: 100px; padding: 0.5rem; background: #ffebee; border: 2px solid var(--error-color); border-radius: 4px;">
-                        <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; margin: 1rem 0;">Drag models here or click to add</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div>
-                <h3 style="font-size: 0.875rem; margin-bottom: 0.5rem;">Uncategorized Models</h3>
-                <div id="uncategorized-models" style="padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; min-height: 80px;">
-                    <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;">All models will appear here</p>
-                </div>
-            </div>
-            
-            <button class="btn" onclick="savePreferences()" style="margin-top: 1rem;">Save Preferences</button>
+            <p id="model-select-helper" style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem;">
+                We'll always use this model first. Update your API key if the list ever looks outdated.
+            </p>
+            <button class="btn" onclick="savePreferences()">Save Selection</button>
         </div>
         
         <div class="card">
@@ -211,34 +188,27 @@
                     // Update models display (handle both cases)
                     const availableModels = status.availableModels || status.AvailableModels || [];
                     const preferences = status.preferences || status.Preferences || {};
+                    const preferredModels = preferences.preferredModels || preferences.PreferredModels || [];
+                    const selectedModel = preferredModels.length > 0 ? preferredModels[0] : null;
+                    
+                    if (selectedModel) {
+                        document.getElementById('status-selected-model').textContent = selectedModel;
+                    } else {
+                        document.getElementById('status-selected-model').textContent = 'Not selected';
+                    }
                     
                     if (availableModels.length > 0) {
                         document.getElementById('status-models-count').textContent = `${availableModels.length} models available`;
                         document.getElementById('toggle-models-btn').style.display = 'inline-block';
                         
-                        // Populate models list with preference badges
+                        // Populate models list highlighting the saved selection
                         const modelsList = document.getElementById('available-models-list');
-                        const preferredModels = preferences.preferredModels || preferences.PreferredModels || [];
-                        const allowedModels = preferences.allowedModels || preferences.AllowedModels || [];
-                        const blockedModels = preferences.blockedModels || preferences.BlockedModels || [];
-                        
                         modelsList.innerHTML = availableModels
                             .map(model => {
-                                let badge = '';
-                                let color = '#666';
-                                
-                                if (preferredModels.includes(model)) {
-                                    badge = ' ✓';
-                                    color = 'var(--success-color)';
-                                } else if (allowedModels.includes(model)) {
-                                    badge = ' ○';
-                                    color = '#2196F3';
-                                } else if (blockedModels.includes(model)) {
-                                    badge = ' ✕';
-                                    color = 'var(--error-color)';
-                                }
-                                
-                                return `<li style="color: ${color}; margin-bottom: 0.25rem;">${model}${badge}</li>`;
+                                const isSelected = model === selectedModel;
+                                const color = isSelected ? 'var(--success-color)' : '#666';
+                                const suffix = isSelected ? ' ✓ Selected' : '';
+                                return `<li style="color: ${color}; margin-bottom: 0.25rem;">${model}${suffix}</li>`;
                             })
                             .join('');
                         
@@ -250,6 +220,8 @@
                     } else {
                         document.getElementById('status-models-count').textContent = 'Unknown';
                         document.getElementById('toggle-models-btn').style.display = 'none';
+                        document.getElementById('status-selected-model').textContent = '-';
+                        document.getElementById('preferences-card').style.display = 'none';
                     }
                     
                     const lastValidated = status.lastValidatedAt || status.LastValidatedAt;
