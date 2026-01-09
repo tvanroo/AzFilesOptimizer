@@ -1,9 +1,26 @@
 const analysisPrompts = {
     prompts: [],
     draggedItem: null,
-    variables: ['{VolumeName}', '{Size}', '{SizeGB}', '{UsedCapacity}', '{Tags}', '{Metadata}', 
-                '{StorageAccount}', '{ResourceGroup}', '{PerformanceTier}', '{StorageAccountSku}',
-                '{ProvisionedIOPS}', '{ProvisionedBandwidth}', '{Protocols}', '{Location}', '{AccessTier}'],
+    workloadProfiles: [],
+    variables: [
+        '{VolumeName}', '{Size}', '{SizeGB}', '{UsedCapacity}',
+        '{ShareQuotaGiB}', '{ShareUsageBytes}',
+        '{TenantId}', '{SubscriptionId}', '{ResourceGroup}',
+        '{StorageAccount}', '{StorageAccountSku}', '{StorageAccountKind}',
+        '{EnableHttpsTrafficOnly}', '{MinimumTlsVersion}',
+        '{AllowBlobPublicAccess}', '{AllowSharedKeyAccess}',
+        '{PerformanceTier}', '{ProvisionedIOPS}', '{ProvisionedBandwidth}',
+        '{EstimatedIOPS}', '{EstimatedThroughputMiBps}',
+        '{Protocols}', '{RootSquash}',
+        '{AccessTier}', '{LeaseStatus}', '{LeaseState}', '{LeaseDuration}',
+        '{IsDeleted}', '{DeletedTime}', '{RemainingRetentionDays}', '{Version}',
+        '{IsSnapshot}', '{SnapshotTime}', '{SnapshotId}',
+        '{SnapshotCount}', '{TotalSnapshotSizeBytes}', '{ChurnRateBytesPerDay}',
+        '{CreationTime}', '{LastModifiedTime}', '{DiscoveredAt}',
+        '{Tags}', '{Metadata}',
+        '{MonitoringEnabled}', '{MonitoringDataAvailableDays}',
+        '{HistoricalMetricsSummary}', '{MetricsSummary}'
+    ],
 
     init() {
         this.loadPrompts();
@@ -182,6 +199,15 @@ const analysisPrompts = {
                 <div class="variable-picker">
                     <small style="width: 100%; margin-bottom: 5px; display: block;">Click to insert:</small>
                     ${this.variables.map(v => `<span class="variable-tag" onclick="analysisPrompts.insertVariable('${v}')">${v}</span>`).join('')}
+                    <div class="workload-variable-picker" style="margin-top: 8px;">
+                        <small style="width: 100%; margin-bottom: 5px; display: block;">Insert workload profile:</small>
+                        <select id="workloadVariableSelect" onchange="analysisPrompts.insertWorkloadVariable(this.value)">
+                            <option value="">Select workload...</option>
+                            ${this.workloadProfiles.map(p => `
+                                <option value="${p.ProfileId}">${this.escapeHtml(p.Name)}</option>
+                            `).join('')}
+                        </select>
+                    </div>
                 </div>
                 <textarea id="promptTemplate" rows="8" placeholder="Enter your prompt template here...">${this.escapeHtml(prompt.PromptTemplate)}</textarea>
             </div>
@@ -236,10 +262,20 @@ const analysisPrompts = {
             const response = await fetch(`${API_BASE_URL}/workload-profiles`);
             if (!response.ok) throw new Error('Failed to load workload profiles');
             const profiles = await response.json();
-            
+
+            // Cache for both stop-condition picker and workload variable dropdown
+            this.workloadProfiles = profiles;
+
             const select = document.getElementById('targetWorkload');
             if (select) {
                 select.innerHTML = '<option value="">Select workload...</option>' + 
+                    profiles.map(p => `<option value="${p.ProfileId}">${this.escapeHtml(p.Name)}</option>`).join('');
+            }
+
+            // Refresh workload variable dropdown if present
+            const workloadVarSelect = document.getElementById('workloadVariableSelect');
+            if (workloadVarSelect) {
+                workloadVarSelect.innerHTML = '<option value="">Select workload...</option>' +
                     profiles.map(p => `<option value="${p.ProfileId}">${this.escapeHtml(p.Name)}</option>`).join('');
             }
         } catch (error) {
@@ -249,11 +285,29 @@ const analysisPrompts = {
 
     insertVariable(variable) {
         const textarea = document.getElementById('promptTemplate');
-        const pos = textarea.selectionStart;
+        if (!textarea) return;
+        const pos = textarea.selectionStart || 0;
         const text = textarea.value;
         textarea.value = text.substring(0, pos) + variable + text.substring(pos);
         textarea.focus();
         textarea.setSelectionRange(pos + variable.length, pos + variable.length);
+    },
+
+    insertWorkloadVariable(profileId) {
+        if (!profileId) return;
+        const textarea = document.getElementById('promptTemplate');
+        if (!textarea) return;
+
+        const variable = `{WorkloadProfile:${profileId}}`;
+        const pos = textarea.selectionStart || 0;
+        const text = textarea.value;
+        textarea.value = text.substring(0, pos) + variable + text.substring(pos);
+        textarea.focus();
+        const newPos = pos + variable.length;
+        textarea.setSelectionRange(newPos, newPos);
+
+        const select = document.getElementById('workloadVariableSelect');
+        if (select) select.value = '';
     },
 
     closeModal() {

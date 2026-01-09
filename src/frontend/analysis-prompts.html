@@ -118,6 +118,22 @@
             background: #f9f9f9; 
         }
         .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+        .prompt-help {
+            margin-bottom: 16px;
+            padding: 12px 14px;
+            border-radius: 6px;
+            background: #f5f9ff;
+            border: 1px solid #c5dcff;
+            font-size: 13px;
+            color: #234;
+        }
+        .prompt-help strong {
+            font-weight: 600;
+        }
+        .prompt-help code {
+            font-family: monospace;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -156,6 +172,14 @@
                     <button class="btn btn-primary" onclick="analysisPrompts.seedPrompts()">Seed Default Prompts</button>
                     <button class="btn btn-primary" onclick="analysisPrompts.saveOrder()">Save Order</button>
                 </div>
+            </div>
+
+            <div class="prompt-help">
+                <strong>Prompt variables &amp; workload profiles</strong><br />
+                Click any variable chip in the editor to insert volume data (name, size, security, performance, snapshots, metrics, etc.).
+                Use the <em>Insert workload profile</em> dropdown in the editor to insert a reference such as
+                <code>{WorkloadProfile:fslogix-profile}</code>; during analysis this is replaced with full profile details so the AI can explicitly
+                compare the volume against that workload.
             </div>
 
             <div id="promptsList" class="prompts-list"></div>

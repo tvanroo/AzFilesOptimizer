@@ -156,22 +156,23 @@ public class VolumeAnalysisService
 
             try
             {
-                // Substitute variables in prompt template
+                // Substitute volume and workload profile variables in prompt template
                 var processedPrompt = SubstitutePromptVariables(prompt.PromptTemplate, volume);
-                
-                // Add workload profile context
+                processedPrompt = SubstituteWorkloadProfileVariables(processedPrompt, profiles);
+
+                // Add workload profile context and instructions
                 var fullPrompt = BuildFullPrompt(processedPrompt, profiles);
-                
+
                 // Call AI
                 var aiResponse = await CallAIForAnalysis(fullPrompt, apiKey, provider, endpoint);
-                
+
                 // Log prompt execution
                 if (_logService != null && !string.IsNullOrEmpty(analysisJobId) && !string.IsNullOrEmpty(volumeName))
                 {
                     var summary = aiResponse.Length > 100 ? aiResponse.Substring(0, 100) + "..." : aiResponse;
                     await _logService.LogPromptExecutionAsync(analysisJobId, volumeName, prompt.Name, summary);
                 }
-                
+
                 // Parse response
                 var promptResult = new PromptExecutionResult
                 {
@@ -195,9 +196,9 @@ public class VolumeAnalysisService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error executing prompt {PromptName} on volume {VolumeName}", 
+                _logger.LogError(ex, "Error executing prompt {PromptName} on volume {VolumeName}",
                     prompt.Name, volume.ShareName);
-                
+
                 appliedPrompts.Add(new PromptExecutionResult
                 {
                     PromptId = prompt.PromptId,
@@ -209,7 +210,7 @@ public class VolumeAnalysisService
         }
 
         result.AppliedPrompts = appliedPrompts.ToArray();
-        
+
         // Calculate overall confidence if workload was determined
         if (!string.IsNullOrEmpty(result.SuggestedWorkloadId))
         {
@@ -221,26 +222,143 @@ public class VolumeAnalysisService
 
     public string SubstitutePromptVariables(string template, DiscoveredAzureFileShare volume)
     {
+        if (string.IsNullOrEmpty(template))
+            return template;
+
         var substituted = template;
-        
-        substituted = substituted.Replace("{VolumeName}", volume.ShareName ?? "Unknown");
-        substituted = substituted.Replace("{Size}", $"{volume.ShareQuotaGiB ?? 0} GiB");
-        substituted = substituted.Replace("{SizeGB}", $"{volume.ShareQuotaGiB ?? 0}");
-        substituted = substituted.Replace("{UsedCapacity}", FormatBytes(volume.ShareUsageBytes ?? 0));
-        substituted = substituted.Replace("{Tags}", FormatDictionary(volume.Tags));
-        substituted = substituted.Replace("{Metadata}", FormatDictionary(volume.Metadata));
-        substituted = substituted.Replace("{StorageAccount}", volume.StorageAccountName ?? "Unknown");
+
+        // Identity / hierarchy
+        substituted = substituted.Replace("{TenantId}", volume.TenantId ?? "Unknown");
+        substituted = substituted.Replace("{SubscriptionId}", volume.SubscriptionId ?? "Unknown");
         substituted = substituted.Replace("{ResourceGroup}", volume.ResourceGroup ?? "Unknown");
-        substituted = substituted.Replace("{PerformanceTier}", volume.AccessTier ?? "Unknown");
+        substituted = substituted.Replace("{StorageAccount}", volume.StorageAccountName ?? "Unknown");
+        substituted = substituted.Replace("{VolumeName}", volume.ShareName ?? "Unknown");
+        substituted = substituted.Replace("{ResourceId}", volume.ResourceId ?? "Unknown");
+        substituted = substituted.Replace("{Location}", volume.Location ?? "Unknown");
+
+        // Storage account configuration / security
         substituted = substituted.Replace("{StorageAccountSku}", volume.StorageAccountSku ?? "Unknown");
+        substituted = substituted.Replace("{StorageAccountKind}", volume.StorageAccountKind ?? "Unknown");
+        substituted = substituted.Replace("{EnableHttpsTrafficOnly}", volume.EnableHttpsTrafficOnly?.ToString() ?? "Unknown");
+        substituted = substituted.Replace("{MinimumTlsVersion}", volume.MinimumTlsVersion ?? "Unknown");
+        substituted = substituted.Replace("{AllowBlobPublicAccess}", volume.AllowBlobPublicAccess?.ToString() ?? "Unknown");
+        substituted = substituted.Replace("{AllowSharedKeyAccess}", volume.AllowSharedKeyAccess?.ToString() ?? "Unknown");
+
+        // Capacity & usage
+        var quotaGiB = volume.ShareQuotaGiB ?? 0;
+        var usageBytes = volume.ShareUsageBytes ?? 0;
+        substituted = substituted.Replace("{Size}", $"{quotaGiB} GiB");
+        substituted = substituted.Replace("{SizeGB}", quotaGiB.ToString());
+        substituted = substituted.Replace("{ShareQuotaGiB}", quotaGiB.ToString());
+        substituted = substituted.Replace("{ShareUsageBytes}", usageBytes.ToString());
+        substituted = substituted.Replace("{UsedCapacity}", FormatBytes(usageBytes));
+        substituted = substituted.Replace("{Protocols}", volume.EnabledProtocols != null ? string.Join(", ", volume.EnabledProtocols) : "Unknown");
+        substituted = substituted.Replace("{RootSquash}", volume.RootSquash ?? "Unknown");
+
+        // Performance
+        substituted = substituted.Replace("{PerformanceTier}", volume.AccessTier ?? "Unknown");
+        substituted = substituted.Replace("{AccessTier}", volume.AccessTier ?? "Unknown");
         substituted = substituted.Replace("{ProvisionedIOPS}", volume.ProvisionedIops?.ToString() ?? "N/A");
         substituted = substituted.Replace("{ProvisionedBandwidth}", volume.ProvisionedBandwidthMiBps?.ToString() ?? "N/A");
-        substituted = substituted.Replace("{Protocols}", volume.EnabledProtocols != null ? string.Join(", ", volume.EnabledProtocols) : "Unknown");
-        substituted = substituted.Replace("{Location}", volume.Location ?? "Unknown");
+        substituted = substituted.Replace("{EstimatedIOPS}", volume.EstimatedIops?.ToString() ?? "N/A");
+        substituted = substituted.Replace("{EstimatedThroughputMiBps}", volume.EstimatedThroughputMiBps?.ToString("0.##") ?? "N/A");
+
+        // Lease / lifecycle
         substituted = substituted.Replace("{LeaseStatus}", volume.LeaseStatus ?? "Unknown");
-        substituted = substituted.Replace("{AccessTier}", volume.AccessTier ?? "Unknown");
-        
+        substituted = substituted.Replace("{LeaseState}", volume.LeaseState ?? "Unknown");
+        substituted = substituted.Replace("{LeaseDuration}", volume.LeaseDuration ?? "Unknown");
+        substituted = substituted.Replace("{IsDeleted}", (volume.IsDeleted ?? false).ToString());
+        substituted = substituted.Replace("{DeletedTime}", volume.DeletedTime?.ToString("o") ?? "N/A");
+        substituted = substituted.Replace("{RemainingRetentionDays}", volume.RemainingRetentionDays?.ToString() ?? "N/A");
+        substituted = substituted.Replace("{Version}", volume.Version ?? "Unknown");
+
+        // Snapshots / churn / backup
+        substituted = substituted.Replace("{IsSnapshot}", volume.IsSnapshot.ToString());
+        substituted = substituted.Replace("{SnapshotTime}", volume.SnapshotTime?.ToString("o") ?? "N/A");
+        substituted = substituted.Replace("{SnapshotId}", volume.SnapshotId ?? "N/A");
+        substituted = substituted.Replace("{SnapshotCount}", volume.SnapshotCount?.ToString() ?? "0");
+        substituted = substituted.Replace("{TotalSnapshotSizeBytes}", volume.TotalSnapshotSizeBytes?.ToString() ?? "0");
+        substituted = substituted.Replace("{ChurnRateBytesPerDay}", volume.ChurnRateBytesPerDay?.ToString("0.##") ?? "N/A");
+        substituted = substituted.Replace("{BackupPolicyConfigured}", volume.BackupPolicyConfigured?.ToString() ?? "Unknown");
+
+        // Timestamps
+        substituted = substituted.Replace("{CreationTime}", volume.CreationTime?.ToString("o") ?? "N/A");
+        substituted = substituted.Replace("{LastModifiedTime}", volume.LastModifiedTime?.ToString("o") ?? "N/A");
+        substituted = substituted.Replace("{DiscoveredAt}", volume.DiscoveredAt.ToString("o"));
+
+        // Metadata & tags
+        substituted = substituted.Replace("{Tags}", FormatDictionary(volume.Tags));
+        substituted = substituted.Replace("{Metadata}", FormatDictionary(volume.Metadata));
+
+        // Monitoring / metrics
+        substituted = substituted.Replace("{MonitoringEnabled}", volume.MonitoringEnabled ? "true" : "false");
+        substituted = substituted.Replace("{MonitoringDataAvailableDays}", volume.MonitoringDataAvailableDays?.ToString() ?? "N/A");
+        substituted = substituted.Replace("{HistoricalMetricsSummary}", volume.HistoricalMetricsSummary ?? "None");
+        substituted = substituted.Replace("{MetricsSummary}", FormatMetricsSummary(volume.HistoricalMetricsSummary));
+
         return substituted;
+    }
+
+    private string SubstituteWorkloadProfileVariables(string template, WorkloadProfile[] profiles)
+    {
+        if (string.IsNullOrEmpty(template) || profiles == null || profiles.Length == 0)
+            return template;
+
+        var regex = new Regex(@"\{WorkloadProfile:([^}]+)\}", RegexOptions.IgnoreCase);
+        var result = regex.Replace(template, match =>
+        {
+            var profileId = match.Groups[1].Value;
+            var profile = profiles.FirstOrDefault(p =>
+                string.Equals(p.ProfileId, profileId, StringComparison.OrdinalIgnoreCase));
+
+            if (profile == null)
+            {
+                return $"[Unknown workload profile: {profileId}]";
+            }
+
+            return FormatWorkloadProfileForPrompt(profile);
+        });
+
+        return result;
+    }
+
+    private string FormatWorkloadProfileForPrompt(WorkloadProfile profile)
+    {
+        var perf = profile.PerformanceRequirements;
+        var anf = profile.AnfSuitabilityInfo;
+        var hints = profile.Hints;
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Workload profile: {profile.Name} (Id: {profile.ProfileId})");
+        sb.AppendLine($"Description: {profile.Description}");
+        sb.AppendLine("Performance requirements:");
+        sb.AppendLine($"  - Size range: {perf.MinSizeGB?.ToString() ?? "?"}–{perf.MaxSizeGB?.ToString() ?? "?"} GB");
+        sb.AppendLine($"  - IOPS range: {perf.MinIops?.ToString() ?? "?"}–{perf.MaxIops?.ToString() ?? "?"}");
+        sb.AppendLine($"  - Latency sensitivity: {perf.LatencySensitivity}");
+        sb.AppendLine($"  - Throughput range: {perf.MinThroughputMBps?.ToString() ?? "?"}–{perf.MaxThroughputMBps?.ToString() ?? "?"} MB/s");
+        if (!string.IsNullOrEmpty(perf.IoPattern))
+            sb.AppendLine($"  - I/O pattern: {perf.IoPattern}");
+
+        sb.AppendLine("ANF suitability:");
+        sb.AppendLine($"  - Compatible with ANF: {anf.Compatible}");
+        if (!string.IsNullOrEmpty(anf.RecommendedServiceLevel))
+            sb.AppendLine($"  - Recommended ANF service level: {anf.RecommendedServiceLevel}");
+        if (!string.IsNullOrEmpty(anf.Notes))
+            sb.AppendLine($"  - Notes: {anf.Notes}");
+        if (anf.Caveats != null && anf.Caveats.Length > 0)
+            sb.AppendLine($"  - Caveats: {string.Join("; ", anf.Caveats)}");
+
+        sb.AppendLine("Detection hints (for matching volumes to this workload):");
+        if (hints.NamingPatterns != null && hints.NamingPatterns.Length > 0)
+            sb.AppendLine($"  - Naming patterns: {string.Join(", ", hints.NamingPatterns)}");
+        if (hints.CommonTags != null && hints.CommonTags.Length > 0)
+            sb.AppendLine($"  - Common tags: {string.Join(", ", hints.CommonTags)}");
+        if (hints.FileTypeIndicators != null && hints.FileTypeIndicators.Length > 0)
+            sb.AppendLine($"  - File types: {string.Join(", ", hints.FileTypeIndicators)}");
+        if (hints.PathPatterns != null && hints.PathPatterns.Length > 0)
+            sb.AppendLine($"  - Path patterns: {string.Join(", ", hints.PathPatterns)}");
+
+        return sb.ToString();
     }
 
     private string BuildFullPrompt(string userPrompt, WorkloadProfile[] profiles)
@@ -248,19 +366,25 @@ public class VolumeAnalysisService
         var sb = new StringBuilder();
         sb.AppendLine("You are an Azure storage workload classification expert. Your task is to analyze Azure Files volumes and classify them based on their characteristics.");
         sb.AppendLine();
-        sb.AppendLine("Available Workload Classifications:");
-        
+        sb.AppendLine("Available Workload Classifications (summary):");
+
         foreach (var profile in profiles.Where(p => !p.IsExclusionProfile))
         {
-            sb.AppendLine($"- {profile.Name}: {profile.Description.Substring(0, Math.Min(200, profile.Description.Length))}...");
+            var desc = profile.Description ?? string.Empty;
+            if (desc.Length > 220)
+            {
+                desc = desc.Substring(0, 220) + "...";
+            }
+            sb.AppendLine($"- {profile.Name}: {desc}");
         }
-        
+
         sb.AppendLine();
-        sb.AppendLine("Volume to analyze:");
+        sb.AppendLine("Volume to analyze and instructions:");
         sb.AppendLine(userPrompt);
         sb.AppendLine();
-        sb.AppendLine("Provide your analysis. If this is a workload detection prompt, respond with MATCH or NO_MATCH followed by confidence (0-100) and brief reasoning.");
-        
+        sb.AppendLine("When workload profile details are inlined (via {WorkloadProfile:<id>} markers already expanded above), explicitly compare the volume against those profiles.");
+        sb.AppendLine("If this is a workload detection prompt, respond with MATCH or NO_MATCH followed by confidence (0-100) and brief reasoning.");
+
         return sb.ToString();
     }
 
@@ -382,7 +506,7 @@ public class VolumeAnalysisService
     {
         // Extract confidence scores from responses
         var confidenceScores = new List<int>();
-        
+
         foreach (var prompt in prompts)
         {
             var match = Regex.Match(prompt.Result, @"confidence[:\s]+(\d+)", RegexOptions.IgnoreCase);
@@ -391,12 +515,12 @@ public class VolumeAnalysisService
                 confidenceScores.Add(score);
             }
         }
-        
+
         if (confidenceScores.Any())
         {
             return confidenceScores.Average() / 100.0;
         }
-        
+
         return 0.5; // Default moderate confidence
     }
 
@@ -417,8 +541,44 @@ public class VolumeAnalysisService
     {
         if (dict == null || dict.Count == 0)
             return "None";
-            
+
         return string.Join(", ", dict.Select(kvp => $"{kvp.Key}:{kvp.Value}"));
+    }
+
+    private string FormatMetricsSummary(string? metricsJson)
+    {
+        if (string.IsNullOrWhiteSpace(metricsJson))
+            return "No historical metrics available.";
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metricsJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return metricsJson; // fallback to raw JSON
+
+            var parts = new List<string>();
+            foreach (var metricProp in root.EnumerateObject())
+            {
+                var name = metricProp.Name;
+                var obj = metricProp.Value;
+                double avg = obj.TryGetProperty("average", out var avgEl) && avgEl.TryGetDouble(out var a) ? a : 0;
+                double max = obj.TryGetProperty("max", out var maxEl) && maxEl.TryGetDouble(out var m) ? m : 0;
+                double total = obj.TryGetProperty("total", out var totEl) && totEl.TryGetDouble(out var t) ? t : 0;
+                int count = obj.TryGetProperty("dataPointCount", out var cEl) && cEl.TryGetInt32(out var c) ? c : 0;
+
+                parts.Add($"{name}: avg={avg:0.##}, max={max:0.##}, total={total:0.##}, points={count}");
+            }
+
+            return parts.Count == 0
+                ? "No historical metrics available."
+                : "Historical metrics summary: " + string.Join("; ", parts);
+        }
+        catch
+        {
+            // If parsing fails, return the raw JSON
+            return metricsJson;
+        }
     }
 
     private async Task<DiscoveryData?> LoadDiscoveryDataAsync(string jobId)

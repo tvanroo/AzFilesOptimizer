@@ -108,8 +108,6 @@ const jobDetail = {
             this.loadWorkloadProfiles();
         } else if (tabName === 'chat') {
             this.initChat();
-        } else if (tabName === 'resources') {
-            this.loadResources();
         }
     },
     
@@ -182,23 +180,6 @@ const jobDetail = {
                 </div>
             </div>
         `;
-    },
-    
-    async loadResources() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/jobs/${this.jobId}/shares`);
-            if (!response.ok) throw new Error('Failed to load resources');
-            
-            const data = await response.json();
-            const container = document.getElementById('resources-container');
-            
-            container.innerHTML = `
-                <h3>Azure Files Shares: ${data.totalShares || 0}</h3>
-                <p>Use the Volume Analysis tab to view and analyze discovered shares.</p>
-            `;
-        } catch (error) {
-            console.error('Error loading resources:', error);
-        }
     },
     
     // Volume Analysis Functions
