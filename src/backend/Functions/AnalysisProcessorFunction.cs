@@ -11,25 +11,29 @@ namespace AzFilesOptimizer.Backend.Functions;
 public class AnalysisProcessorFunction
 {
     private readonly ILogger _logger;
-    private readonly TableClient _analysisJobsTable;
-    private readonly WorkloadProfileService _profileService;
-    private readonly AnalysisPromptService _promptService;
-    private readonly ApiKeyStorageService _apiKeyService;
-    private readonly AnalysisLogService _analysisLogService;
+    private readonly string _connectionString;
+
+    // Lazily-initialized services so that constructor stays cheap and all failures
+    // happen inside the function execution path (where we can surface them to logs/UI).
+    private TableClient? _analysisJobsTable;
+    private WorkloadProfileService? _profileService;
+    private AnalysisPromptService? _promptService;
+    private ApiKeyStorageService? _apiKeyService;
+    private AnalysisLogService? _analysisLogService;
 
     public AnalysisProcessorFunction(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<AnalysisProcessorFunction>();
-        var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
-        
-        var tableServiceClient = new TableServiceClient(connectionString);
-        _analysisJobsTable = tableServiceClient.GetTableClient("AnalysisJobs");
-        _analysisJobsTable.CreateIfNotExists();
-        
-        _profileService = new WorkloadProfileService(connectionString, _logger);
-        _promptService = new AnalysisPromptService(connectionString, _logger);
-        _apiKeyService = new ApiKeyStorageService(connectionString);
-        _analysisLogService = new AnalysisLogService(connectionString, _logger);
+        _connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_connectionString))
+        {
+            // Do NOT throw here; throwing in the constructor prevents the host from invoking
+            // the function at all and silently sends messages to the poison queue without any
+            // application-level diagnostics. Instead, we log a clear error and let the
+            // execution path handle the failure in a controlled way.
+            _logger.LogError("AzureWebJobsStorage connection string is missing or empty. AnalysisProcessor will fail to access storage.");
+        }
     }
 
     [Function("AnalysisProcessor")]
@@ -60,22 +64,57 @@ public class AnalysisProcessorFunction
     {
         _logger.LogInformation("Processing analysis job: {AnalysisJobId}", analysisJobId);
 
+        // Lazily initialize core services inside the execution path so that any
+        // configuration/storage issues are surfaced as function errors (and can be
+        // written to both the function logs and the analysis log UI), rather than
+        // causing constructor failures that silently poison messages.
+        if (_analysisJobsTable == null)
+        {
+            _logger.LogInformation("[Processor] Initializing AnalysisJobs table client...");
+            var tableServiceClient = new TableServiceClient(_connectionString);
+            _analysisJobsTable = tableServiceClient.GetTableClient("AnalysisJobs");
+            _analysisJobsTable.CreateIfNotExists();
+        }
+
+        if (_analysisLogService == null)
+        {
+            _logger.LogInformation("[Processor] Initializing AnalysisLogService (Blob container: analysis-logs)...");
+            _analysisLogService = new AnalysisLogService(_connectionString, _logger);
+        }
+
+        if (_profileService == null)
+        {
+            _logger.LogInformation("[Processor] Initializing WorkloadProfileService...");
+            _profileService = new WorkloadProfileService(_connectionString, _logger);
+        }
+
+        if (_promptService == null)
+        {
+            _logger.LogInformation("[Processor] Initializing AnalysisPromptService...");
+            _promptService = new AnalysisPromptService(_connectionString, _logger);
+        }
+
+        if (_apiKeyService == null)
+        {
+            _logger.LogInformation("[Processor] Initializing ApiKeyStorageService...");
+            _apiKeyService = new ApiKeyStorageService(_connectionString);
+        }
+
+        // At this point, _analysisJobsTable and _analysisLogService should be non-null.
         var job = await _analysisJobsTable.GetEntityAsync<AnalysisJob>("AnalysisJob", analysisJobId);
         var analysisJob = job.Value;
-        
-        var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
 
         try
         {
             // High-level start log
-            await _analysisLogService.LogProgressAsync(analysisJobId, $"[Processor] Starting analysis job for discovery job {discoveryJobId}");
+            await _analysisLogService!.LogProgressAsync(analysisJobId, $"[Processor] Starting analysis job for discovery job {discoveryJobId}");
 
             // 1) Load discovery data / volume count
             await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] Migrating discovery volumes to Blob storage...");
-            var migrationService = new DiscoveryMigrationService(connectionString, _logger);
+            var migrationService = new DiscoveryMigrationService(_connectionString, _logger);
             await migrationService.MigrateJobVolumesToBlobAsync(discoveryJobId);
             
-            var annotationService = new VolumeAnnotationService(connectionString, _logger);
+            var annotationService = new VolumeAnnotationService(_connectionString, _logger);
             await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] Loading discovery data from discovery-data container...");
             var discoveryData = await annotationService.GetDiscoveryDataAsync(discoveryJobId);
             
@@ -91,7 +130,7 @@ public class AnalysisProcessorFunction
 
             // 2) Resolve API key configuration
             await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] Loading API key configuration for user 'default-user'...");
-            var apiKeyConfig = await _apiKeyService.GetApiKeyAsync("default-user");
+            var apiKeyConfig = await _apiKeyService!.GetApiKeyAsync("default-user");
             if (apiKeyConfig == null)
             {
                 await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] No API key record found for user 'default-user'", "ERROR");
@@ -122,15 +161,15 @@ public class AnalysisProcessorFunction
             
             // 4) Create analysis service and run analysis
             var analysisService = new VolumeAnalysisService(
-                connectionString,
-                _profileService,
-                _promptService,
+                _connectionString,
+                _profileService!,
+                _promptService!,
                 _logger);
 
             await analysisService.AnalyzeVolumesAsync(
                 discoveryJobId,
                 "default-user",
-                apiKey,
+                apiKey!,
                 apiKeyConfig.Provider,
                 apiKeyConfig.Endpoint,
                 analysisJobId);
@@ -148,7 +187,10 @@ public class AnalysisProcessorFunction
             _logger.LogError(ex, "Analysis job failed: {AnalysisJobId}", analysisJobId);
 
             // Also surface the error into the analysis log so it appears in the UI
-            await _analysisLogService.LogProgressAsync(analysisJobId, $"[Processor] Analysis job failed: {ex.Message}", "ERROR");
+            if (_analysisLogService != null)
+            {
+                await _analysisLogService.LogProgressAsync(analysisJobId, $"[Processor] Analysis job failed: {ex.Message}", "ERROR");
+            }
 
             analysisJob.Status = AnalysisJobStatus.Failed.ToString();
             analysisJob.CompletedAt = DateTime.UtcNow;
