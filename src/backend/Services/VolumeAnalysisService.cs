@@ -165,12 +165,11 @@ public class VolumeAnalysisService
 
                 // Call AI
                 var aiResponse = await CallAIForAnalysis(fullPrompt, apiKey, provider, endpoint);
-
-                // Log prompt execution
+                
+                // Log prompt execution (both prompt and response, truncated for readability)
                 if (_logService != null && !string.IsNullOrEmpty(analysisJobId) && !string.IsNullOrEmpty(volumeName))
                 {
-                    var summary = aiResponse.Length > 100 ? aiResponse.Substring(0, 100) + "..." : aiResponse;
-                    await _logService.LogPromptExecutionAsync(analysisJobId, volumeName, prompt.Name, summary);
+                    await _logService.LogPromptExecutionAsync(analysisJobId, volumeName, prompt.Name, fullPrompt, aiResponse);
                 }
 
                 // Parse response

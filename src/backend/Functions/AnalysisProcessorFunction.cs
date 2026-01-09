@@ -15,6 +15,7 @@ public class AnalysisProcessorFunction
     private readonly WorkloadProfileService _profileService;
     private readonly AnalysisPromptService _promptService;
     private readonly ApiKeyStorageService _apiKeyService;
+    private readonly AnalysisLogService _analysisLogService;
 
     public AnalysisProcessorFunction(ILoggerFactory loggerFactory)
     {
@@ -28,6 +29,7 @@ public class AnalysisProcessorFunction
         _profileService = new WorkloadProfileService(connectionString, _logger);
         _promptService = new AnalysisPromptService(connectionString, _logger);
         _apiKeyService = new ApiKeyStorageService(connectionString);
+        _analysisLogService = new AnalysisLogService(connectionString, _logger);
     }
 
     [Function("AnalysisProcessor")]
@@ -65,6 +67,9 @@ public class AnalysisProcessorFunction
 
         try
         {
+            // Log start of analysis job for this discovery
+            await _analysisLogService.LogProgressAsync(analysisJobId, $"Starting analysis job for discovery job {discoveryJobId}");
+
             // First, get the discovery data to count volumes
             var migrationService = new DiscoveryMigrationService(connectionString, _logger);
             await migrationService.MigrateJobVolumesToBlobAsync(discoveryJobId);
@@ -128,6 +133,9 @@ public class AnalysisProcessorFunction
         catch (Exception ex)
         {
             _logger.LogError(ex, "Analysis job failed: {AnalysisJobId}", analysisJobId);
+
+            // Also surface the error into the analysis log so it appears in the UI
+            await _analysisLogService.LogProgressAsync(analysisJobId, $"Analysis job failed: {ex.Message}", "ERROR");
 
             analysisJob.Status = AnalysisJobStatus.Failed.ToString();
             analysisJob.CompletedAt = DateTime.UtcNow;

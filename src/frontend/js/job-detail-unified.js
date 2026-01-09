@@ -657,6 +657,14 @@ const jobDetail = {
             
             const logs = await response.json();
             const logBody = document.getElementById('logBody');
+
+            if (!logs || logs.length === 0) {
+                // Preserve any existing placeholder text until real logs arrive
+                if (!logBody.innerHTML || logBody.innerHTML.trim() === '') {
+                    logBody.innerHTML = '<div style="color: #888;">Waiting for logs...</div>';
+                }
+                return;
+            }
             
             logBody.innerHTML = logs.map(log => {
                 const time = new Date(log.Timestamp).toLocaleTimeString();

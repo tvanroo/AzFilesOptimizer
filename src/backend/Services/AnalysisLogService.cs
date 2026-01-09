@@ -45,7 +45,27 @@ public class AnalysisLogService
 
     public async Task LogPromptExecutionAsync(string analysisJobId, string volumeName, string promptName, string result)
     {
+        // Backwards-compatible helper that logs only the result summary
         await LogProgressAsync(analysisJobId, $"  [{volumeName}] Prompt '{promptName}': {result}");
+    }
+
+    public async Task LogPromptExecutionAsync(string analysisJobId, string volumeName, string promptName, string promptText, string result)
+    {
+        // Log both the (possibly truncated) prompt and response for better debugging in the UI
+        string Truncate(string value, int max)
+        {
+            if (string.IsNullOrEmpty(value)) return string.Empty;
+            return value.Length > max ? value.Substring(0, max) + "..." : value;
+        }
+
+        var promptPreview = Truncate(promptText, 400);
+        var resultPreview = Truncate(result, 400);
+
+        var message = $"  [{volumeName}] Prompt '{promptName}'" +
+                      "\n    PROMPT: " + promptPreview +
+                      "\n    RESPONSE: " + resultPreview;
+
+        await LogProgressAsync(analysisJobId, message);
     }
 
     public async Task LogVolumeCompleteAsync(string analysisJobId, string volumeName, string workloadName, double confidence)
