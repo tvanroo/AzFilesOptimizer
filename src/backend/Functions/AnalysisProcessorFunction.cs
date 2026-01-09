@@ -67,17 +67,20 @@ public class AnalysisProcessorFunction
 
         try
         {
-            // Log start of analysis job for this discovery
-            await _analysisLogService.LogProgressAsync(analysisJobId, $"Starting analysis job for discovery job {discoveryJobId}");
+            // High-level start log
+            await _analysisLogService.LogProgressAsync(analysisJobId, $"[Processor] Starting analysis job for discovery job {discoveryJobId}");
 
-            // First, get the discovery data to count volumes
+            // 1) Load discovery data / volume count
+            await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] Migrating discovery volumes to Blob storage...");
             var migrationService = new DiscoveryMigrationService(connectionString, _logger);
             await migrationService.MigrateJobVolumesToBlobAsync(discoveryJobId);
             
             var annotationService = new VolumeAnnotationService(connectionString, _logger);
+            await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] Loading discovery data from discovery-data container...");
             var discoveryData = await annotationService.GetDiscoveryDataAsync(discoveryJobId);
             
             int totalVolumes = discoveryData?.Volumes?.Count ?? 0;
+            await _analysisLogService.LogProgressAsync(analysisJobId, $"[Processor] Discovery data loaded. Volumes found: {totalVolumes}");
             
             // Update job status to Running with volume count
             analysisJob.Status = AnalysisJobStatus.Running.ToString();
@@ -86,35 +89,44 @@ public class AnalysisProcessorFunction
             analysisJob.ProcessedVolumes = 0;
             await _analysisJobsTable.UpdateEntityAsync(analysisJob, analysisJob.ETag, TableUpdateMode.Replace);
 
-            // Get API key configuration (use default-user for now)
+            // 2) Resolve API key configuration
+            await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] Loading API key configuration for user 'default-user'...");
             var apiKeyConfig = await _apiKeyService.GetApiKeyAsync("default-user");
             if (apiKeyConfig == null)
             {
+                await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] No API key record found for user 'default-user'", "ERROR");
                 throw new InvalidOperationException("No API key configured");
             }
 
+            await _analysisLogService.LogProgressAsync(
+                analysisJobId,
+                $"[Processor] API key config loaded. Provider={apiKeyConfig.Provider}, Endpoint={(string.IsNullOrEmpty(apiKeyConfig.Endpoint) ? "<none>" : apiKeyConfig.Endpoint)}, SecretName={apiKeyConfig.KeyVaultSecretName}");
+
             if (string.IsNullOrEmpty(apiKeyConfig.KeyVaultSecretName))
             {
+                await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] API key config is missing KeyVaultSecretName", "ERROR");
                 throw new InvalidOperationException("API key not configured in Key Vault");
             }
 
-            // Get API key from Key Vault
+            // 3) Fetch API key from Key Vault
+            await _analysisLogService.LogProgressAsync(analysisJobId, $"[Processor] Fetching API key secret '{apiKeyConfig.KeyVaultSecretName}' from Key Vault...");
             var keyVaultService = new KeyVaultService();
             var apiKey = await keyVaultService.GetApiKeyAsync("default-user");
             
             if (string.IsNullOrEmpty(apiKey))
             {
+                await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] Retrieved API key was empty/null", "ERROR");
                 throw new InvalidOperationException("Failed to retrieve API key from Key Vault");
             }
+            await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] Successfully retrieved API key from Key Vault (value not logged).\n[Processor] Creating VolumeAnalysisService and starting analysis...");
             
-            // Create analysis service
+            // 4) Create analysis service and run analysis
             var analysisService = new VolumeAnalysisService(
                 connectionString,
                 _profileService,
                 _promptService,
                 _logger);
 
-            // Execute analysis
             await analysisService.AnalyzeVolumesAsync(
                 discoveryJobId,
                 "default-user",
@@ -123,11 +135,12 @@ public class AnalysisProcessorFunction
                 apiKeyConfig.Endpoint,
                 analysisJobId);
 
-            // Update job with completion
+            // 5) Update job with completion
             analysisJob.Status = AnalysisJobStatus.Completed.ToString();
             analysisJob.CompletedAt = DateTime.UtcNow;
             await _analysisJobsTable.UpdateEntityAsync(analysisJob, ETag.All, TableUpdateMode.Replace);
 
+            await _analysisLogService.LogProgressAsync(analysisJobId, "[Processor] Analysis job completed successfully.");
             _logger.LogInformation("Analysis job completed: {AnalysisJobId}", analysisJobId);
         }
         catch (Exception ex)
@@ -135,7 +148,7 @@ public class AnalysisProcessorFunction
             _logger.LogError(ex, "Analysis job failed: {AnalysisJobId}", analysisJobId);
 
             // Also surface the error into the analysis log so it appears in the UI
-            await _analysisLogService.LogProgressAsync(analysisJobId, $"Analysis job failed: {ex.Message}", "ERROR");
+            await _analysisLogService.LogProgressAsync(analysisJobId, $"[Processor] Analysis job failed: {ex.Message}", "ERROR");
 
             analysisJob.Status = AnalysisJobStatus.Failed.ToString();
             analysisJob.CompletedAt = DateTime.UtcNow;

@@ -42,9 +42,16 @@ public class VolumeAnalysisFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "discovery/{jobId}/analyze")] HttpRequestData req,
         string jobId)
     {
+        // Generate analysisJobId up-front so we can log against it even if something fails later
+        var analysisJobId = Guid.NewGuid().ToString();
+
         try
         {
+            await _analysisLogService.ClearLogsAsync(analysisJobId);
+            await _analysisLogService.LogProgressAsync(analysisJobId, $"[HTTP] StartAnalysis called for discovery job {jobId}");
+
             // Ensure volumes are migrated from Tables to Blob storage
+            await _analysisLogService.LogProgressAsync(analysisJobId, "[HTTP] Migrating discovery volumes to Blob storage before queuing analysis...");
             await _migrationService.MigrateJobVolumesToBlobAsync(jobId);
 
             // Preload discovery data to know how many volumes this job has
@@ -53,13 +60,13 @@ public class VolumeAnalysisFunction
             {
                 var discoveryData = await _annotationService.GetDiscoveryDataAsync(jobId);
                 totalVolumes = discoveryData?.Volumes?.Count ?? 0;
+                await _analysisLogService.LogProgressAsync(analysisJobId, $"[HTTP] Discovery data loaded. Volumes found: {totalVolumes}");
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Unable to preload discovery data for job {JobId} when starting analysis", jobId);
+                await _analysisLogService.LogProgressAsync(analysisJobId, $"[HTTP] Warning while loading discovery data: {ex.Message}", "WARNING");
             }
-            
-            var analysisJobId = Guid.NewGuid().ToString();
             
             var analysisJob = new AnalysisJob
             {
@@ -73,10 +80,12 @@ public class VolumeAnalysisFunction
             };
             
             await _analysisJobsTable.AddEntityAsync(analysisJob);
+            await _analysisLogService.LogProgressAsync(analysisJobId, "[HTTP] AnalysisJob entity created in table storage.");
             
             // Queue analysis message
             var message = JsonSerializer.Serialize(new { AnalysisJobId = analysisJobId, DiscoveryJobId = jobId });
             await _analysisQueue.SendMessageAsync(message);
+            await _analysisLogService.LogProgressAsync(analysisJobId, "[HTTP] Analysis message enqueued on 'analysis-queue'. Waiting for processor...");
             
             _logger.LogInformation("Started analysis job {AnalysisJobId} for discovery {DiscoveryJobId}", analysisJobId, jobId);
             
@@ -91,6 +100,7 @@ public class VolumeAnalysisFunction
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error starting analysis for job {JobId}", jobId);
+            await _analysisLogService.LogProgressAsync(analysisJobId, $"[HTTP] Error starting analysis: {ex.Message}", "ERROR");
             var response = req.CreateResponse(HttpStatusCode.InternalServerError);
             await response.WriteStringAsync($"Error: {ex.Message}");
             return response;
