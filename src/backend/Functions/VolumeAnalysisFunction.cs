@@ -46,6 +46,18 @@ public class VolumeAnalysisFunction
         {
             // Ensure volumes are migrated from Tables to Blob storage
             await _migrationService.MigrateJobVolumesToBlobAsync(jobId);
+
+            // Preload discovery data to know how many volumes this job has
+            int totalVolumes = 0;
+            try
+            {
+                var discoveryData = await _annotationService.GetDiscoveryDataAsync(jobId);
+                totalVolumes = discoveryData?.Volumes?.Count ?? 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Unable to preload discovery data for job {JobId} when starting analysis", jobId);
+            }
             
             var analysisJobId = Guid.NewGuid().ToString();
             
@@ -54,7 +66,10 @@ public class VolumeAnalysisFunction
                 RowKey = analysisJobId,
                 DiscoveryJobId = jobId,
                 Status = AnalysisJobStatus.Pending.ToString(),
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                TotalVolumes = totalVolumes,
+                ProcessedVolumes = 0,
+                FailedVolumes = 0
             };
             
             await _analysisJobsTable.AddEntityAsync(analysisJob);
