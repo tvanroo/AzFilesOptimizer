@@ -411,41 +411,89 @@ public class VolumeAnalysisService
             httpClient.Timeout = TimeSpan.FromSeconds(30);
 
             string apiUrl;
-            string requestBody;
 
             var modelToUse = string.IsNullOrWhiteSpace(preferredModel) ? "gpt-4" : preferredModel.Trim();
 
             if (provider == "AzureOpenAI" && !string.IsNullOrEmpty(endpoint))
             {
-                // Azure OpenAI format
+                // Azure OpenAI: deployment is in the URL, model name comes from the selected preference
                 apiUrl = $"{endpoint.TrimEnd('/')}/openai/deployments/{modelToUse}/chat/completions?api-version=2024-02-15-preview";
                 httpClient.DefaultRequestHeaders.Add("api-key", apiKey);
             }
             else
             {
-                // OpenAI format
+                // Public OpenAI
                 apiUrl = "https://api.openai.com/v1/chat/completions";
                 httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             }
 
-            var requestPayload = new
-            {
-                model = provider == "AzureOpenAI" ? "" : modelToUse,
-                messages = new[]
-                {
-                    new { role = "user", content = prompt }
-                },
-                temperature = 0.3,
-                max_tokens = 500
-            };
+            object requestPayload;
 
-            requestBody = JsonSerializer.Serialize(requestPayload);
+            if (provider == "AzureOpenAI")
+            {
+                // For Azure, the deployment is already encoded in the URL; request body does not need a model field
+                requestPayload = new
+                {
+                    messages = new[]
+                    {
+                        new { role = "user", content = prompt }
+                    },
+                    temperature = 0.3,
+                    max_tokens = 500
+                };
+            }
+            else
+            {
+                // For OpenAI, send the selected model in the body
+                requestPayload = new
+                {
+                    model = modelToUse,
+                    messages = new[]
+                    {
+                        new { role = "user", content = prompt }
+                    },
+                    temperature = 0.3,
+                    max_tokens = 500
+                };
+            }
+
+            var requestBody = JsonSerializer.Serialize(requestPayload);
+
+            // Log request details (excluding API key)
+            var truncatedRequestBody = requestBody.Length > 2000
+                ? requestBody.Substring(0, 2000) + "... (truncated)"
+                : requestBody;
+            _logger.LogInformation(
+                "Calling AI provider {Provider} at {Url} with model {Model}",
+                provider,
+                apiUrl,
+                modelToUse);
+            _logger.LogDebug("AI request payload: {Payload}", truncatedRequestBody);
+
             var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
 
             var response = await httpClient.PostAsync(apiUrl, content);
-            response.EnsureSuccessStatusCode();
-
             var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var truncatedResponseBody = responseBody.Length > 2000
+                    ? responseBody.Substring(0, 2000) + "... (truncated)"
+                    : responseBody;
+
+                _logger.LogError(
+                    "AI API call failed. Provider={Provider}, Model={Model}, Url={Url}, StatusCode={StatusCode}, Reason={Reason}, Body={Body}",
+                    provider,
+                    modelToUse,
+                    apiUrl,
+                    (int)response.StatusCode,
+                    response.ReasonPhrase,
+                    truncatedResponseBody);
+
+                throw new InvalidOperationException(
+                    $"AI API call failed: {(int)response.StatusCode} {response.ReasonPhrase}. Body: {truncatedResponseBody}");
+            }
+
             var jsonResponse = JsonDocument.Parse(responseBody);
             
             var messageContent = jsonResponse.RootElement
@@ -459,6 +507,13 @@ public class VolumeAnalysisService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error calling AI API");
+
+            // Preserve detailed InvalidOperationException messages we threw above
+            if (ex is InvalidOperationException)
+            {
+                throw;
+            }
+
             throw new InvalidOperationException($"AI API call failed: {ex.Message}", ex);
         }
     }
