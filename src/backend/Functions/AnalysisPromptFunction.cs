@@ -3,6 +3,7 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AzFilesOptimizer.Backend.Models;
 using AzFilesOptimizer.Backend.Services;
 
@@ -73,7 +74,13 @@ public class AnalysisPromptFunction
     {
         try
         {
-            var request = await JsonSerializer.DeserializeAsync<CreatePromptRequest>(req.Body);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            options.Converters.Add(new JsonStringEnumConverter());
+
+            var request = await JsonSerializer.DeserializeAsync<CreatePromptRequest>(req.Body, options);
             if (request == null)
             {
                 var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
@@ -111,7 +118,13 @@ public class AnalysisPromptFunction
     {
         try
         {
-            var request = await JsonSerializer.DeserializeAsync<UpdatePromptRequest>(req.Body);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            options.Converters.Add(new JsonStringEnumConverter());
+
+            var request = await JsonSerializer.DeserializeAsync<UpdatePromptRequest>(req.Body, options);
             if (request == null)
             {
                 var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
