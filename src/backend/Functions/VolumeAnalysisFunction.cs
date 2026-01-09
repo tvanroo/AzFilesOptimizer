@@ -18,6 +18,8 @@ public class VolumeAnalysisFunction
     private readonly VolumeAnnotationService _annotationService;
     private readonly DiscoveryMigrationService _migrationService;
     private readonly AnalysisLogService _analysisLogService;
+    private readonly AnalysisJobRunner _analysisJobRunner;
+    private readonly bool _useAnalysisQueue;
 
     public VolumeAnalysisFunction(ILoggerFactory loggerFactory)
     {
@@ -35,6 +37,17 @@ public class VolumeAnalysisFunction
         _annotationService = new VolumeAnnotationService(connectionString, _logger);
         _migrationService = new DiscoveryMigrationService(connectionString, _logger);
         _analysisLogService = new AnalysisLogService(connectionString, _logger);
+        _analysisJobRunner = new AnalysisJobRunner(connectionString, _logger);
+
+        _useAnalysisQueue = string.Equals(
+            Environment.GetEnvironmentVariable("AZFO_ENABLE_ANALYSIS_QUEUE"),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (!_useAnalysisQueue)
+        {
+            _logger.LogWarning("AZFO_ENABLE_ANALYSIS_QUEUE is not enabled. Analysis jobs will run inline via StartAnalysis until queue processing is re-enabled.");
+        }
     }
 
     [Function("StartAnalysis")]
@@ -82,19 +95,27 @@ public class VolumeAnalysisFunction
             await _analysisJobsTable.AddEntityAsync(analysisJob);
             await _analysisLogService.LogProgressAsync(analysisJobId, "[HTTP] AnalysisJob entity created in table storage.");
             
-            // Queue analysis message
-            var message = JsonSerializer.Serialize(new { AnalysisJobId = analysisJobId, DiscoveryJobId = jobId });
-            await _analysisQueue.SendMessageAsync(message);
-            await _analysisLogService.LogProgressAsync(analysisJobId, "[HTTP] Analysis message enqueued on 'analysis-queue'. Waiting for processor...");
+            if (_useAnalysisQueue)
+            {
+                var message = JsonSerializer.Serialize(new { AnalysisJobId = analysisJobId, DiscoveryJobId = jobId });
+                await _analysisQueue.SendMessageAsync(message);
+                await _analysisLogService.LogProgressAsync(analysisJobId, "[HTTP] Analysis message enqueued on 'analysis-queue'. Waiting for processor...");
+            }
+            else
+            {
+                await _analysisLogService.LogProgressAsync(analysisJobId, "[HTTP] Queue processing bypassed via AZFO_ENABLE_ANALYSIS_QUEUE!=true. Running analysis inline...");
+                await _analysisJobRunner.RunAsync(analysisJobId, jobId);
+            }
             
             _logger.LogInformation("Started analysis job {AnalysisJobId} for discovery {DiscoveryJobId}", analysisJobId, jobId);
             
             var response = req.CreateResponse(HttpStatusCode.Accepted);
-            await response.WriteAsJsonAsync(new StartAnalysisResponse
+            var responsePayload = new StartAnalysisResponse
             {
                 AnalysisJobId = analysisJobId,
-                Status = AnalysisJobStatus.Pending.ToString()
-            });
+                Status = _useAnalysisQueue ? AnalysisJobStatus.Pending.ToString() : AnalysisJobStatus.Completed.ToString()
+            };
+            await response.WriteAsJsonAsync(responsePayload);
             return response;
         }
         catch (Exception ex)
