@@ -156,6 +156,12 @@ public class VolumeAnalysisService
 
             try
             {
+                if (_logService != null && !string.IsNullOrEmpty(analysisJobId) && !string.IsNullOrEmpty(volumeName))
+                {
+                    await _logService.LogProgressAsync(
+                        analysisJobId,
+                        $"  [{volumeName}] → Executing prompt '{prompt.Name}' (priority {prompt.Priority})");
+                }
                 // Substitute volume and workload profile variables in prompt template
                 var processedPrompt = SubstitutePromptVariables(prompt.PromptTemplate, volume);
                 processedPrompt = SubstituteWorkloadProfileVariables(processedPrompt, profiles);
@@ -197,6 +203,14 @@ public class VolumeAnalysisService
             {
                 _logger.LogError(ex, "Error executing prompt {PromptName} on volume {VolumeName}",
                     prompt.Name, volume.ShareName);
+
+                if (_logService != null && !string.IsNullOrEmpty(analysisJobId) && !string.IsNullOrEmpty(volumeName))
+                {
+                    await _logService.LogProgressAsync(
+                        analysisJobId,
+                        $"  [{volumeName}] ✗ Prompt '{prompt.Name}' failed: {ex.Message}",
+                        "ERROR");
+                }
 
                 appliedPrompts.Add(new PromptExecutionResult
                 {
