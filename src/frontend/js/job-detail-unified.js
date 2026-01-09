@@ -9,6 +9,8 @@ const jobDetail = {
     jobData: null,
     discoveryLogPollInterval: null,
     isLogConsoleCollapsed: false,
+    analysisLogPollInterval: null,
+    isAnalysisConsoleCollapsed: false,
     
     // Volume Analysis state
     volumes: [],
@@ -656,8 +658,8 @@ const jobDetail = {
     async runAnalysis() {
         if (!confirm('Run AI analysis on all volumes in this job?')) return;
         
-        // Open the log modal immediately so the user can see progress while the request is in flight
-        this.showLogModal();
+        // Show the inline console immediately
+        this.showAnalysisConsole();
         
         try {
             const response = await fetch(`${API_BASE_URL}/discovery/${this.jobId}/analyze`, {
@@ -669,39 +671,35 @@ const jobDetail = {
             const result = await response.json();
             this.currentAnalysisJobId = result.AnalysisJobId;
             
-            document.getElementById('view-logs-btn').style.display = 'inline-block';
-            // The log modal is already open; just begin status polling
+            // Begin status and log polling
+            this.startAnalysisLogPolling();
             this.pollAnalysisStatus(result.AnalysisJobId);
         } catch (error) {
             Toast.error('Failed to start analysis: ' + error.message);
         }
     },
     
-    showLogModal() {
-        document.getElementById('logModal').classList.add('show');
-        document.getElementById('logBody').innerHTML = '<div style="color: #888;">Starting analysis...</div>';
-        this.startLogPolling();
-    },
-    
-    closeLogModal() {
-        document.getElementById('logModal').classList.remove('show');
-        this.stopLogPolling();
-    },
-    
-    startLogPolling() {
-        this.stopLogPolling();
-        this.logPollInterval = setInterval(() => this.fetchLogs(), 2000);
-        this.fetchLogs();
-    },
-    
-    stopLogPolling() {
-        if (this.logPollInterval) {
-            clearInterval(this.logPollInterval);
-            this.logPollInterval = null;
+    showAnalysisConsole() {
+        const console = document.getElementById('analysis-log-console');
+        if (console) {
+            console.style.display = 'block';
         }
     },
     
-    async fetchLogs() {
+    startAnalysisLogPolling() {
+        this.stopAnalysisLogPolling();
+        this.analysisLogPollInterval = setInterval(() => this.fetchAnalysisLogs(), 2000);
+        this.fetchAnalysisLogs();
+    },
+    
+    stopAnalysisLogPolling() {
+        if (this.analysisLogPollInterval) {
+            clearInterval(this.analysisLogPollInterval);
+            this.analysisLogPollInterval = null;
+        }
+    },
+    
+    async fetchAnalysisLogs() {
         if (!this.currentAnalysisJobId) return;
         
         try {
@@ -709,24 +707,50 @@ const jobDetail = {
             if (!response.ok) return;
             
             const logs = await response.json();
-            const logBody = document.getElementById('logBody');
+            const logBody = document.getElementById('analysis-log-body');
+            if (!logBody) return;
 
             if (!logs || logs.length === 0) {
-                // Preserve any existing placeholder text until real logs arrive
                 if (!logBody.innerHTML || logBody.innerHTML.trim() === '') {
-                    logBody.innerHTML = '<div style="color: #888;">Waiting for logs...</div>';
+                    logBody.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">Starting analysis...</div>';
                 }
                 return;
             }
             
             logBody.innerHTML = logs.map(log => {
-                const time = new Date(log.Timestamp).toLocaleTimeString();
-                return `<div class="log-entry ${log.Level}"><span style="color: #888;">${time}</span> ${log.Message}</div>`;
+                const timestamp = new Date(log.Timestamp).toLocaleTimeString();
+                let cssClass = 'discovery-log-entry';
+                
+                const message = log.Message || '';
+                if (message.includes('ERROR') || message.includes('✗') || message.includes('Failed')) {
+                    cssClass += ' error';
+                } else if (message.includes('WARNING') || message.includes('⚠')) {
+                    cssClass += ' warning';
+                } else if (message.includes('✓') || message.includes('complete') || message.includes('Analyzing')) {
+                    cssClass += ' success';
+                }
+                
+                return `<div class="${cssClass}"><span class="discovery-log-timestamp">${timestamp}</span>${this.escapeHtml(message)}</div>`;
             }).join('');
             
             logBody.scrollTop = logBody.scrollHeight;
         } catch (error) {
-            console.error('Error fetching logs:', error);
+            console.error('Error fetching analysis logs:', error);
+        }
+    },
+    
+    toggleAnalysisConsole() {
+        const logBody = document.getElementById('analysis-log-body');
+        const toggleBtn = event.target;
+        
+        if (this.isAnalysisConsoleCollapsed) {
+            logBody.style.display = 'block';
+            toggleBtn.textContent = 'Collapse';
+            this.isAnalysisConsoleCollapsed = false;
+        } else {
+            logBody.style.display = 'none';
+            toggleBtn.textContent = 'Expand';
+            this.isAnalysisConsoleCollapsed = true;
         }
     },
     
@@ -739,21 +763,34 @@ const jobDetail = {
                 const status = await response.json();
                 const progress = status.ProgressPercentage || 0;
                 
-                document.getElementById('logProgress').style.width = progress + '%';
-                document.getElementById('logStatus').textContent = 
-                    `${status.Status} - ${status.ProcessedVolumes}/${status.TotalVolumes} volumes`;
+                // Update status indicator and text
+                const indicator = document.getElementById('analysis-status-indicator');
+                const statusText = document.getElementById('analysis-status-text');
+                
+                if (indicator) {
+                    indicator.className = 'log-status-indicator';
+                    if (status.Status === 'Running') {
+                        indicator.classList.add('running');
+                    } else if (status.Status === 'Completed') {
+                        indicator.classList.add('completed');
+                    } else if (status.Status === 'Failed') {
+                        indicator.classList.add('failed');
+                    }
+                }
+                
+                if (statusText) {
+                    statusText.textContent = `Analysis Progress - ${status.ProcessedVolumes}/${status.TotalVolumes} volumes (${Math.round(progress)}%)`;
+                }
                 
                 if (status.Status === 'Completed') {
-                    this.stopLogPolling();
+                    this.stopAnalysisLogPolling();
                     setTimeout(() => {
                         Toast.success('Analysis completed!');
-                        this.closeLogModal();
                         this.applyFilters();
                     }, 2000);
                 } else if (status.Status === 'Failed') {
-                    this.stopLogPolling();
+                    this.stopAnalysisLogPolling();
                     Toast.error('Analysis failed');
-                    this.closeLogModal();
                 } else {
                     setTimeout(checkStatus, 3000);
                 }
