@@ -3,6 +3,7 @@ using AzFilesOptimizer.Backend.Models;
 using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace AzFilesOptimizer.Backend.Services;
 
@@ -30,7 +31,8 @@ public class ChatAssistantService
         List<ChatMessage> chatHistory,
         string apiKey,
         string provider,
-        string? endpoint)
+        string? endpoint,
+        string? preferredModel)
     {
         _logger.LogInformation("Processing chat message for job: {JobId}", discoveryJobId);
 
@@ -63,7 +65,7 @@ public class ChatAssistantService
         // Call AI
         try
         {
-            var response = await CallAIAsync(messages, apiKey, provider, endpoint);
+            var response = await CallAIAsync(messages, apiKey, provider, endpoint, preferredModel);
             return response;
         }
         catch (Exception ex)
@@ -148,15 +150,18 @@ public class ChatAssistantService
         List<object> messages,
         string apiKey,
         string provider,
-        string? endpoint)
+        string? endpoint,
+        string? preferredModel)
     {
         using var httpClient = new HttpClient();
         httpClient.Timeout = TimeSpan.FromSeconds(30);
 
         string apiUrl;
+        var modelToUse = string.IsNullOrWhiteSpace(preferredModel) ? "gpt-4" : preferredModel.Trim();
+
         if (provider == "AzureOpenAI" && !string.IsNullOrEmpty(endpoint))
         {
-            apiUrl = $"{endpoint.TrimEnd('/')}/openai/deployments/gpt-4/chat/completions?api-version=2024-02-15-preview";
+            apiUrl = $"{endpoint.TrimEnd('/')}/openai/deployments/{modelToUse}/chat/completions?api-version=2024-02-15-preview";
             httpClient.DefaultRequestHeaders.Add("api-key", apiKey);
         }
         else
@@ -165,23 +170,91 @@ public class ChatAssistantService
             httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
         }
 
-        var requestPayload = new
-        {
-            model = provider == "AzureOpenAI" ? "" : "gpt-4",
-            messages = messages,
-            temperature = 0.7,
-            max_tokens = 800
-        };
+        object requestPayload;
 
-        var content = new StringContent(
-            JsonSerializer.Serialize(requestPayload),
-            Encoding.UTF8,
-            "application/json");
+        var useMaxCompletionTokens = ModelRequiresMaxCompletionTokens(modelToUse);
+
+        if (provider == "AzureOpenAI")
+        {
+            if (useMaxCompletionTokens)
+            {
+                requestPayload = new
+                {
+                    messages,
+                    temperature = 0.7,
+                    max_completion_tokens = 800
+                };
+            }
+            else
+            {
+                requestPayload = new
+                {
+                    messages,
+                    temperature = 0.7,
+                    max_tokens = 800
+                };
+            }
+        }
+        else
+        {
+            if (useMaxCompletionTokens)
+            {
+                requestPayload = new
+                {
+                    model = modelToUse,
+                    messages,
+                    temperature = 0.7,
+                    max_completion_tokens = 800
+                };
+            }
+            else
+            {
+                requestPayload = new
+                {
+                    model = modelToUse,
+                    messages,
+                    temperature = 0.7,
+                    max_tokens = 800
+                };
+            }
+        }
+
+        var requestBody = JsonSerializer.Serialize(requestPayload);
+        var truncatedRequestBody = requestBody.Length > 2000
+            ? requestBody.Substring(0, 2000) + "... (truncated)"
+            : requestBody;
+
+        _logger.LogInformation(
+            "[ChatAssistant] Calling AI provider {Provider} at {Url} with model {Model}",
+            provider,
+            apiUrl,
+            modelToUse);
+        _logger.LogDebug("[ChatAssistant] AI request payload: {Payload}", truncatedRequestBody);
+
+        var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
 
         var response = await httpClient.PostAsync(apiUrl, content);
-        response.EnsureSuccessStatusCode();
-
         var responseBody = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var truncatedResponseBody = responseBody.Length > 2000
+                ? responseBody.Substring(0, 2000) + "... (truncated)"
+                : responseBody;
+
+            _logger.LogError(
+                "[ChatAssistant] AI API call failed. Provider={Provider}, Model={Model}, Url={Url}, StatusCode={StatusCode}, Reason={Reason}, Body={Body}",
+                provider,
+                modelToUse,
+                apiUrl,
+                (int)response.StatusCode,
+                response.ReasonPhrase,
+                truncatedResponseBody);
+
+            throw new InvalidOperationException(
+                $"AI API call failed: {(int)response.StatusCode} {response.ReasonPhrase}. Body: {truncatedResponseBody}");
+        }
+
         var jsonResponse = JsonDocument.Parse(responseBody);
 
         var messageContent = jsonResponse.RootElement
@@ -191,6 +264,19 @@ public class ChatAssistantService
             .GetString();
 
         return messageContent ?? "I couldn't generate a response.";
+    }
+
+    private static bool ModelRequiresMaxCompletionTokens(string modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+            return false;
+
+        modelName = modelName.Trim().ToLowerInvariant();
+
+        // All GPT-5 family models and O-series reasoning models use max_completion_tokens
+        return modelName.StartsWith("gpt-5")
+               || modelName.StartsWith("o3")
+               || modelName.StartsWith("o4");
     }
 
     private async Task<DiscoveryData?> LoadDiscoveryDataAsync(string jobId)
@@ -218,14 +304,19 @@ public class ChatAssistantService
 
 public class ChatMessage
 {
+    [JsonPropertyName("role")]
     public string Role { get; set; } = "user"; // "user" or "assistant"
+
+    [JsonPropertyName("content")]
     public string Content { get; set; } = string.Empty;
 }
 
 public class ChatRequest
 {
     public string Message { get; set; } = string.Empty;
-    public List<ChatMessage> History { get; set; } = new();
+
+    // Matches the ConversationHistory property sent from the frontend
+    public List<ChatMessage> ConversationHistory { get; set; } = new();
 }
 
 public class ChatResponse
