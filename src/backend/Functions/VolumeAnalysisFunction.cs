@@ -128,6 +128,60 @@ public class VolumeAnalysisFunction
         }
     }
 
+    [Function("GetLatestAnalysisForDiscoveryJob")]
+    public async Task<HttpResponseData> GetLatestAnalysisForDiscoveryJob(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "discovery/{discoveryJobId}/analysis-status")] HttpRequestData req,
+        string discoveryJobId)
+    {
+        try
+        {
+            // Query for analysis jobs with this discovery job ID
+            var filter = $"PartitionKey eq 'AnalysisJob' and DiscoveryJobId eq '{discoveryJobId}'";
+            var jobs = new List<AnalysisJob>();
+            
+            await foreach (var entity in _analysisJobsTable.QueryAsync<AnalysisJob>(filter))
+            {
+                jobs.Add(entity);
+            }
+            
+            // Get the most recent one
+            var latestJob = jobs.OrderByDescending(j => j.CreatedAt).FirstOrDefault();
+            
+            if (latestJob == null)
+            {
+                var notFoundResponse = req.CreateResponse(HttpStatusCode.NotFound);
+                await notFoundResponse.WriteAsJsonAsync(new { message = "No analysis job found for this discovery job" });
+                return notFoundResponse;
+            }
+            
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new AnalysisJobStatusResponse
+            {
+                AnalysisJobId = latestJob.JobId,
+                JobId = latestJob.JobId,
+                Status = latestJob.Status,
+                TotalVolumes = latestJob.TotalVolumes,
+                ProcessedVolumes = latestJob.ProcessedVolumes,
+                FailedVolumes = latestJob.FailedVolumes,
+                CreatedAt = latestJob.CreatedAt,
+                StartedAt = latestJob.StartedAt,
+                CompletedAt = latestJob.CompletedAt,
+                ErrorMessage = latestJob.ErrorMessage,
+                ProgressPercentage = latestJob.TotalVolumes > 0 
+                    ? (int)((double)latestJob.ProcessedVolumes / latestJob.TotalVolumes * 100) 
+                    : 0
+            });
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting latest analysis for discovery job {DiscoveryJobId}", discoveryJobId);
+            var response = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await response.WriteStringAsync($"Error: {ex.Message}");
+            return response;
+        }
+    }
+    
     [Function("GetAnalysisStatus")]
     public async Task<HttpResponseData> GetStatus(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "analysis/{jobId}/status")] HttpRequestData req,

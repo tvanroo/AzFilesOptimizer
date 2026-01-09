@@ -107,9 +107,13 @@ const jobDetail = {
         document.getElementById(`tab-${tabName}`).classList.add('active');
         
         // Load tab-specific data
-        if (tabName === 'analysis' && this.volumes.length === 0) {
-            this.loadVolumes();
-            this.loadWorkloadProfiles();
+        if (tabName === 'analysis') {
+            if (this.volumes.length === 0) {
+                this.loadVolumes();
+                this.loadWorkloadProfiles();
+            }
+            // Always check for analysis logs when switching to analysis tab
+            this.checkForAnalysisLogs();
         } else if (tabName === 'chat') {
             this.initChat();
         }
@@ -655,6 +659,46 @@ const jobDetail = {
     },
     
     // Analysis Functions
+    async checkForAnalysisLogs() {
+        // Check if there's an analysis job for this discovery job
+        try {
+            const response = await fetch(`${API_BASE_URL}/discovery/${this.jobId}/analysis-status`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.AnalysisJobId) {
+                    this.currentAnalysisJobId = data.AnalysisJobId;
+                    this.showAnalysisConsole();
+                    
+                    // Load all logs immediately
+                    await this.fetchAnalysisLogs();
+                    
+                    // If analysis is still running, start polling
+                    if (data.Status === 'Running' || data.Status === 'Pending') {
+                        this.startAnalysisLogPolling();
+                        this.pollAnalysisStatus(data.AnalysisJobId);
+                    } else {
+                        // Update final status indicator
+                        const indicator = document.getElementById('analysis-status-indicator');
+                        const statusText = document.getElementById('analysis-status-text');
+                        if (indicator) {
+                            indicator.className = 'log-status-indicator';
+                            if (data.Status === 'Completed') {
+                                indicator.classList.add('completed');
+                            } else if (data.Status === 'Failed') {
+                                indicator.classList.add('failed');
+                            }
+                        }
+                        if (statusText && data.TotalVolumes) {
+                            statusText.textContent = `Analysis ${data.Status} - ${data.ProcessedVolumes || 0}/${data.TotalVolumes} volumes`;
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error checking for analysis logs:', error);
+        }
+    },
+    
     async runAnalysis() {
         if (!confirm('Run AI analysis on all volumes in this job?')) return;
         
