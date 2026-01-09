@@ -540,13 +540,23 @@ public class VolumeAnalysisService
     private bool CheckIfMatches(string aiResponse, string promptCategory)
     {
         // Simple match detection - look for keywords
-        var response = aiResponse.ToUpperInvariant();
+        var response = aiResponse.ToUpperInvariant().Trim();
         
+        // For workload detection prompts
         if (response.Contains("MATCH") && !response.Contains("NO_MATCH") && !response.Contains("NO MATCH"))
             return true;
+        
+        // For exclusion prompts - must start with YES
+        if (promptCategory == PromptCategory.Exclusion.ToString())
+        {
+            // Check if response starts with YES (ignoring whitespace)
+            if (response.StartsWith("YES"))
+                return true;
             
-        if (response.Contains("YES") && promptCategory == PromptCategory.Exclusion.ToString())
-            return true;
+            // If it starts with NO, definitely not a match
+            if (response.StartsWith("NO"))
+                return false;
+        }
             
         return false;
     }
