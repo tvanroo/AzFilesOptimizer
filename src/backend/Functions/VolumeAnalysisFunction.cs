@@ -315,7 +315,12 @@ public class VolumeAnalysisFunction
     {
         try
         {
-            var request = await JsonSerializer.DeserializeAsync<UpdateAnnotationsRequest>(req.Body);
+            var options = new JsonSerializerOptions
+            {
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+                PropertyNameCaseInsensitive = true
+            };
+            var request = await JsonSerializer.DeserializeAsync<UpdateAnnotationsRequest>(req.Body, options);
             if (request == null)
             {
                 var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
@@ -353,7 +358,12 @@ public class VolumeAnalysisFunction
     {
         try
         {
-            var request = await JsonSerializer.DeserializeAsync<BulkUpdateAnnotationsRequest>(req.Body);
+            var options = new JsonSerializerOptions
+            {
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+                PropertyNameCaseInsensitive = true
+            };
+            var request = await JsonSerializer.DeserializeAsync<BulkUpdateAnnotationsRequest>(req.Body, options);
             if (request == null)
             {
                 var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
