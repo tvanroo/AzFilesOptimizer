@@ -146,19 +146,38 @@ Share Details:
 - Usage: {UsedCapacity}
 - Access Tier: {AccessTier}
 - Storage Account: {StorageAccount} ({StorageAccountKind})
+- Storage Account SKU: {StorageAccountSku}
 - Protocols: {Protocols}
 - Tags: {Tags}
 - Metadata: {Metadata}
 
-CloudShell Indicators:
+Typical Azure CloudShell Characteristics:
 - Naming: Usually contains 'cloudshell', 'cs-', 'cloud-shell-storage'
-- Size: Typically 5-6 GB quota
+- Size: Typically 5-6 GB quota (CloudShell default)
 - Usage: Usually low (<500 MB)
 - Resource Group: Often named like 'cloud-shell-storage-*' or contains region codes
 - Tags: May have 'ms-resource-usage' = 'azure-cloud-shell'
-- Storage Account Kind: Usually StorageV2
+- Storage Account Kind: Usually StorageV2 (not FileStorage)
+- Tier: Usually Transaction Optimized or Hot (NOT Premium)
 
-Answer with YES if this is CloudShell storage (should be excluded), or NO if not. Provide clear reasoning based on the indicators above.",
+You MUST respond with ONLY the JSON structure below. Do not include any other text before or after the JSON.
+
+```json
+{
+  ""match"": ""YES"" or ""NO"",
+  ""classification"": ""cloudshell-profile"" or null,
+  ""confidence"": 0-100,
+  ""reasoning"": ""brief explanation""
+}
+```
+
+Rules:
+- match: ""YES"" means this IS CloudShell storage (exclude it). ""NO"" means this is NOT CloudShell (continue processing).
+- classification: Must be ""cloudshell-profile"" if match=YES, otherwise null
+- confidence: Integer 0-100 indicating certainty of your determination
+- reasoning: One sentence explaining why this is or is not CloudShell storage based on the indicators above
+
+IMPORTANT: Respond ONLY with the JSON block. No additional text.",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {

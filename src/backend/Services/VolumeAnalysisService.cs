@@ -180,7 +180,9 @@ public class VolumeAnalysisService
                     await _logService.LogPromptExecutionAsync(analysisJobId, volumeName, prompt.Name, fullPrompt, aiResponse);
                 }
 
-                // Parse response
+                // Parse structured response
+                var (classification, confidence, reasoning) = ParseStructuredResponse(aiResponse);
+                
                 var promptResult = new PromptExecutionResult
                 {
                     PromptId = prompt.PromptId,
@@ -189,14 +191,44 @@ public class VolumeAnalysisService
                     Evidence = ExtractEvidence(aiResponse)
                 };
 
-                // Check stop conditions
-                if (prompt.StopCondition.StopOnMatch && CheckIfMatches(aiResponse, prompt.Category))
+                // Check stop conditions using structured response
+                bool matched = CheckIfMatches(aiResponse, prompt.Category);
+                
+                if (prompt.StopCondition.StopOnMatch && matched)
                 {
                     promptResult.StoppedProcessing = true;
                     shouldStop = true;
 
-                    // Apply stop action
-                    ApplyStopAction(prompt.StopCondition, result, profiles);
+                    // If structured parsing found a classification, use it
+                    if (!string.IsNullOrEmpty(classification))
+                    {
+                        var workload = profiles.FirstOrDefault(p => p.ProfileId == classification);
+                        if (workload != null)
+                        {
+                            result.SuggestedWorkloadId = workload.ProfileId;
+                            result.SuggestedWorkloadName = workload.Name;
+                            result.ConfidenceScore = confidence / 100.0;
+                            
+                            _logger.LogInformation("Structured classification: {WorkloadName} with {Confidence}% confidence", 
+                                workload.Name, confidence);
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to old logic
+                        ApplyStopAction(prompt.StopCondition, result, profiles);
+                    }
+                }
+                else if (!string.IsNullOrEmpty(classification) && matched)
+                {
+                    // Workload detected but not stopping - store for later
+                    var workload = profiles.FirstOrDefault(p => p.ProfileId == classification);
+                    if (workload != null && string.IsNullOrEmpty(result.SuggestedWorkloadId))
+                    {
+                        result.SuggestedWorkloadId = workload.ProfileId;
+                        result.SuggestedWorkloadName = workload.Name;
+                        result.ConfidenceScore = confidence / 100.0;
+                    }
                 }
 
                 appliedPrompts.Add(promptResult);
@@ -390,7 +422,7 @@ public class VolumeAnalysisService
             {
                 desc = desc.Substring(0, 220) + "...";
             }
-            sb.AppendLine($"- {profile.Name}: {desc}");
+            sb.AppendLine($"- {profile.Name} (ID: {profile.ProfileId}): {desc}");
         }
 
         sb.AppendLine();
@@ -398,7 +430,28 @@ public class VolumeAnalysisService
         sb.AppendLine(userPrompt);
         sb.AppendLine();
         sb.AppendLine("When workload profile details are inlined (via {WorkloadProfile:<id>} markers already expanded above), explicitly compare the volume against those profiles.");
-        sb.AppendLine("If this is a workload detection prompt, respond with MATCH or NO_MATCH followed by confidence (0-100) and brief reasoning.");
+        sb.AppendLine();
+        
+        // Add structured output requirements (cannot be edited by users)
+        sb.AppendLine("=== REQUIRED OUTPUT FORMAT ===");
+        sb.AppendLine("You MUST end your response with a JSON block in this exact format:");
+        sb.AppendLine("```json");
+        sb.AppendLine("{");
+        sb.AppendLine("  \"match\": \"YES\" or \"NO\",");
+        sb.AppendLine("  \"classification\": \"workload-profile-id\" or null,");
+        sb.AppendLine("  \"confidence\": 0-100,");
+        sb.AppendLine("  \"reasoning\": \"brief explanation\"");
+        sb.AppendLine("}");
+        sb.AppendLine("```");
+        sb.AppendLine();
+        sb.AppendLine("Rules:");
+        sb.AppendLine("- For exclusion prompts: match=YES means exclude (stop processing), match=NO means continue");
+        sb.AppendLine("- For workload detection: match=MATCH means this workload fits, match=NO_MATCH means it doesn't");
+        sb.AppendLine("- classification: Must be a valid ProfileId from the list above, or null if no match/excluded");
+        sb.AppendLine("- confidence: Integer from 0-100 indicating certainty");
+        sb.AppendLine("- reasoning: One sentence explaining your decision");
+        sb.AppendLine();
+        sb.AppendLine("Provide your analysis first, then end with the required JSON block.");
 
         return sb.ToString();
     }
@@ -539,7 +592,43 @@ public class VolumeAnalysisService
 
     private bool CheckIfMatches(string aiResponse, string promptCategory)
     {
-        // Simple match detection - look for keywords
+        // First, try to parse structured JSON response
+        try
+        {
+            var jsonMatch = Regex.Match(aiResponse, @"```json\s*({[^`]+})\s*```", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (!jsonMatch.Success)
+            {
+                // Try without markdown code blocks
+                jsonMatch = Regex.Match(aiResponse, @"({\s*""match""[^}]+})", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            }
+            
+            if (jsonMatch.Success)
+            {
+                var jsonStr = jsonMatch.Groups[1].Value;
+                var jsonDoc = JsonDocument.Parse(jsonStr);
+                var root = jsonDoc.RootElement;
+                
+                if (root.TryGetProperty("match", out var matchEl))
+                {
+                    var matchValue = matchEl.GetString()?.ToUpperInvariant().Trim();
+                    
+                    // For exclusion prompts: YES = match (exclude), NO = no match (continue)
+                    if (promptCategory == PromptCategory.Exclusion.ToString())
+                    {
+                        return matchValue == "YES";
+                    }
+                    
+                    // For workload detection: MATCH = match, NO_MATCH/NO = no match
+                    return matchValue == "MATCH" || matchValue == "YES";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse structured match field, falling back to text parsing");
+        }
+        
+        // Fallback: Simple match detection - look for keywords in raw text
         var response = aiResponse.ToUpperInvariant().Trim();
         
         // For workload detection prompts
@@ -584,6 +673,51 @@ public class VolumeAnalysisService
         }
     }
 
+    private (string? classification, int confidence, string reasoning) ParseStructuredResponse(string aiResponse)
+    {
+        try
+        {
+            // Extract JSON block from response (between ```json and ```)
+            var jsonMatch = Regex.Match(aiResponse, @"```json\s*({[^`]+})\s*```", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (!jsonMatch.Success)
+            {
+                // Try without markdown code blocks
+                jsonMatch = Regex.Match(aiResponse, @"({\s*""match""[^}]+})", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            }
+            
+            if (jsonMatch.Success)
+            {
+                var jsonStr = jsonMatch.Groups[1].Value;
+                var jsonDoc = JsonDocument.Parse(jsonStr);
+                var root = jsonDoc.RootElement;
+                
+                var classification = root.TryGetProperty("classification", out var classEl) && classEl.ValueKind != JsonValueKind.Null
+                    ? classEl.GetString()
+                    : null;
+                    
+                var confidence = root.TryGetProperty("confidence", out var confEl) && confEl.TryGetInt32(out var conf)
+                    ? conf
+                    : 50; // Default moderate confidence
+                    
+                var reasoning = root.TryGetProperty("reasoning", out var reasonEl)
+                    ? reasonEl.GetString() ?? "No reasoning provided"
+                    : "No reasoning provided";
+                    
+                return (classification, confidence, reasoning);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse structured JSON response from AI");
+        }
+        
+        // Fallback: try to extract confidence from text
+        var match = Regex.Match(aiResponse, @"confidence[:\s]+(\d+)", RegexOptions.IgnoreCase);
+        var fallbackConfidence = match.Success && int.TryParse(match.Groups[1].Value, out var c) ? c : 50;
+        
+        return (null, fallbackConfidence, "Failed to parse structured response");
+    }
+    
     private string[] ExtractEvidence(string aiResponse)
     {
         var evidence = new List<string>();
