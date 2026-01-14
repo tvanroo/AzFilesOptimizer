@@ -160,24 +160,8 @@ Typical Azure CloudShell Characteristics:
 - Storage Account Kind: Usually StorageV2 (not FileStorage)
 - Tier: Usually Transaction Optimized or Hot (NOT Premium)
 
-You MUST respond with ONLY the JSON structure below. Do not include any other text before or after the JSON.
-
-```json
-{
-  ""match"": ""YES"" or ""NO"",
-  ""classification"": ""cloudshell-profile"" or null,
-  ""confidence"": 0-100,
-  ""reasoning"": ""brief explanation""
-}
-```
-
-Rules:
-- match: ""YES"" means this IS CloudShell storage (exclude it). ""NO"" means this is NOT CloudShell (continue processing).
-- classification: Must be ""cloudshell-profile"" if match=YES, otherwise null
-- confidence: Integer 0-100 indicating certainty of your determination
-- reasoning: One sentence explaining why this is or is not CloudShell storage based on the indicators above
-
-IMPORTANT: Respond ONLY with the JSON block. No additional text.",
+Based on the characteristics above, determine if this is CloudShell storage.
+If match=YES, set classification to \"cloudshell-profile\".",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -226,11 +210,7 @@ FSLogix Profile Indicators:
 - Tags: May include 'workload=vdi', 'fslogix=true', 'avd-*'
 - Snapshots: Often configured for profile backup/recovery
 
-Provide:
-1. MATCH or NO_MATCH
-2. Confidence score (0-100)
-3. Key evidence from the data above
-4. If MATCH, specify if this is FSLogix Profile Container, Office Container, or general VDI profiles",
+Determine if this share is used for FSLogix/VDI profiles. If match=YES, set classification to the appropriate FSLogix workload profile ID.",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -280,12 +260,7 @@ Database Workload Indicators:
 - Tags: May include 'workload=database', 'app=sql', 'tier=production'
 - Lease State: May be leased if actively mounted by database server
 
-Provide:
-1. MATCH or NO_MATCH
-2. Confidence score (0-100)
-3. Evidence from above indicators
-4. If MATCH, identify likely database type (SQL Server, Oracle, SAP HANA, PostgreSQL, MySQL, other)
-5. If MATCH, assess if this is production, dev/test, or backup/archive based on indicators",
+Determine if this share hosts database files. If match=YES, set classification to the appropriate database workload profile ID.",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -332,11 +307,7 @@ Kubernetes/Container Storage Indicators:
 - Pattern: Multiple volumes with similar naming in same RG suggests PV provisioning
 - Usage: Varies by application - can have high churn for logging/temp storage
 
-Provide:
-1. MATCH or NO_MATCH
-2. Confidence score (0-100)
-3. Key evidence supporting the classification
-4. If MATCH, specify likely use case (stateful application storage, shared config/data, logging, or general PV)",
+Determine if this share is used for Kubernetes/container storage. If match=YES, set classification to the appropriate K8s workload profile ID.",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -384,11 +355,7 @@ HPC/Scientific Computing Indicators:
 - Tags: May include 'workload=hpc', 'batch=true', 'project=research'
 - Pattern: Often paired with Azure Batch, CycleCloud, or HPC Pack resources in same RG
 
-Provide:
-1. MATCH or NO_MATCH
-2. Confidence score (0-100)
-3. Evidence supporting classification
-4. If MATCH, identify likely use case (scratch storage, dataset repository, simulation output, ML training data, rendering, genomics, other)",
+Determine if this share is used for HPC/scientific computing. If match=YES, set classification to the appropriate HPC workload profile ID.",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -440,12 +407,7 @@ Common General File Share Types:
 - Media Files: Videos, images, documents
 - Software Distribution: Installation files, updates, patches
 
-Based on all available data, provide:
-1. Most likely general file share category from list above
-2. Confidence score (0-100)
-3. Key characteristics observed (naming, size, usage patterns, tags, metrics)
-4. Preliminary ANF migration suitability (Yes/No/Maybe) with brief rationale
-5. Any special considerations (e.g., active lease, high churn, snapshots, protocols)",
+Classify this as a general-purpose file share. Set match=YES and classification to the appropriate general workload profile ID.",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -497,45 +459,7 @@ Resource Context:
 - Last Modified: {LastModifiedTime}
 - Soft Deleted: {IsDeleted}
 
-Provide comprehensive migration assessment:
-
-1. **ANF Migration Suitability** (High/Medium/Low/Not Recommended)
-   - Overall readiness score (0-100)
-   - Primary justification
-
-2. **Recommended ANF Service Level** (Standard/Premium/Ultra/Not Applicable)
-   - Rationale based on performance requirements and workload
-
-3. **Performance Benefits**
-   - Expected performance improvements
-   - Latency considerations
-   - Throughput advantages
-
-4. **Cost Analysis**
-   - Estimated cost impact (Higher/Similar/Lower)
-   - Cost optimization opportunities
-   - Capacity efficiency considerations
-
-5. **Feature Advantages**
-   - Snapshot benefits (frequency, retention, performance)
-   - Cross-region replication opportunities
-   - Backup and DR improvements
-   - Protocol support benefits
-
-6. **Migration Considerations**
-   - Any blockers or challenges
-   - Downtime requirements
-   - Application compatibility
-   - Protocol considerations (SMB/NFS)
-
-7. **Specific Recommendations**
-   - Pre-migration steps
-   - Optimal ANF volume size
-   - QoS type (Auto/Manual)
-   - Cool access tier opportunities (if applicable)
-   - Snapshot policy recommendations
-
-Provide detailed, actionable guidance based on ALL available data above.",
+Assess ANF migration suitability for this share. Set match=YES and provide detailed migration assessment in reasoning field including: suitability level, recommended service level, performance benefits, cost impact, and migration considerations.",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {

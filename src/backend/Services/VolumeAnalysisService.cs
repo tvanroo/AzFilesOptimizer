@@ -432,9 +432,13 @@ public class VolumeAnalysisService
         sb.AppendLine("When workload profile details are inlined (via {WorkloadProfile:<id>} markers already expanded above), explicitly compare the volume against those profiles.");
         sb.AppendLine();
         
-        // Add structured output requirements (cannot be edited by users)
-        sb.AppendLine("=== REQUIRED OUTPUT FORMAT ===");
-        sb.AppendLine("You MUST end your response with a JSON block in this exact format:");
+        // Add structured output requirements (cannot be edited by users - applies to ALL prompts)
+        sb.AppendLine("========================================");
+        sb.AppendLine("MANDATORY OUTPUT FORMAT (NON-NEGOTIABLE)");
+        sb.AppendLine("========================================");
+        sb.AppendLine();
+        sb.AppendLine("You MUST respond with EXACTLY this JSON structure and NOTHING else:");
+        sb.AppendLine();
         sb.AppendLine("```json");
         sb.AppendLine("{");
         sb.AppendLine("  \"match\": \"YES\" or \"NO\",");
@@ -444,14 +448,23 @@ public class VolumeAnalysisService
         sb.AppendLine("}");
         sb.AppendLine("```");
         sb.AppendLine();
-        sb.AppendLine("Rules:");
-        sb.AppendLine("- For exclusion prompts: match=YES means exclude (stop processing), match=NO means continue");
-        sb.AppendLine("- For workload detection: match=MATCH means this workload fits, match=NO_MATCH means it doesn't");
-        sb.AppendLine("- classification: Must be a valid ProfileId from the list above, or null if no match/excluded");
-        sb.AppendLine("- confidence: Integer from 0-100 indicating certainty");
-        sb.AppendLine("- reasoning: One sentence explaining your decision");
+        sb.AppendLine("FIELD DEFINITIONS:");
+        sb.AppendLine("- match: String \"YES\" or \"NO\" ONLY (case-sensitive)");
+        sb.AppendLine("  * For EXCLUSION prompts: \"YES\" = exclude this volume (stop processing), \"NO\" = not excluded (continue)");
+        sb.AppendLine("  * For WORKLOAD DETECTION prompts: \"YES\" = this workload matches, \"NO\" = does not match");
+        sb.AppendLine("- classification: String containing valid ProfileId from list above, or null");
+        sb.AppendLine("  * Set to ProfileId if match=YES and you can classify to a specific workload");
+        sb.AppendLine("  * Set to null if match=NO or cannot classify");
+        sb.AppendLine("- confidence: Integer between 0 and 100 (inclusive) representing certainty percentage");
+        sb.AppendLine("- reasoning: String with one brief sentence explaining your decision");
         sb.AppendLine();
-        sb.AppendLine("Provide your analysis first, then end with the required JSON block.");
+        sb.AppendLine("CRITICAL RULES:");
+        sb.AppendLine("1. Output ONLY the JSON block above - no additional text before or after");
+        sb.AppendLine("2. Use exact field names and value formats as specified");
+        sb.AppendLine("3. match field must be exactly \"YES\" or \"NO\" - no other values accepted");
+        sb.AppendLine("4. confidence must be a numeric integer, not a string");
+        sb.AppendLine("5. All string values must use double quotes");
+        sb.AppendLine("6. Do not include any analysis or explanation outside the JSON structure");
 
         return sb.ToString();
     }
