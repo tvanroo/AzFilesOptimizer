@@ -327,7 +327,9 @@ public class VolumeAnalysisFunction
                 ConfirmedWorkloadId = request.ConfirmedWorkloadId,
                 CustomTags = request.CustomTags,
                 MigrationStatus = request.MigrationStatus,
-                Notes = request.Notes
+                Notes = request.Notes,
+                TargetCapacityGiB = request.TargetCapacityGiB,
+                TargetThroughputMiBps = request.TargetThroughputMiBps
             };
             
             await _annotationService.UpdateVolumeAnnotationsAsync(jobId, volumeId, annotations, "user-id");
