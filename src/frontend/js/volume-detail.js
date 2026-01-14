@@ -128,6 +128,9 @@ const volumeDetailPage = {
         // Metrics
         this.renderMetrics(vol.HistoricalMetricsSummary, vol.MonitoringDataAvailableDays);
 
+        // Capacity Sizing
+        this.renderCapacitySizing(ai?.CapacitySizing);
+
         // History timeline: combine AI prompts, user review, and annotation history
         this.renderHistoryTimeline(ai, user, v.AnnotationHistory || []);
     },
@@ -248,6 +251,137 @@ const volumeDetailPage = {
         }
 
         html += '</div></div>';
+        container.innerHTML = html;
+    },
+
+    renderCapacitySizing(sizing) {
+        const container = document.getElementById('sizing-container');
+        if (!container) return;
+        
+        if (!sizing) {
+            container.innerHTML = '<p style="font-size:0.85rem; color:var(--text-secondary);">No capacity sizing analysis available. Run analysis to generate recommendations.</p>';
+            return;
+        }
+
+        if (!sizing.HasSufficientData) {
+            container.innerHTML = `
+                <div class="sizing-warning">
+                    <strong>⚠ Insufficient Data</strong><br>
+                    ${this.escapeHtml(sizing.Warnings || 'Not enough historical metrics to generate reliable sizing recommendations.')}
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="sizing-panel">';
+        
+        // Header with service level badge
+        html += '<div class="sizing-header">';
+        html += `<div style="font-size:0.9rem; font-weight:600;">Recommended ANF Configuration</div>`;
+        if (sizing.SuggestedServiceLevel) {
+            html += `<span class="sizing-badge ${sizing.SuggestedServiceLevel}">${sizing.SuggestedServiceLevel} Tier</span>`;
+        }
+        html += '</div>';
+
+        // Sizing cards
+        html += '<div class="sizing-grid">';
+        
+        // Capacity card
+        html += `
+            <div class="sizing-card">
+                <div class="sizing-card-label">Recommended Capacity</div>
+                <div class="sizing-card-value">${sizing.RecommendedCapacityInUnit.toFixed(2)} ${sizing.CapacityUnit}</div>
+                <div class="sizing-card-subvalue">Peak: ${sizing.PeakCapacityGiB.toFixed(2)} GiB</div>
+            </div>
+        `;
+        
+        // Throughput card
+        html += `
+            <div class="sizing-card">
+                <div class="sizing-card-label">Recommended Throughput</div>
+                <div class="sizing-card-value">${sizing.RecommendedThroughputMiBps.toFixed(1)} MiB/s</div>
+                <div class="sizing-card-subvalue">Peak: ${sizing.PeakThroughputMiBps.toFixed(1)} MiB/s</div>
+            </div>
+        `;
+        
+        // Buffer card
+        html += `
+            <div class="sizing-card">
+                <div class="sizing-card-label">Buffer Applied</div>
+                <div class="sizing-card-value">${sizing.BufferPercent > 0 ? '+' : ''}${sizing.BufferPercent}%</div>
+                <div class="sizing-card-subvalue">${sizing.DaysAnalyzed} days analyzed</div>
+            </div>
+        `;
+        
+        // Data quality card
+        const qualityPercent = (sizing.DataQualityScore * 100).toFixed(0);
+        const qualityColor = sizing.DataQualityScore >= 0.7 ? '#2e7d32' : sizing.DataQualityScore >= 0.5 ? '#ef6c00' : '#c62828';
+        html += `
+            <div class="sizing-card">
+                <div class="sizing-card-label">Data Quality</div>
+                <div class="sizing-card-value" style="color:${qualityColor};">${qualityPercent}%</div>
+                <div class="sizing-card-subvalue">${sizing.MetricDataPoints} data points</div>
+            </div>
+        `;
+        
+        html += '</div>'; // End sizing-grid
+        
+        // Detailed breakdown
+        if (sizing.PeakReadThroughputMiBps > 0 || sizing.PeakWriteThroughputMiBps > 0) {
+            html += '<div class="sizing-grid">';
+            
+            if (sizing.PeakReadThroughputMiBps > 0) {
+                html += `
+                    <div class="sizing-card">
+                        <div class="sizing-card-label">Peak Read Throughput</div>
+                        <div class="sizing-card-value" style="font-size:0.95rem;">${sizing.PeakReadThroughputMiBps.toFixed(1)} MiB/s</div>
+                    </div>
+                `;
+            }
+            
+            if (sizing.PeakWriteThroughputMiBps > 0) {
+                html += `
+                    <div class="sizing-card">
+                        <div class="sizing-card-label">Peak Write Throughput</div>
+                        <div class="sizing-card-value" style="font-size:0.95rem;">${sizing.PeakWriteThroughputMiBps.toFixed(1)} MiB/s</div>
+                    </div>
+                `;
+            }
+            
+            if (sizing.PeakTotalIOPS > 0) {
+                html += `
+                    <div class="sizing-card">
+                        <div class="sizing-card-label">Peak IOPS</div>
+                        <div class="sizing-card-value" style="font-size:0.95rem;">${this.formatNumber(sizing.PeakTotalIOPS)}</div>
+                        <div class="sizing-card-subvalue">R: ${this.formatNumber(sizing.PeakReadIOPS)} / W: ${this.formatNumber(sizing.PeakWriteIOPS)}</div>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+        }
+        
+        // AI reasoning
+        if (sizing.AiReasoning) {
+            html += `
+                <div class="sizing-reasoning">
+                    <strong>💡 AI Analysis:</strong><br>
+                    ${this.escapeHtml(sizing.AiReasoning)}
+                </div>
+            `;
+        }
+        
+        // Warnings
+        if (sizing.Warnings) {
+            html += `
+                <div class="sizing-warning">
+                    <strong>⚠ Considerations:</strong><br>
+                    ${this.escapeHtml(sizing.Warnings)}
+                </div>
+            `;
+        }
+        
+        html += '</div>'; // End sizing-panel
         container.innerHTML = html;
     },
 

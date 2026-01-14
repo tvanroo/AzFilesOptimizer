@@ -148,6 +148,78 @@
             font-size: 0.7rem;
             color: var(--text-secondary);
         }
+        .sizing-panel {
+            margin-top: 0.5rem;
+            padding: 0.75rem;
+            background: #f0fff4;
+            border-radius: 4px;
+            border-left: 4px solid #2e7d32;
+        }
+        .sizing-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+        .sizing-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .sizing-badge.Standard { background: #e3f2fd; color: #1565c0; }
+        .sizing-badge.Premium { background: #fff3e0; color: #ef6c00; }
+        .sizing-badge.Ultra { background: #fce4ec; color: #c2185b; }
+        .sizing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .sizing-card {
+            background: white;
+            padding: 0.75rem;
+            border-radius: 4px;
+            border: 1px solid #c8e6c9;
+        }
+        .sizing-card-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+        .sizing-card-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #2e7d32;
+        }
+        .sizing-card-subvalue {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 0.15rem;
+        }
+        .sizing-reasoning {
+            background: white;
+            padding: 0.75rem;
+            border-radius: 4px;
+            border: 1px solid #c8e6c9;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            margin-bottom: 0.5rem;
+        }
+        .sizing-warning {
+            background: #fff3e0;
+            padding: 0.6rem;
+            border-radius: 4px;
+            border-left: 3px solid #ef6c00;
+            font-size: 0.8rem;
+            color: #e65100;
+        }
+        .sizing-quality {
+            display: inline-block;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
     </style>
 </head>
 <body>
@@ -263,6 +335,11 @@
                         <div class="metadata-section">
                             <h3>Historical Metrics</h3>
                             <div id="metrics-container"></div>
+                        </div>
+
+                        <div class="metadata-section">
+                            <h3>ANF Capacity & Throughput Sizing</h3>
+                            <div id="sizing-container"></div>
                         </div>
                     </div>
 
