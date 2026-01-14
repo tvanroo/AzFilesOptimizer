@@ -45,6 +45,16 @@ public class UserAnnotations
     public string? Notes { get; set; }
     public string? ReviewedBy { get; set; }
     public DateTime? ReviewedAt { get; set; }
+    
+    /// <summary>
+    /// User override for target ANF capacity in GiB (optional)
+    /// </summary>
+    public double? TargetCapacityGiB { get; set; }
+    
+    /// <summary>
+    /// User override for target ANF throughput in MiB/s (optional)
+    /// </summary>
+    public double? TargetThroughputMiBps { get; set; }
 }
 
 // Analysis Job entity
@@ -144,6 +154,16 @@ public class UpdateAnnotationsRequest
     public string[]? CustomTags { get; set; }
     public MigrationStatus? MigrationStatus { get; set; }
     public string? Notes { get; set; }
+    
+    /// <summary>
+    /// User override for target ANF capacity in GiB (optional)
+    /// </summary>
+    public double? TargetCapacityGiB { get; set; }
+    
+    /// <summary>
+    /// User override for target ANF throughput in MiB/s (optional)
+    /// </summary>
+    public double? TargetThroughputMiBps { get; set; }
 }
 
 public class BulkUpdateAnnotationsRequest

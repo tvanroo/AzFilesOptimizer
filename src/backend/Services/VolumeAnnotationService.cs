@@ -166,6 +166,12 @@ public class VolumeAnnotationService
                 if (annotations.Notes != null)
                     volume.UserAnnotations.Notes = annotations.Notes;
                 
+                if (annotations.TargetCapacityGiB.HasValue)
+                    volume.UserAnnotations.TargetCapacityGiB = annotations.TargetCapacityGiB;
+                
+                if (annotations.TargetThroughputMiBps.HasValue)
+                    volume.UserAnnotations.TargetThroughputMiBps = annotations.TargetThroughputMiBps;
+                
                 volume.UserAnnotations.ReviewedBy = userId;
                 volume.UserAnnotations.ReviewedAt = DateTime.UtcNow;
 
