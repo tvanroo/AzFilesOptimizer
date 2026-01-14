@@ -161,7 +161,7 @@ Typical Azure CloudShell Characteristics:
 - Tier: Usually Transaction Optimized or Hot (NOT Premium)
 
 Based on the characteristics above, determine if this is CloudShell storage.
-If match=YES, set classification to \"cloudshell-profile\".",
+If match=YES, set classification to ""cloudshell-profile"".",
                 Enabled = true,
                 StopConditionsJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
