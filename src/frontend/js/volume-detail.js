@@ -86,7 +86,7 @@ const volumeDetailPage = {
         const userWorkload = user?.ConfirmedWorkloadName || 'Not confirmed';
         document.getElementById('summary-user-workload').textContent = userWorkload;
 
-        const status = (user?.MigrationStatus && user.MigrationStatus.toString()) || 'Candidate';
+        const status = this.getMigrationStatusText(user?.MigrationStatus) || 'Candidate';
         const statusEl = document.getElementById('summary-migration-status');
         statusEl.textContent = status;
         statusEl.className = `badge-status ${status}`;
@@ -120,7 +120,7 @@ const volumeDetailPage = {
 
         // Human decisions
         this.setText('user-workload', userWorkload);
-        this.setText('user-status', status);
+        this.setText('user-status', this.getMigrationStatusText(user?.MigrationStatus) || 'Candidate');
         this.renderTagArray('user-tags', user?.CustomTags);
         this.setText('user-reviewed-by', user?.ReviewedBy || '-');
         this.setText('user-reviewed-at', user?.ReviewedAt ? new Date(user.ReviewedAt).toLocaleString() : '-');
@@ -500,6 +500,16 @@ const volumeDetailPage = {
         return div.innerHTML;
     },
 
+    getMigrationStatusText(status) {
+        if (!status) return 'Candidate';
+        // Handle both string and numeric enum values
+        if (typeof status === 'number') {
+            const statusNames = ['Candidate', 'Excluded', 'UnderReview', 'Approved'];
+            return statusNames[status] || 'Candidate';
+        }
+        return status.toString();
+    },
+
     // Decision Panel Methods
     async loadWorkloadProfiles() {
         try {
@@ -601,6 +611,15 @@ const volumeDetailPage = {
         this.saveCurrentState();
         workloadSelect.value = ai.SuggestedWorkloadId;
         statusSelect.value = 'UnderReview';
+        
+        // Update the current data to include the workload name for display
+        if (!this.currentData.UserAnnotations) {
+            this.currentData.UserAnnotations = {};
+        }
+        this.currentData.UserAnnotations.ConfirmedWorkloadId = ai.SuggestedWorkloadId;
+        this.currentData.UserAnnotations.ConfirmedWorkloadName = ai.SuggestedWorkloadName;
+        this.currentData.UserAnnotations.MigrationStatus = 'UnderReview';
+        
         this.scheduleAutoSave();
         Toast.success('Accepted AI classification');
     },

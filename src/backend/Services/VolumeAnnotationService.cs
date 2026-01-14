@@ -10,6 +10,7 @@ public class VolumeAnnotationService
 {
     private readonly ILogger _logger;
     private readonly BlobContainerClient _blobContainer;
+    private readonly WorkloadProfileService _workloadProfileService;
 
     public VolumeAnnotationService(string connectionString, ILogger logger)
     {
@@ -17,6 +18,7 @@ public class VolumeAnnotationService
         var blobServiceClient = new BlobServiceClient(connectionString);
         _blobContainer = blobServiceClient.GetBlobContainerClient("discovery-data");
         _blobContainer.CreateIfNotExists();
+        _workloadProfileService = new WorkloadProfileService(connectionString, logger);
     }
 
     public async Task<DiscoveryData?> GetDiscoveryDataAsync(string discoveryJobId)
@@ -113,6 +115,16 @@ public class VolumeAnnotationService
         var volume = data.Volumes.FirstOrDefault(v => v.VolumeId == volumeId);
         if (volume == null)
             throw new InvalidOperationException($"Volume {volumeId} not found");
+
+        // Populate ConfirmedWorkloadName if ConfirmedWorkloadId is provided
+        if (!string.IsNullOrEmpty(annotations.ConfirmedWorkloadId))
+        {
+            var profile = await _workloadProfileService.GetProfileAsync(annotations.ConfirmedWorkloadId);
+            if (profile != null)
+            {
+                annotations.ConfirmedWorkloadName = profile.Name;
+            }
+        }
 
         annotations.ReviewedBy = userId;
         annotations.ReviewedAt = DateTime.UtcNow;
