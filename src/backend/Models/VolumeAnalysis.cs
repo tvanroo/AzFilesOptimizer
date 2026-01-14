@@ -21,6 +21,11 @@ public class AiAnalysisResult
     public double ConfidenceScore { get; set; } // 0.0 - 1.0
     public PromptExecutionResult[]? AppliedPrompts { get; set; }
     public string? ErrorMessage { get; set; }
+    
+    /// <summary>
+    /// AI-driven capacity and throughput sizing recommendations
+    /// </summary>
+    public CapacitySizingResult? CapacitySizing { get; set; }
 }
 
 public enum MigrationStatus
@@ -66,6 +71,9 @@ public class AnalysisJob : ITableEntity
     public int ProcessedVolumes { get; set; }
     public int FailedVolumes { get; set; }
     
+    // Capacity sizing configuration
+    public double BufferPercent { get; set; } = 30.0;
+    
     // Enabled prompt IDs as comma-separated string
     public string? EnabledPromptIdsString { get; set; }
     
@@ -102,6 +110,12 @@ public class AnalysisJob : ITableEntity
 public class StartAnalysisRequest
 {
     public string DiscoveryJobId { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Buffer percentage to apply above peak capacity/throughput (default: 30%)
+    /// Can be negative for aggressive sizing (e.g., -10 = 10% below peak)
+    /// </summary>
+    public double? BufferPercent { get; set; } = 30.0;
 }
 
 public class StartAnalysisResponse

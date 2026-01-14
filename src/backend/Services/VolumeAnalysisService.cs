@@ -13,6 +13,7 @@ public class VolumeAnalysisService
     private readonly BlobContainerClient _blobContainer;
     private readonly WorkloadProfileService _profileService;
     private readonly AnalysisPromptService _promptService;
+    private readonly CapacityAnalysisService _capacityAnalysisService;
     private AnalysisLogService? _logService;
     private Azure.Data.Tables.TableClient? _analysisJobsTable;
     private string? _currentAnalysisJobId;
@@ -21,18 +22,20 @@ public class VolumeAnalysisService
         string connectionString,
         WorkloadProfileService profileService,
         AnalysisPromptService promptService,
-        ILogger logger)
+        ILogger logger,
+        CapacityAnalysisService? capacityAnalysisService = null)
     {
         _logger = logger;
         _profileService = profileService;
         _promptService = promptService;
+        _capacityAnalysisService = capacityAnalysisService ?? new CapacityAnalysisService(logger);
         
         var blobServiceClient = new BlobServiceClient(connectionString);
         _blobContainer = blobServiceClient.GetBlobContainerClient("discovery-data");
         _blobContainer.CreateIfNotExists();
     }
 
-    public async Task AnalyzeVolumesAsync(string discoveryJobId, string userId, string apiKey, string provider, string? endpoint, string? analysisJobId = null, string? preferredModel = null)
+    public async Task AnalyzeVolumesAsync(string discoveryJobId, string userId, string apiKey, string provider, string? endpoint, string? analysisJobId = null, string? preferredModel = null, double bufferPercent = 30.0)
     {
         _logger.LogInformation("Starting analysis for discovery job: {JobId}", discoveryJobId);
         
@@ -90,7 +93,8 @@ public class VolumeAnalysisService
                     endpoint,
                     analysisJobId,
                     volumeWrapper.Volume.ShareName ?? "Unknown",
-                    preferredModel);
+                    preferredModel,
+                    bufferPercent);
                 
                 volumeWrapper.AiAnalysis = analysis;
                 volumeWrapper.UserAnnotations ??= new UserAnnotations();
@@ -137,7 +141,8 @@ public class VolumeAnalysisService
         string? endpoint,
         string? analysisJobId = null,
         string? volumeName = null,
-        string? preferredModel = null)
+        string? preferredModel = null,
+        double bufferPercent = 30.0)
     {
         var result = new AiAnalysisResult
         {
@@ -262,6 +267,52 @@ public class VolumeAnalysisService
         if (!string.IsNullOrEmpty(result.SuggestedWorkloadId))
         {
             result.ConfidenceScore = CalculateConfidence(appliedPrompts);
+        }
+        
+        // Perform capacity and throughput sizing analysis
+        try
+        {
+            if (_logService != null && !string.IsNullOrEmpty(analysisJobId) && !string.IsNullOrEmpty(volumeName))
+            {
+                await _logService.LogProgressAsync(analysisJobId, $"  [{volumeName}] → Analyzing capacity and throughput sizing");
+            }
+            
+            var capacitySizing = _capacityAnalysisService.AnalyzeMetrics(
+                volume.HistoricalMetricsSummary,
+                bufferPercent,
+                volume.MonitoringDataAvailableDays ?? 30,
+                "AzureFiles");
+            
+            // Enhance with AI analysis if we have workload classification
+            if (!string.IsNullOrEmpty(result.SuggestedWorkloadName) && capacitySizing.HasSufficientData)
+            {
+                capacitySizing = await _capacityAnalysisService.EnhanceWithAiAnalysisAsync(
+                    capacitySizing,
+                    result.SuggestedWorkloadName,
+                    apiKey,
+                    provider,
+                    endpoint,
+                    preferredModel);
+            }
+            
+            result.CapacitySizing = capacitySizing;
+            
+            if (_logService != null && !string.IsNullOrEmpty(analysisJobId) && !string.IsNullOrEmpty(volumeName))
+            {
+                var summary = capacitySizing.HasSufficientData
+                    ? $"Capacity: {capacitySizing.RecommendedCapacityInUnit:0.##} {capacitySizing.CapacityUnit}, Throughput: {capacitySizing.RecommendedThroughputMiBps:0.##} MiB/s, Service Level: {capacitySizing.SuggestedServiceLevel ?? "Unknown"}"
+                    : "Insufficient metrics data for sizing";
+                await _logService.LogProgressAsync(analysisJobId, $"  [{volumeName}] ✓ Sizing: {summary}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to perform capacity analysis for volume {VolumeName}", volume.ShareName);
+            if (_logService != null && !string.IsNullOrEmpty(analysisJobId) && !string.IsNullOrEmpty(volumeName))
+            {
+                await _logService.LogProgressAsync(analysisJobId, $"  [{volumeName}] ⚠ Capacity analysis failed: {ex.Message}", "WARNING");
+            }
+            // Don't fail the entire analysis if capacity sizing fails
         }
 
         return result;

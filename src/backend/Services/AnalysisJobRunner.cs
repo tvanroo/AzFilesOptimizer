@@ -28,7 +28,7 @@ public class AnalysisJobRunner
         _logger = logger;
     }
 
-    public async Task RunAsync(string analysisJobId, string discoveryJobId, string userId = "default-user")
+    public async Task RunAsync(string analysisJobId, string discoveryJobId, string userId = "default-user", double bufferPercent = 30.0)
     {
         EnsureCoreServicesInitialized();
 
@@ -111,7 +111,8 @@ public class AnalysisJobRunner
                 apiKeyConfig.Provider,
                 apiKeyConfig.Endpoint,
                 analysisJobId,
-                modelToUse);
+                modelToUse,
+                bufferPercent);
 
             // 5) Update job with completion
             analysisJob.Status = AnalysisJobStatus.Completed.ToString();
