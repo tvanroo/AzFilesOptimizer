@@ -157,7 +157,6 @@ public class VolumeAnalysisFunction
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(new AnalysisJobStatusResponse
             {
-                AnalysisJobId = latestJob.JobId,
                 JobId = latestJob.JobId,
                 Status = latestJob.Status,
                 TotalVolumes = latestJob.TotalVolumes,
@@ -166,10 +165,7 @@ public class VolumeAnalysisFunction
                 CreatedAt = latestJob.CreatedAt,
                 StartedAt = latestJob.StartedAt,
                 CompletedAt = latestJob.CompletedAt,
-                ErrorMessage = latestJob.ErrorMessage,
-                ProgressPercentage = latestJob.TotalVolumes > 0 
-                    ? (int)((double)latestJob.ProcessedVolumes / latestJob.TotalVolumes * 100) 
-                    : 0
+                ErrorMessage = latestJob.ErrorMessage
             });
             return response;
         }
