@@ -590,9 +590,17 @@ const volumeDetailPage = {
             return;
         }
 
+        const workloadSelect = document.getElementById('workload-select');
+        const statusSelect = document.getElementById('status-select');
+        
+        if (!workloadSelect || !statusSelect) {
+            Toast.error('Decision panel not initialized');
+            return;
+        }
+
         this.saveCurrentState();
-        document.getElementById('workload-select').value = ai.SuggestedWorkloadId;
-        document.getElementById('status-select').value = 'UnderReview';
+        workloadSelect.value = ai.SuggestedWorkloadId;
+        statusSelect.value = 'UnderReview';
         this.scheduleAutoSave();
         Toast.success('Accepted AI classification');
     },
