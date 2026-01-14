@@ -1,6 +1,10 @@
 const volumeDetailPage = {
     jobId: null,
     volumeId: null,
+    currentData: null,
+    workloadProfiles: [],
+    undoStack: [],
+    autoSaveTimeout: null,
 
     async init() {
         const params = new URLSearchParams(window.location.search);
@@ -32,7 +36,9 @@ const volumeDetailPage = {
             return;
         }
 
+        await this.loadWorkloadProfiles();
         await this.loadVolume();
+        this.initializeDecisionPanel();
     },
 
     async loadVolume() {
@@ -56,6 +62,7 @@ const volumeDetailPage = {
     },
 
     renderVolume(model) {
+        this.currentData = model; // Store for decision panel
         const v = model;
         const vol = v.VolumeData || {};
         const ai = v.AiAnalysis || null;
@@ -130,6 +137,9 @@ const volumeDetailPage = {
 
         // Capacity Sizing
         this.renderCapacitySizing(ai?.CapacitySizing);
+
+        // Populate decision panel
+        this.populateDecisionPanel(model);
 
         // History timeline: combine AI prompts, user review, and annotation history
         this.renderHistoryTimeline(ai, user, v.AnnotationHistory || []);
@@ -488,6 +498,204 @@ const volumeDetailPage = {
         const div = document.createElement('div');
         div.textContent = text || '';
         return div.innerHTML;
+    },
+
+    // Decision Panel Methods
+    async loadWorkloadProfiles() {
+        try {
+            const url = `${API_BASE_URL}/workload-profiles`;
+            const response = await fetch(url);
+            if (response.ok) {
+                this.workloadProfiles = await response.json();
+            }
+        } catch (error) {
+            console.error('Error loading workload profiles:', error);
+        }
+    },
+
+    initializeDecisionPanel() {
+        // Populate workload dropdown
+        const workloadSelect = document.getElementById('workload-select');
+        if (workloadSelect && this.workloadProfiles.length > 0) {
+            this.workloadProfiles.forEach(profile => {
+                if (!profile.IsExclusionProfile) {
+                    const option = document.createElement('option');
+                    option.value = profile.ProfileId;
+                    option.textContent = profile.Name;
+                    workloadSelect.appendChild(option);
+                }
+            });
+        }
+
+        // Quick action buttons
+        document.getElementById('btn-accept-ai')?.addEventListener('click', () => this.acceptAiClassification());
+        document.getElementById('btn-exclude')?.addEventListener('click', () => this.quickExclude());
+        document.getElementById('btn-approve')?.addEventListener('click', () => this.quickApprove());
+        document.getElementById('btn-undo')?.addEventListener('click', () => this.undoLastChange());
+
+        // Auto-save on changes
+        workloadSelect?.addEventListener('change', () => this.scheduleAutoSave());
+        document.getElementById('status-select')?.addEventListener('change', () => this.scheduleAutoSave());
+        document.getElementById('capacity-override')?.addEventListener('input', () => this.scheduleAutoSave());
+        document.getElementById('throughput-override')?.addEventListener('input', () => this.scheduleAutoSave());
+        document.getElementById('notes-input')?.addEventListener('input', () => this.scheduleAutoSave());
+    },
+
+    populateDecisionPanel(model) {
+        const ai = model.AiAnalysis || {};
+        const user = model.UserAnnotations || {};
+        const sizing = ai.CapacitySizing || {};
+
+        // Set workload
+        const workloadSelect = document.getElementById('workload-select');
+        if (workloadSelect) {
+            workloadSelect.value = user.ConfirmedWorkloadId || '';
+        }
+
+        // Set status
+        const statusSelect = document.getElementById('status-select');
+        if (statusSelect) {
+            statusSelect.value = user.MigrationStatus?.toString() || 'Candidate';
+        }
+
+        // Set capacity override (check user annotations first, then sizing)
+        const capacityInput = document.getElementById('capacity-override');
+        if (capacityInput) {
+            capacityInput.value = user.TargetCapacityGiB || '';
+            capacityInput.placeholder = sizing.RecommendedCapacityGiB 
+                ? `AI recommends: ${sizing.RecommendedCapacityGiB.toFixed(2)} GiB`
+                : 'Leave empty for AI recommendation';
+        }
+
+        // Set throughput override
+        const throughputInput = document.getElementById('throughput-override');
+        if (throughputInput) {
+            throughputInput.value = user.TargetThroughputMiBps || '';
+            throughputInput.placeholder = sizing.RecommendedThroughputMiBps
+                ? `AI recommends: ${sizing.RecommendedThroughputMiBps.toFixed(1)} MiB/s`
+                : 'Leave empty for AI recommendation';
+        }
+
+        // Set notes
+        const notesInput = document.getElementById('notes-input');
+        if (notesInput) {
+            notesInput.value = user.Notes || '';
+        }
+    },
+
+    acceptAiClassification() {
+        const ai = this.currentData?.AiAnalysis;
+        if (!ai || !ai.SuggestedWorkloadId) {
+            Toast.error('No AI classification available to accept');
+            return;
+        }
+
+        this.saveCurrentState();
+        document.getElementById('workload-select').value = ai.SuggestedWorkloadId;
+        document.getElementById('status-select').value = 'UnderReview';
+        this.scheduleAutoSave();
+        Toast.success('Accepted AI classification');
+    },
+
+    quickExclude() {
+        this.saveCurrentState();
+        document.getElementById('status-select').value = 'Excluded';
+        this.scheduleAutoSave();
+        Toast.info('Volume excluded from migration');
+    },
+
+    quickApprove() {
+        this.saveCurrentState();
+        document.getElementById('status-select').value = 'Approved';
+        const workloadSelect = document.getElementById('workload-select');
+        if (!workloadSelect.value) {
+            const ai = this.currentData?.AiAnalysis;
+            if (ai?.SuggestedWorkloadId) {
+                workloadSelect.value = ai.SuggestedWorkloadId;
+            }
+        }
+        this.scheduleAutoSave();
+        Toast.success('Volume approved for migration');
+    },
+
+    saveCurrentState() {
+        const state = {
+            workload: document.getElementById('workload-select')?.value,
+            status: document.getElementById('status-select')?.value,
+            capacity: document.getElementById('capacity-override')?.value,
+            throughput: document.getElementById('throughput-override')?.value,
+            notes: document.getElementById('notes-input')?.value
+        };
+        this.undoStack.push(state);
+        if (this.undoStack.length > 10) this.undoStack.shift(); // Keep last 10 states
+        document.getElementById('btn-undo').disabled = false;
+    },
+
+    undoLastChange() {
+        if (this.undoStack.length === 0) return;
+        
+        const state = this.undoStack.pop();
+        document.getElementById('workload-select').value = state.workload || '';
+        document.getElementById('status-select').value = state.status || 'Candidate';
+        document.getElementById('capacity-override').value = state.capacity || '';
+        document.getElementById('throughput-override').value = state.throughput || '';
+        document.getElementById('notes-input').value = state.notes || '';
+        
+        document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
+        this.scheduleAutoSave();
+        
+        Toast.info('Undone');
+    },
+
+    scheduleAutoSave() {
+        // Highlight panel as modified
+        const panel = document.getElementById('decision-panel');
+        if (panel) panel.classList.add('modified');
+
+        // Debounce auto-save
+        if (this.autoSaveTimeout) clearTimeout(this.autoSaveTimeout);
+        this.autoSaveTimeout = setTimeout(() => this.saveDecisions(), 1000);
+    },
+
+    async saveDecisions() {
+        const workloadId = document.getElementById('workload-select')?.value;
+        const status = document.getElementById('status-select')?.value;
+        const capacity = document.getElementById('capacity-override')?.value;
+        const throughput = document.getElementById('throughput-override')?.value;
+        const notes = document.getElementById('notes-input')?.value;
+
+        const updates = {
+            ConfirmedWorkloadId: workloadId || null,
+            MigrationStatus: status || 'Candidate',
+            Notes: notes || null
+        };
+
+        // Add custom fields for capacity/throughput overrides
+        if (capacity) updates.TargetCapacityGiB = parseFloat(capacity);
+        if (throughput) updates.TargetThroughputMiBps = parseFloat(throughput);
+
+        try {
+            const url = `${API_BASE_URL}/discovery/${this.jobId}/volumes/${this.volumeId}/annotations`;
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to save (${response.status})`);
+            }
+
+            // Remove modified highlight
+            const panel = document.getElementById('decision-panel');
+            if (panel) panel.classList.remove('modified');
+
+            // Reload to show updated data
+            await this.loadVolume();
+        } catch (error) {
+            console.error('Error saving decisions:', error);
+            Toast.error(`Failed to save: ${error.message}`);
+        }
     }
 };
 
