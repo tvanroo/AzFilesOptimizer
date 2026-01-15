@@ -35,7 +35,11 @@ public class VolumeAnnotationService
             
             var response = await blobClient.DownloadContentAsync();
             var json = response.Value.Content.ToString();
-            return JsonSerializer.Deserialize<DiscoveryData>(json);
+            var options = new JsonSerializerOptions
+            {
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+            };
+            return JsonSerializer.Deserialize<DiscoveryData>(json, options);
         }
         catch (Exception ex)
         {
@@ -299,7 +303,12 @@ public class VolumeAnnotationService
         try
         {
             var blobClient = _blobContainer.GetBlobClient($"jobs/{data.JobId}/discovered-volumes.json");
-            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+            var options = new JsonSerializerOptions 
+            { 
+                WriteIndented = true,
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+            };
+            var json = JsonSerializer.Serialize(data, options);
             await blobClient.UploadAsync(BinaryData.FromString(json), overwrite: true);
             
             _logger.LogInformation("Saved discovery data for job: {JobId}", data.JobId);
