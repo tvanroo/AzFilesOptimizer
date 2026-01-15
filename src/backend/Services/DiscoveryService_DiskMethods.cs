@@ -68,7 +68,7 @@ public partial class DiscoveryService
                         try
                         {
                             var diskData = disk.Data;
-                            var managedBy = diskData.ManagedBy?.Id?.ToString();
+                            var managedBy = diskData.ManagedBy?.ToString();
 
                             var discoveredDisk = new DiscoveredManagedDisk
                             {

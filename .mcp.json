@@ -1,0 +1,18 @@
+{
+    "mcpServers": {
+        "Azure MCP Server": {
+            "command": "dnx",
+            "args": [
+                "Azure.Mcp",
+                "--source",
+                "https://api.nuget.org/v3/index.json",
+                "--yes",
+                "--",
+                "azmcp",
+                "server",
+                "start"
+            ],
+            "type": "stdio"
+        }
+    }
+}
