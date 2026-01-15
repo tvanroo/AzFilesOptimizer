@@ -35,35 +35,66 @@ public class DiscoveryMigrationService
                 return true;
             }
 
-            // Get Azure Files shares from Azure Tables
+            // Get all resource types from Azure Tables
             var shares = await _resourceStorage.GetSharesByJobIdAsync(discoveryJobId);
-            if (shares.Count == 0)
+            var anfVolumes = await _resourceStorage.GetVolumesByJobIdAsync(discoveryJobId);
+            var disks = await _resourceStorage.GetDisksByJobIdAsync(discoveryJobId);
+
+            if (shares.Count == 0 && anfVolumes.Count == 0 && disks.Count == 0)
             {
-                _logger.LogWarning("No shares found in Tables for job {JobId}", discoveryJobId);
+                _logger.LogWarning("No resources found in Tables for job {JobId}", discoveryJobId);
                 return false;
             }
 
-            _logger.LogInformation("Found {Count} shares to migrate", shares.Count);
+            _logger.LogInformation("Found {ShareCount} shares, {AnfCount} ANF volumes, {DiskCount} disks to migrate", 
+                shares.Count, anfVolumes.Count, disks.Count);
 
-            // Convert to DiscoveryData format
+            // Convert all to unified volume format
+            var volumes = new List<DiscoveredVolumeWithAnalysis>();
+            
+            // Add Azure Files shares
+            volumes.AddRange(shares.Select(share => new DiscoveredVolumeWithAnalysis
+            {
+                VolumeType = "AzureFiles",
+                VolumeData = share,
+                AiAnalysis = null,
+                UserAnnotations = new UserAnnotations(),
+                AnnotationHistory = new List<AnnotationHistoryEntry>()
+            }));
+            
+            // Add ANF volumes
+            volumes.AddRange(anfVolumes.Select(volume => new DiscoveredVolumeWithAnalysis
+            {
+                VolumeType = "ANF",
+                VolumeData = volume,
+                AiAnalysis = null,
+                UserAnnotations = new UserAnnotations(),
+                AnnotationHistory = new List<AnnotationHistoryEntry>()
+            }));
+            
+            // Add Managed Disks
+            volumes.AddRange(disks.Select(disk => new DiscoveredVolumeWithAnalysis
+            {
+                VolumeType = "ManagedDisk",
+                VolumeData = disk,
+                AiAnalysis = null,
+                UserAnnotations = new UserAnnotations(),
+                AnnotationHistory = new List<AnnotationHistoryEntry>()
+            }));
+
             var discoveryData = new DiscoveryData
             {
                 JobId = discoveryJobId,
                 DiscoveredAt = DateTime.UtcNow,
-                Volumes = shares.Select(share => new DiscoveredVolumeWithAnalysis
-                {
-                    Volume = share,
-                    AiAnalysis = null, // No analysis yet
-                    UserAnnotations = new UserAnnotations(), // Initialize empty
-                    AnnotationHistory = new List<AnnotationHistoryEntry>()
-                }).ToList()
+                Volumes = volumes
             };
 
             // Save to blob storage
             var json = JsonSerializer.Serialize(discoveryData, new JsonSerializerOptions { WriteIndented = true });
             await blobClient.UploadAsync(BinaryData.FromString(json), overwrite: false);
 
-            _logger.LogInformation("Successfully migrated {Count} shares for job {JobId}", shares.Count, discoveryJobId);
+            _logger.LogInformation("Successfully migrated {TotalCount} resources ({ShareCount} shares, {AnfCount} ANF volumes, {DiskCount} disks) for job {JobId}", 
+                volumes.Count, shares.Count, anfVolumes.Count, disks.Count, discoveryJobId);
             return true;
         }
         catch (Exception ex)

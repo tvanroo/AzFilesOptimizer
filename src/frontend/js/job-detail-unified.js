@@ -25,14 +25,15 @@ const jobDetail = {
     volumeViewStorageKey: 'azfo-volume-analysis-view',
     volumeColumns: [
         { key: 'select', label: '', sortable: false },
+        { key: 'VolumeType', label: 'Type', sortable: true },
         { key: 'VolumeName', label: 'Volume Name', sortable: true },
-        { key: 'StorageAccountName', label: 'Storage Account', sortable: true },
+        { key: 'StorageAccountName', label: 'Storage Account / VM', sortable: true },
         { key: 'ResourceGroup', label: 'Resource Group', sortable: true },
         { key: 'SubscriptionId', label: 'Subscription', sortable: true },
         { key: 'Location', label: 'Location', sortable: true },
         { key: 'CapacityGiB', label: 'Capacity (GiB)', sortable: true },
         { key: 'UsedCapacity', label: 'Used Capacity', sortable: true },
-        { key: 'AccessTier', label: 'Access Tier', sortable: true },
+        { key: 'AccessTier', label: 'Tier / SKU', sortable: true },
         { key: 'Protocols', label: 'Protocols', sortable: false },
         { key: 'StorageAccountSku', label: 'SKU', sortable: true },
         { key: 'AiWorkload', label: 'AI Workload', sortable: true },
@@ -43,7 +44,7 @@ const jobDetail = {
         { key: 'ReviewedBy', label: 'Reviewed By', sortable: true },
         { key: 'ReviewedAt', label: 'Reviewed At', sortable: true }
     ],
-    defaultVisibleVolumeColumns: ['select','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','AiWorkload','UserWorkload','AiConfidence','MigrationStatus'],
+    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','AiWorkload','UserWorkload','AiConfidence','MigrationStatus'],
     visibleVolumeColumns: null,
     volumeSortColumn: null,
     volumeSortDirection: 'asc',
@@ -411,21 +412,33 @@ const jobDetail = {
     },
 
     getVolumeCellValue(columnKey, v) {
+        const vType = v.VolumeType || 'AzureFiles';
+        const vData = v.VolumeData || {};
+        
         switch (columnKey) {
+            case 'VolumeType':
+                return vType === 'ManagedDisk' ? '💾 Disk' : vType === 'ANF' ? '📁 ANF' : '📂 Files';
             case 'VolumeName':
-                return v.VolumeData?.ShareName || 'Unknown';
+                if (vType === 'ManagedDisk') return vData.DiskName || 'Unknown';
+                if (vType === 'ANF') return vData.VolumeName || 'Unknown';
+                return vData.ShareName || 'Unknown';
             case 'StorageAccountName':
-                return v.VolumeData?.StorageAccountName || '-';
+                if (vType === 'ManagedDisk') return vData.AttachedVmName || 'Unattached';
+                if (vType === 'ANF') return vData.NetAppAccountName || '-';
+                return vData.StorageAccountName || '-';
             case 'ResourceGroup':
-                return v.VolumeData?.ResourceGroup || '-';
+                return vData.ResourceGroup || '-';
             case 'SubscriptionId':
-                return v.VolumeData?.SubscriptionId || '-';
+                return vData.SubscriptionId || '-';
             case 'Location':
-                return v.VolumeData?.Location || '-';
+                return vData.Location || '-';
             case 'CapacityGiB':
-                return v.VolumeData?.ShareQuotaGiB ?? 0;
+                if (vType === 'ManagedDisk') return vData.DiskSizeGB || 0;
+                if (vType === 'ANF') return Math.round((vData.ProvisionedSizeBytes || 0) / (1024**3));
+                return vData.ShareQuotaGiB ?? 0;
             case 'UsedCapacity': {
-                const bytes = v.VolumeData?.ShareUsageBytes ?? 0;
+                if (vType === 'ManagedDisk') return 'N/A';
+                const bytes = vData.ShareUsageBytes ?? 0;
                 if (!bytes) return '0 B';
                 const k = 1024;
                 const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -434,11 +447,16 @@ const jobDetail = {
                 return `${val} ${sizes[i]}`;
             }
             case 'AccessTier':
-                return v.VolumeData?.AccessTier || 'N/A';
+                if (vType === 'ManagedDisk') return vData.DiskTier || 'N/A';
+                return vData.AccessTier || 'N/A';
             case 'Protocols':
-                return v.VolumeData?.EnabledProtocols?.join(', ') || 'SMB';
+                if (vType === 'ManagedDisk') return 'Block';
+                if (vType === 'ANF') return vData.ProtocolTypes?.join(', ') || '-';
+                return vData.EnabledProtocols?.join(', ') || 'SMB';
             case 'StorageAccountSku':
-                return v.VolumeData?.StorageAccountSku || 'N/A';
+                if (vType === 'ManagedDisk') return vData.DiskSku || 'N/A';
+                if (vType === 'ANF') return vData.ServiceLevel || 'N/A';
+                return vData.StorageAccountSku || 'N/A';
             case 'AiWorkload':
                 return v.AiAnalysis?.SuggestedWorkloadName || '-';
             case 'AiConfidence':
@@ -480,10 +498,12 @@ const jobDetail = {
         let rows = this.volumes.slice();
         if (searchTerm) {
             rows = rows.filter(v => {
+                const vData = v.VolumeData || {};
                 const fields = [
-                    v.VolumeData?.ShareName,
-                    v.VolumeData?.StorageAccountName,
-                    v.VolumeData?.ResourceGroup,
+                    v.VolumeType,
+                    vData.ShareName || vData.DiskName || vData.VolumeName,
+                    vData.StorageAccountName || vData.AttachedVmName || vData.NetAppAccountName,
+                    vData.ResourceGroup,
                     v.AiAnalysis?.SuggestedWorkloadName,
                     v.UserAnnotations?.ConfirmedWorkloadName,
                     v.UserAnnotations?.MigrationStatus?.toString() || ''

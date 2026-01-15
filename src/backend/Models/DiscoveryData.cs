@@ -32,11 +32,30 @@ public class AnnotationHistoryEntry
 }
 
 /// <summary>
-/// Wraps a DiscoveredAzureFileShare with its analysis and annotation data
+/// Wraps any discovered volume type with its analysis and annotation data.
+/// VolumeData contains the actual volume object (could be Azure Files, ANF, or Managed Disk).
 /// </summary>
 public class DiscoveredVolumeWithAnalysis
 {
-    public DiscoveredAzureFileShare Volume { get; set; } = new();
+    /// <summary>
+    /// Type discriminator: "AzureFiles", "ANF", or "ManagedDisk"
+    /// </summary>
+    public string VolumeType { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// The volume data - can be DiscoveredAzureFileShare, DiscoveredAnfVolume, or DiscoveredManagedDisk
+    /// </summary>
+    public object VolumeData { get; set; } = new();
+    
+    /// <summary>
+    /// Convenience property for Azure Files shares (backwards compatibility)
+    /// </summary>
+    public DiscoveredAzureFileShare? Volume 
+    { 
+        get => VolumeData as DiscoveredAzureFileShare;
+        set { if (value != null) { VolumeData = value; VolumeType = "AzureFiles"; } }
+    }
+    
     public AiAnalysisResult? AiAnalysis { get; set; }
     public UserAnnotations? UserAnnotations { get; set; }
 
@@ -48,7 +67,18 @@ public class DiscoveredVolumeWithAnalysis
     /// <summary>
     /// Computed unique identifier for this volume (hash of ResourceId)
     /// </summary>
-    public string VolumeId => ComputeVolumeId(Volume.ResourceId);
+    public string VolumeId => ComputeVolumeId(GetResourceId());
+    
+    private string GetResourceId()
+    {
+        return VolumeType switch
+        {
+            "AzureFiles" => (VolumeData as DiscoveredAzureFileShare)?.ResourceId ?? "",
+            "ANF" => (VolumeData as DiscoveredAnfVolume)?.ResourceId ?? "",
+            "ManagedDisk" => (VolumeData as DiscoveredManagedDisk)?.ResourceId ?? "",
+            _ => ""
+        };
+    }
     
     private static string ComputeVolumeId(string resourceId)
     {
