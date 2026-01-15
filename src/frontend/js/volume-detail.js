@@ -64,18 +64,22 @@ const volumeDetailPage = {
     renderVolume(model) {
         this.currentData = model; // Store for decision panel
         const v = model;
+        const volumeType = v.VolumeType || 'AzureFiles';
         const vol = v.VolumeData || {};
         const ai = v.AiAnalysis || null;
         const user = v.UserAnnotations || null;
 
+        const props = this.getVolumeProperties(volumeType, vol);
+        this.updateVolumeLabels(volumeType);
+
         // Title / breadcrumb
-        const name = vol.ShareName || 'Unknown volume';
+        const name = props.name || 'Unknown volume';
         document.getElementById('volume-title').textContent = name;
         document.getElementById('breadcrumb-volume').textContent = name;
         document.getElementById('breadcrumb-job').textContent = `Job ${this.jobId.substring(0, 8)}`;
 
         document.getElementById('volume-subtitle').textContent =
-            `${vol.StorageAccountName || '-'} · ${vol.ResourceGroup || '-'} · ${vol.Location || '-'}`;
+            `${props.parentName || '-'} · ${vol.ResourceGroup || '-'} · ${vol.Location || '-'}`;
 
         // Summary cards
         const aiWorkload = ai?.SuggestedWorkloadName || 'Unclassified';
@@ -91,25 +95,32 @@ const volumeDetailPage = {
         statusEl.textContent = status;
         statusEl.className = `badge-status ${status}`;
 
-        const quotaGiB = vol.ShareQuotaGiB ?? 0;
-        document.getElementById('summary-capacity').textContent = `${quotaGiB} GiB`;
-        document.getElementById('summary-used').textContent = this.formatBytes(vol.ShareUsageBytes || 0);
+        const capacityGiB = props.capacityGiB ?? 0;
+        document.getElementById('summary-capacity').textContent = `${capacityGiB} GiB`;
+        document.getElementById('summary-used').textContent = this.formatBytes(props.usedBytes || 0);
 
         document.getElementById('summary-location').textContent = vol.Location || '-';
-        document.getElementById('summary-tier').textContent = vol.AccessTier || '-';
+        document.getElementById('summary-tier').textContent = props.tier || '-';
 
         // Properties
         this.setText('prop-share-name', name);
-        this.setText('prop-storage-account', vol.StorageAccountName || '-');
+        this.setText('prop-storage-account', props.parentName || '-');
         this.setText('prop-resource-group', vol.ResourceGroup || '-');
         this.setText('prop-subscription', vol.SubscriptionId || '-');
         this.setText('prop-location', vol.Location || '-');
-        this.setText('prop-access-tier', vol.AccessTier || 'Unknown');
-        this.setText('prop-protocols', (vol.EnabledProtocols || ['SMB']).join(', '));
-        this.setText('prop-sku', vol.StorageAccountSku || 'N/A');
-        this.setText('prop-quota', quotaGiB.toString());
-        this.setText('prop-used', this.formatBytes(vol.ShareUsageBytes || 0));
+        this.setText('prop-access-tier', props.tier || 'Unknown');
+        this.setText('prop-protocols', props.protocols.join(', '));
+        this.setText('prop-sku', props.sku || 'N/A');
+        this.setText('prop-quota', capacityGiB.toString());
+        this.setText('prop-used', this.formatBytes(props.usedBytes || 0));
         this.renderTags('prop-tags', vol.Tags);
+
+        // Add type-specific properties
+        if (volumeType === 'ManagedDisk') {
+            this.addDiskSpecificProperties(vol);
+        } else if (volumeType === 'ANF') {
+            this.addAnfSpecificProperties(vol);
+        }
 
         // AI categorization
         this.setText('ai-suggested', aiWorkload);
@@ -515,6 +526,186 @@ const volumeDetailPage = {
             return statusNames[status] || 'Candidate';
         }
         return status.toString();
+    },
+
+    getVolumeProperties(volumeType, vol) {
+        switch (volumeType) {
+            case 'ManagedDisk':
+                return {
+                    name: vol.DiskName || 'Unknown Disk',
+                    parentName: vol.AttachedVmName || 'Not Attached',
+                    capacityGiB: vol.DiskSizeGB || 0,
+                    usedBytes: vol.DiskSizeBytes || (vol.DiskSizeGB || 0) * 1024 * 1024 * 1024,
+                    tier: vol.DiskTier || vol.DiskSku || 'Unknown',
+                    protocols: [vol.DiskType || 'Unknown'],
+                    sku: vol.DiskSku || 'N/A'
+                };
+            case 'ANF':
+                return {
+                    name: vol.VolumeName || 'Unknown Volume',
+                    parentName: vol.NetAppAccountName || 'Unknown Account',
+                    capacityGiB: vol.ProvisionedSizeBytes ? vol.ProvisionedSizeBytes / (1024 * 1024 * 1024) : 0,
+                    usedBytes: vol.ProvisionedSizeBytes || 0,
+                    tier: vol.ServiceLevel || 'Unknown',
+                    protocols: vol.ProtocolTypes || ['Unknown'],
+                    sku: vol.PoolQosType || 'N/A'
+                };
+            case 'AzureFiles':
+            default:
+                return {
+                    name: vol.ShareName || 'Unknown Share',
+                    parentName: vol.StorageAccountName || 'Unknown Account',
+                    capacityGiB: vol.ShareQuotaGiB || 0,
+                    usedBytes: vol.ShareUsageBytes || 0,
+                    tier: vol.AccessTier || 'Unknown',
+                    protocols: vol.EnabledProtocols || ['SMB'],
+                    sku: vol.StorageAccountSku || 'N/A'
+                };
+        }
+    },
+
+    updateVolumeLabels(volumeType) {
+        const labelMap = {
+            'ManagedDisk': {
+                'Share Name': 'Disk Name',
+                'Storage Account': 'VM / Parent',
+                'Access Tier': 'Disk Tier',
+                'Protocols': 'Disk Type',
+                'Quota (GiB)': 'Size (GiB)',
+                'ANF Capacity & Throughput Sizing': 'ANF Capacity Sizing'
+            },
+            'ANF': {
+                'Share Name': 'Volume Name',
+                'Storage Account': 'NetApp Account',
+                'Access Tier': 'Service Level',
+                'Protocols': 'Protocols',
+                'Quota (GiB)': 'Size (GiB)'
+            },
+            'AzureFiles': {
+                'Share Name': 'Share Name',
+                'Storage Account': 'Storage Account',
+                'Access Tier': 'Access Tier',
+                'Protocols': 'Protocols',
+                'Quota (GiB)': 'Quota (GiB)'
+            }
+        };
+
+        const labels = labelMap[volumeType] || labelMap['AzureFiles'];
+
+        // Update labels in the DOM
+        const labelElements = document.querySelectorAll('.metadata-label');
+        labelElements.forEach(el => {
+            const labelText = el.textContent;
+            if (labels[labelText]) {
+                el.textContent = labels[labelText];
+            }
+        });
+
+        // Update sizing section title
+        const sizingLabel = document.querySelector('.metadata-section h3');
+        if (sizingLabel && labels['ANF Capacity & Throughput Sizing']) {
+            sizingLabel.textContent = labels['ANF Capacity & Throughput Sizing'];
+        }
+    },
+
+    addDiskSpecificProperties(vol) {
+        const metadataGrid = document.querySelector('.metadata-grid');
+        if (!metadataGrid) return;
+
+        const diskProps = [
+            { label: 'Disk State', value: vol.DiskState || '-' },
+            { label: 'Provisioning State', value: vol.ProvisioningState || '-' },
+            { label: 'Disk Type', value: vol.DiskType || '-' },
+            { label: 'Bursting Enabled', value: vol.BurstingEnabled ? 'Yes' : 'No' },
+            { label: 'Is OS Disk', value: vol.IsOsDisk ? 'Yes' : 'No' }
+        ];
+
+        // Add VM details if attached
+        if (vol.IsAttached && vol.AttachedVmName) {
+            diskProps.push(
+                { label: 'VM Name', value: vol.AttachedVmName },
+                { label: 'VM Size', value: vol.VmSize || '-' },
+                { label: 'VM CPU Cores', value: vol.VmCpuCount ? vol.VmCpuCount.toString() : '-' },
+                { label: 'VM Memory (GiB)', value: vol.VmMemoryGiB ? vol.VmMemoryGiB.toString() : '-' },
+                { label: 'VM OS Type', value: vol.VmOsType || '-' }
+            );
+        }
+
+        // Add Time Created
+        if (vol.TimeCreated) {
+            diskProps.push({ label: 'Time Created', value: new Date(vol.TimeCreated).toLocaleString() });
+        }
+
+        // Insert properties after Tags
+        const tagsElement = document.getElementById('prop-tags');
+        if (tagsElement && tagsElement.parentElement) {
+            diskProps.forEach(prop => {
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'metadata-label';
+                labelDiv.textContent = prop.label;
+
+                const valueDiv = document.createElement('div');
+                valueDiv.className = 'metadata-value';
+                valueDiv.textContent = prop.value;
+
+                tagsElement.parentElement.after(labelDiv, valueDiv);
+            });
+        }
+    },
+
+    addAnfSpecificProperties(vol) {
+        const metadataGrid = document.querySelector('.metadata-grid');
+        if (!metadataGrid) return;
+
+        const anfProps = [
+            { label: 'Service Level', value: vol.ServiceLevel || '-' },
+            { label: 'Capacity Pool', value: vol.CapacityPoolName || '-' },
+            { label: 'QoS Type', value: vol.PoolQosType || '-' },
+            { label: 'Cool Access', value: vol.CoolAccessEnabled ? 'Enabled' : 'Disabled' }
+        ];
+
+        // Add snapshot and backup info
+        anfProps.push(
+            { label: 'Snapshot Count', value: vol.SnapshotCount !== undefined ? vol.SnapshotCount.toString() : '-' }
+        );
+
+        if (vol.TotalSnapshotSizeBytes) {
+            anfProps.push({
+                label: 'Total Snapshot Size',
+                value: this.formatBytes(vol.TotalSnapshotSizeBytes)
+            });
+        }
+
+        if (vol.BackupPolicyConfigured !== undefined) {
+            anfProps.push({
+                label: 'Backup Policy',
+                value: vol.BackupPolicyConfigured ? 'Configured' : 'Not Configured'
+            });
+        }
+
+        // Add performance estimates
+        if (vol.EstimatedIops || vol.EstimatedThroughputMiBps) {
+            anfProps.push(
+                { label: 'Estimated IOPS', value: vol.EstimatedIops ? vol.EstimatedIops.toString() : '-' },
+                { label: 'Estimated Throughput (MiB/s)', value: vol.EstimatedThroughputMiBps ? vol.EstimatedThroughputMiBps.toString() : '-' }
+            );
+        }
+
+        // Insert properties after Tags
+        const tagsElement = document.getElementById('prop-tags');
+        if (tagsElement && tagsElement.parentElement) {
+            anfProps.forEach(prop => {
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'metadata-label';
+                labelDiv.textContent = prop.label;
+
+                const valueDiv = document.createElement('div');
+                valueDiv.className = 'metadata-value';
+                valueDiv.textContent = prop.value;
+
+                tagsElement.parentElement.after(labelDiv, valueDiv);
+            });
+        }
     },
 
     // Decision Panel Methods
