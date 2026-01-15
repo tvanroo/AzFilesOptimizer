@@ -934,7 +934,7 @@ const jobDetail = {
         }
     },
 
-    copyLogContent(elementId) {
+    copyLogContent(elementId, btnElement) {
         const logBody = document.getElementById(elementId);
         if (!logBody) return;
 
@@ -945,11 +945,10 @@ const jobDetail = {
         }
 
         navigator.clipboard.writeText(logText).then(() => {
-            const btn = event.target;
-            const originalText = btn.textContent;
-            btn.textContent = '✓ Copied!';
+            const originalText = btnElement.textContent;
+            btnElement.textContent = '✓ Copied!';
             setTimeout(() => {
-                btn.textContent = originalText;
+                btnElement.textContent = originalText;
             }, 2000);
         }).catch(err => {
             console.error('Failed to copy log:', err);
