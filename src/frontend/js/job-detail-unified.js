@@ -223,6 +223,10 @@ const jobDetail = {
                     <label>ANF Volumes</label>
                     <strong>${job.AnfVolumesFound || 0}</strong>
                 </div>
+                <div class="info-item">
+                    <label>Managed Disks</label>
+                    <strong>${job.ManagedDisksFound || 0}</strong>
+                </div>
             </div>
         `;
         

@@ -1,5 +1,6 @@
 using Azure.Core;
 using Azure.ResourceManager;
+using Azure.ResourceManager.Compute;
 using Azure.ResourceManager.Storage;
 using Azure.ResourceManager.NetApp;
 using AzFilesOptimizer.Backend.Models;
@@ -57,12 +58,17 @@ public class DiscoveryService
             await LogProgressAsync($"✓ Found {result.AzureFileShares.Count} Azure Files shares");
 
             // Discover ANF volumes
-            await LogProgressAsync("Step 2/2: Discovering Azure NetApp Files volumes...");
+            await LogProgressAsync("Step 2/3: Discovering Azure NetApp Files volumes...");
             result.AnfVolumes = await DiscoverAnfVolumesAsync(
                 subscription.Value, resourceGroupNames);
             await LogProgressAsync($"✓ Found {result.AnfVolumes.Count} ANF volumes");
 
-            await LogProgressAsync($"Discovery completed successfully. Total: {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes");
+            await LogProgressAsync("Step 3/3: Discovering managed disks (excluding OS disks)...");
+            result.ManagedDisks = await DiscoverManagedDisksAsync(
+                subscription.Value, resourceGroupNames, tenantId);
+            await LogProgressAsync($"✓ Found {result.ManagedDisks.Count} managed disks");
+
+            await LogProgressAsync($"Discovery completed successfully. Total: {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes, {result.ManagedDisks.Count} disks");
 
             return result;
         }
@@ -595,5 +601,331 @@ public class DiscoveryService
         }
 
         return volumes;
+    }
+
+    private async Task<List<DiscoveredManagedDisk>> DiscoverManagedDisksAsync(
+        Azure.ResourceManager.Resources.SubscriptionResource subscription,
+        string[]? resourceGroupFilters,
+        string? tenantId = null)
+    {
+        static (int? iops, double? mibps) EstimateDiskPerformance(DiscoveredManagedDisk disk)
+        {
+            var sku = disk.DiskSku.ToLowerInvariant();
+            var sizeGb = disk.DiskSizeGB;
+
+            return sku switch
+            {
+                var s when s.Contains("ultrassd") => (null, null), // Ultra SSD configured by user
+                var s when s.Contains("premium") => sizeGb switch
+                {
+                    <= 128 => (500, 100),      // P1-P4
+                    <= 256 => (1200, 200),    // P6
+                    <= 512 => (2300, 200),    // P10
+                    <= 1024 => (5000, 200),   // P15
+                    <= 2048 => (7500, 250),   // P20
+                    <= 4096 => (16000, 400),  // P30
+                    <= 8192 => (20000, 500),  // P40
+                    <= 16384 => (30000, 750), // P50
+                    <= 32768 => (80000, 1000),// P60
+                    _ => (160000, 2000)       // P70/P80
+                },
+                var s when s.Contains("standardssd") => sizeGb switch
+                {
+                    <= 128 => (500, 60),
+                    <= 256 => (600, 120),
+                    <= 512 => (1200, 120),
+                    <= 1024 => (2400, 300),
+                    <= 2048 => (4800, 500),
+                    <= 4096 => (9600, 600),
+                    <= 8192 => (19200, 750),
+                    <= 16384 => (38400, 750),
+                    <= 32768 => (76800, 800),
+                    _ => (153600, 1000)
+                },
+                var s when s.Contains("standardhdd") => sizeGb switch
+                {
+                    <= 1024 => (500, 60),
+                    <= 4096 => (500, 60),
+                    <= 8192 => (500, 60),
+                    <= 16384 => (500, 60),
+                    <= 32768 => (500, 60),
+                    _ => (500, 60)
+                },
+                _ => (null, null)
+            };
+        }
+
+        var disks = new List<DiscoveredManagedDisk>();
+        var vmCache = new Dictionary<string, (string name, string location, string size, string family, int cpu, double memory, string osType, string osDiskId, Dictionary<string, string> tags)>();
+
+        try
+        {
+            await LogProgressAsync("  • Enumerating resource groups for VMs and disks...");
+
+            var resourceGroups = subscription.GetResourceGroups();
+            await foreach (var rg in resourceGroups)
+            {
+                if (resourceGroupFilters != null && resourceGroupFilters.Length > 0)
+                {
+                    bool matchesAnyRg = resourceGroupFilters.Any(f => rg.Data.Name.Equals(f, StringComparison.OrdinalIgnoreCase));
+                    if (!matchesAnyRg) continue;
+                }
+
+                await LogProgressAsync($"  • Scanning resource group: {rg.Data.Name}");
+
+                try
+                {
+                    int vmCount = 0;
+                    int diskCount = 0;
+
+                    var resourceGroupResource = subscription.GetResourceGroupResource(rg.Data.Name);
+
+                    var vms = resourceGroupResource.GetVirtualMachines();
+                    await foreach (var vm in vms.GetAllAsync())
+                    {
+                        try
+                        {
+                            vmCount++;
+
+                            var vmData = vm.Data;
+                            var osType = vmData.OSProfile?.WindowsConfiguration != null ? "Windows" : "Linux";
+                            var osDiskId = vmData.StorageProfile?.OSDisk?.ManagedDisk?.Id;
+                            var vmSizeInfo = vmData.HardwareProfile?.VmSize?.ToString() ?? "";
+                            var vmId = vm.Id.ToString();
+
+                            int cpuCount = 0;
+                            double memoryGiB = 0;
+                            string vmFamily = "";
+                            string vmSize = vmSizeInfo;
+
+                            try
+                            {
+                                var vmSizeResource = subscription.GetVirtualMachineSizes(vmData.Location);
+                                await foreach (var size in vmSizeResource.GetAllAsync())
+                                {
+                                    if (size.Name == vmSizeInfo)
+                                    {
+                                        cpuCount = size.NumberOfCores;
+                                        memoryGiB = size.MemoryInMB / 1024.0;
+                                        vmFamily = size.Family ?? "";
+                                        break;
+                                    }
+                                }
+                            }
+                            catch { }
+
+                            vmCache[vm.Id.ToString()] = (
+                                vm.Data.Name,
+                                vm.Data.Location.Name,
+                                vmSize,
+                                vmFamily,
+                                cpuCount,
+                                memoryGiB,
+                                osType,
+                                osDiskId ?? "",
+                                vm.Data.Tags?.ToDictionary(t => t.Key, t => t.Value) ?? new()
+                            );
+
+                            await LogProgressAsync($"    • Cached VM data: {vm.Data.Name} ({vmSize}, {cpuCount} vCPUs, {memoryGiB:F1} GiB)");
+                        }
+                        catch (Exception vmEx)
+                        {
+                            _logger.LogWarning(vmEx, "Failed to cache VM data for {VmName}", vm.Data.Name);
+                        }
+                    }
+
+                    await LogProgressAsync($"    → Found {vmCount} VM(s) in {rg.Data.Name}");
+
+                    var allDisks = resourceGroupResource.GetDisks();
+                    await foreach (var disk in allDisks.GetAllAsync())
+                    {
+                        try
+                        {
+                            diskCount++;
+
+                            var diskData = disk.Data;
+
+                            var discoveredDisk = new DiscoveredManagedDisk
+                            {
+                                TenantId = tenantId ?? "",
+                                SubscriptionId = disk.Id.SubscriptionId ?? "",
+                                ResourceGroup = disk.Id.ResourceGroupName ?? "",
+                                DiskName = disk.Data.Name,
+                                ResourceId = disk.Id.ToString(),
+                                Location = disk.Data.Location.Name,
+                                DiskSku = diskData.Sku?.Name.ToString() ?? "",
+                                DiskSizeGB = diskData.DiskSizeGB,
+                                DiskState = diskData.DiskState?.ToString() ?? "",
+                                ProvisioningState = diskData.ProvisioningState?.ToString() ?? "",
+                                DiskIopsReadWrite = diskData.DiskIopsReadWrite?.ToString() ?? "",
+                                DiskMBpsReadWrite = diskData.DiskMBpsReadWrite?.ToString() ?? "",
+                                DiskSizeBytes = diskData.DiskSizeGB * 1024L * 1024L * 1024L,
+                                BurstingEnabled = diskData.BurstingEnabled,
+                                BurstingBandwidthMibps = diskData.BurstingBandwidthMibps?.ToString(),
+                                BurstingIops = diskData.BurstingIops?.ToString(),
+                                Tags = diskData.Tags?.ToDictionary(t => t.Key, t => t.Value),
+                                TimeCreated = diskData.TimeCreated.UtcDateTime,
+                                DiscoveredAt = DateTime.UtcNow
+                            };
+
+                            var skuName = diskData.Sku?.Name.ToString() ?? "";
+                            discoveredDisk.DiskTier = ParseDiskTier(skuName, diskData.DiskSizeGB);
+                            discoveredDisk.DiskType = ParseDiskType(skuName);
+
+                            var managedBy = diskData.ManagedBy?.Id?.ToString();
+                            discoveredDisk.IsAttached = !string.IsNullOrEmpty(managedBy);
+
+                            if (discoveredDisk.IsAttached && !string.IsNullOrEmpty(managedBy))
+                            {
+                                discoveredDisk.AttachedVmId = managedBy;
+
+                                if (vmCache.TryGetValue(managedBy, out var vmInfo))
+                                {
+                                    discoveredDisk.AttachedVmName = vmInfo.name;
+                                    discoveredDisk.AttachedVmLocation = vmInfo.location;
+                                    discoveredDisk.VmSize = vmInfo.size;
+                                    discoveredDisk.VmFamily = vmInfo.family;
+                                    discoveredDisk.VmCpuCount = vmInfo.cpu;
+                                    discoveredDisk.VmMemoryGiB = vmInfo.memory;
+                                    discoveredDisk.VmOsType = vmInfo.osType;
+                                    discoveredDisk.VmOsDiskId = vmInfo.osDiskId;
+                                    discoveredDisk.VmTags = vmInfo.tags;
+
+                                    discoveredDisk.IsOsDisk = !string.IsNullOrEmpty(vmInfo.osDiskId) &&
+                                        string.Equals(disk.Id.ToString(), vmInfo.osDiskId, StringComparison.OrdinalIgnoreCase);
+
+                                    try
+                                    {
+                                        await LogProgressAsync($"        → Collecting VM host metrics for {vmInfo.name}...");
+                                        var (hasData, daysAvailable, metricsSummary) = await _metricsService
+                                            .CollectVmMetricsAsync(managedBy, vmInfo.name);
+
+                                        discoveredDisk.VmMonitoringEnabled = hasData;
+                                        discoveredDisk.VmMonitoringDataAvailableDays = daysAvailable;
+                                        discoveredDisk.VmHistoricalMetricsSummary = metricsSummary;
+
+                                        if (hasData)
+                                        {
+                                            await LogProgressAsync($"        ✓ VM metrics collected: {daysAvailable} days available");
+                                        }
+                                        else
+                                        {
+                                            await LogProgressAsync($"        ⚠ No VM metrics data available for {vmInfo.name}");
+                                        }
+                                    }
+                                    catch (Exception vmMetricsEx)
+                                    {
+                                        _logger.LogWarning(vmMetricsEx, "Failed to collect VM metrics for {VmName}", vmInfo.name);
+                                    }
+                                }
+                                else
+                                {
+                                    discoveredDisk.IsOsDisk = false;
+                                }
+
+                                var lun = ExtractLunFromDisk(disk, managedBy);
+                                if (lun.HasValue) discoveredDisk.Lun = lun.Value.ToString();
+
+                                var caching = ExtractCachingType(disk, managedBy);
+                                discoveredDisk.CachingType = caching;
+                            }
+                            else
+                            {
+                                discoveredDisk.IsOsDisk = false;
+                            }
+
+                            if (discoveredDisk.IsOsDisk != true)
+                            {
+                                var (estIops, estBw) = EstimateDiskPerformance(discoveredDisk);
+                                discoveredDisk.EstimatedIops = estIops;
+                                discoveredDisk.EstimatedThroughputMiBps = estBw;
+
+                                if (_metricsService != null)
+                                {
+                                    await LogProgressAsync($"      → Collecting Azure Monitor metrics for disk {disk.Data.Name}...");
+                                    var (hasData, daysAvailable, metricsSummary) = await _metricsService
+                                        .CollectDiskMetricsAsync(disk.Id.ToString(), disk.Data.Name);
+
+                                    discoveredDisk.MonitoringEnabled = hasData;
+                                    discoveredDisk.MonitoringDataAvailableDays = daysAvailable;
+                                    discoveredDisk.HistoricalMetricsSummary = metricsSummary;
+
+                                    if (hasData)
+                                    {
+                                        await LogProgressAsync($"      ✓ Metrics collected: {daysAvailable} days available");
+                                    }
+                                    else
+                                    {
+                                        await LogProgressAsync($"      ⚠ No metrics data available for disk {disk.Data.Name}");
+                                    }
+                                }
+
+                                disks.Add(discoveredDisk);
+                            }
+                        }
+                        catch (Exception diskEx)
+                        {
+                            _logger.LogWarning(diskEx, "Failed to process disk {DiskName}", disk.Data.Name);
+                            await LogProgressAsync($"      ⚠ Failed to process disk {disk.Data.Name}: {diskEx.Message}");
+                        }
+                    }
+
+                    await LogProgressAsync($"    → Found {diskCount} disk(s) in {rg.Data.Name}");
+                }
+                catch (Exception rgEx)
+                {
+                    _logger.LogWarning(rgEx, "Failed to scan resource group {RgName}", rg.Data.Name);
+                    await LogProgressAsync($"    ⚠ Failed to scan resource group {rg.Data.Name}: {rgEx.Message}");
+                }
+            }
+
+            await LogProgressAsync($"  → Total: {disks.Count} managed disks discovered (excluding OS disks)");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error discovering managed disks");
+            throw;
+        }
+
+        return disks;
+    }
+
+    private static string ParseDiskTier(string skuName, long sizeGb)
+    {
+        var skuLower = skuName.ToLowerInvariant();
+        if (skuLower.Contains("premium")) return "Premium SSD";
+        if (skuLower.Contains("ultrassd")) return "Ultra Disk";
+        if (skuLower.Contains("standardssd")) return "Standard SSD";
+        if (skuLower.Contains("hdd")) return "Standard HDD";
+        return "Unknown";
+    }
+
+    private static string ParseDiskType(string skuName)
+    {
+        var skuLower = skuName.ToLowerInvariant();
+        if (skuLower.Contains("ultrassd")) return "UltraSSD";
+        if (skuLower.Contains("premium")) return "PremiumSSD";
+        if (skuLower.Contains("standardssd")) return "StandardSSD";
+        if (skuLower.Contains("hdd")) return "StandardHDD";
+        return "Unknown";
+    }
+
+    private static int? ExtractLunFromDisk(Azure.ResourceManager.Compute.DiskResource disk, string vmId)
+    {
+        var diskData = disk.Data;
+        var osDiskId = vmId;
+        if (diskData.Id == osDiskId) return null;
+
+        if (diskData.ManagedBy != null && diskData.ManagedBy.Id != null)
+        {
+            return 0;
+        }
+
+        return null;
+    }
+
+    private static string ExtractCachingType(Azure.ResourceManager.Compute.DiskResource disk, string vmId)
+    {
+        return "ReadWrite";
     }
 }

@@ -406,7 +406,250 @@ public class MetricsCollectionService
             metricsObj[metricName] = new { unit, points };
         }
 
-        return JsonSerializer.Serialize(result);
+            return JsonSerializer.Serialize(result);
+        }
+    }
+
+    public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectDiskMetricsAsync(
+        string resourceId, string diskName)
+    {
+        try
+        {
+            var endTime = DateTime.UtcNow;
+            var startTime = endTime.AddDays(-30);
+
+            var supported = await GetSupportedMetricNamesAsync(resourceId);
+            var preferred = new (string name, string aggregation)[]
+            {
+                ("DiskReadBytes","Total"),
+                ("DiskWriteBytes","Total"),
+                ("DiskReadOperations","Total"),
+                ("DiskWriteOperations","Total"),
+                ("DiskQueueDepth","Average"),
+                ("BandwidthTickSize","Average"),
+                ("DiskDataRead","Total"),
+                ("DiskDataWrite","Total"),
+                ("DiskQDTime","Average"),
+                ("OSDiskWriteBytes","Total"),
+                ("OSDiskReadBytes","Total"),
+                ("OSDiskWriteOperations","Total"),
+                ("OSDiskReadOperations","Total")
+            };
+            var metrics = preferred.Where(p => supported.Contains(p.name, StringComparer.OrdinalIgnoreCase))
+                                   .Distinct()
+                                   .ToList();
+
+            var metricsData = new Dictionary<string, object>();
+            bool hasAnyData = false;
+            int oldestDataDays = 0;
+
+            using var httpClient = new HttpClient();
+            var token = await _credential.GetTokenAsync(
+                new TokenRequestContext(new[] { "https://management.azure.com/.default" }), default);
+            httpClient.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
+
+            foreach (var metric in metrics)
+            {
+                var metricName = metric.name;
+                var aggregation = metric.aggregation;
+                try
+                {
+                    var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
+                    var apiUrl = $"https://management.azure.com{resourceId}/providers/Microsoft.Insights/metrics" +
+                        $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
+                        $"&interval=PT1H&metricNamespace=microsoft.compute%2Fdisks&metricnames={metricName}&aggregation={aggregation}";
+
+                    _logger.LogDebug("Fetching disk metric {MetricName} with {Aggregation} from: {Url}", metricName, aggregation, apiUrl);
+                    var response = await httpClient.GetAsync(apiUrl);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var content = await response.Content.ReadAsStringAsync();
+                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var result = JsonSerializer.Deserialize<MetricsApiResponse>(content, options);
+
+                        if (result?.value?.Any() == true)
+                        {
+                            foreach (var metricValue in result.value)
+                            {
+                                var allTimeseries = metricValue.timeseries ?? Array.Empty<Timeseries>();
+                                var dataPoints = new List<DataPoint>();
+
+                                foreach (var timeseries in allTimeseries)
+                                {
+                                    if (timeseries?.data?.Any() == true)
+                                    {
+                                        dataPoints.AddRange(timeseries.data.Where(d => d.total.HasValue || d.average.HasValue));
+                                    }
+                                }
+
+                                if (dataPoints.Any())
+                                {
+                                    hasAnyData = true;
+                                    var oldestPoint = dataPoints.Min(d => DateTime.Parse(d.timeStamp));
+                                    oldestDataDays = Math.Max(oldestDataDays, (endTime - oldestPoint).Days);
+
+                                    metricsData[metricName] = new
+                                    {
+                                        average = dataPoints.Average(d => d.average ?? d.total ?? 0),
+                                        max = dataPoints.Max(d => d.average ?? d.total ?? 0),
+                                        total = dataPoints.Where(d => d.total.HasValue).Sum(d => d.total ?? 0),
+                                        dataPointCount = dataPoints.Count
+                                    };
+                                    _logger.LogDebug("Collected {Count} data points for disk metric {MetricName}", dataPoints.Count, metricName);
+                                }
+                                else
+                                {
+                                    _logger.LogDebug("Disk metric {MetricName} returned but has no valid data points", metricName);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogInformation("No metric data returned for {MetricName} on disk {Disk}. Response: {Response}",
+                                metricName, diskName, content.Length > 500 ? content.Substring(0, 500) : content);
+                        }
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        _logger.LogWarning("Failed to fetch metric {MetricName} for disk {Disk}. Status: {Status}, Error: {Error}",
+                            metricName, diskName, (int)response.StatusCode, errorContent.Length > 500 ? errorContent.Substring(0, 500) : errorContent);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to collect metric {MetricName} for disk {Disk}", metricName, diskName);
+                }
+            }
+
+            if (!hasAnyData) return (false, null, null);
+            return (true, oldestDataDays > 0 ? oldestDataDays : 30, JsonSerializer.Serialize(metricsData));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error collecting metrics for disk {Disk}", diskName);
+            return (false, null, null);
+        }
+    }
+
+    public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectVmMetricsAsync(
+        string resourceId, string vmName)
+    {
+        try
+        {
+            var endTime = DateTime.UtcNow;
+            var startTime = endTime.AddDays(-30);
+
+            var supported = await GetSupportedMetricNamesAsync(resourceId);
+            var preferred = new (string name, string aggregation)[]
+            {
+                ("VM Cached Bandwidth","Average"),
+                ("VM Network In","Total"),
+                ("VM Network Out","Total"),
+                ("CPU Credits Remaining","Average"),
+                ("Percentage CPU","Average"),
+                ("Disk Read Bytes","Total"),
+                ("Disk Write Bytes","Total"),
+                ("Disk Read Operations","Total"),
+                ("Disk Write Operations","Total")
+            };
+            var metrics = preferred.Where(p => supported.Contains(p.name, StringComparer.OrdinalIgnoreCase))
+                                   .Distinct()
+                                   .ToList();
+
+            var metricsData = new Dictionary<string, object>();
+            bool hasAnyData = false;
+            int oldestDataDays = 0;
+
+            using var httpClient = new HttpClient();
+            var token = await _credential.GetTokenAsync(
+                new TokenRequestContext(new[] { "https://management.azure.com/.default" }), default);
+            httpClient.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
+
+            foreach (var metric in metrics)
+            {
+                var metricName = metric.name;
+                var aggregation = metric.aggregation;
+                try
+                {
+                    var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
+                    var apiUrl = $"https://management.azure.com{resourceId}/providers/Microsoft.Insights/metrics" +
+                        $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
+                        $"&interval=PT1H&metricNamespace=microsoft.compute%2Fvirtualmachines&metricnames={metricName}&aggregation={aggregation}";
+
+                    _logger.LogDebug("Fetching VM metric {MetricName} with {Aggregation} from: {Url}", metricName, aggregation, apiUrl);
+                    var response = await httpClient.GetAsync(apiUrl);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var content = await response.Content.ReadAsStringAsync();
+                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var result = JsonSerializer.Deserialize<MetricsApiResponse>(content, options);
+
+                        if (result?.value?.Any() == true)
+                        {
+                            foreach (var metricValue in result.value)
+                            {
+                                var allTimeseries = metricValue.timeseries ?? Array.Empty<Timeseries>();
+                                var dataPoints = new List<DataPoint>();
+
+                                foreach (var timeseries in allTimeseries)
+                                {
+                                    if (timeseries?.data?.Any() == true)
+                                    {
+                                        dataPoints.AddRange(timeseries.data.Where(d => d.total.HasValue || d.average.HasValue));
+                                    }
+                                }
+
+                                if (dataPoints.Any())
+                                {
+                                    hasAnyData = true;
+                                    var oldestPoint = dataPoints.Min(d => DateTime.Parse(d.timeStamp));
+                                    oldestDataDays = Math.Max(oldestDataDays, (endTime - oldestPoint).Days);
+
+                                    metricsData[metricName] = new
+                                    {
+                                        average = dataPoints.Average(d => d.average ?? d.total ?? 0),
+                                        max = dataPoints.Max(d => d.average ?? d.total ?? 0),
+                                        total = dataPoints.Where(d => d.total.HasValue).Sum(d => d.total ?? 0),
+                                        dataPointCount = dataPoints.Count
+                                    };
+                                    _logger.LogDebug("Collected {Count} data points for VM metric {MetricName}", dataPoints.Count, metricName);
+                                }
+                                else
+                                {
+                                    _logger.LogDebug("VM metric {MetricName} returned but has no valid data points", metricName);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogInformation("No metric data returned for {MetricName} on VM {Vm}. Response: {Response}",
+                                metricName, vmName, content.Length > 500 ? content.Substring(0, 500) : content);
+                        }
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        _logger.LogWarning("Failed to fetch metric {MetricName} for VM {Vm}. Status: {Status}, Error: {Error}",
+                            metricName, vmName, (int)response.StatusCode, errorContent.Length > 500 ? errorContent.Substring(0, 500) : errorContent);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to collect metric {MetricName} for VM {Vm}", metricName, vmName);
+                }
+            }
+
+            if (!hasAnyData) return (false, null, null);
+            return (true, oldestDataDays > 0 ? oldestDataDays : 30, JsonSerializer.Serialize(metricsData));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error collecting metrics for VM {Vm}", vmName);
+            return (false, null, null);
+        }
     }
 
     private class MetricsApiResponseRaw
