@@ -117,6 +117,13 @@ const volumeDetailPage = {
         this.setText('ai-last-analyzed', ai?.LastAnalyzed ? new Date(ai.LastAnalyzed).toLocaleString() : '-');
         this.setText('ai-error', ai?.ErrorMessage || '-');
         this.renderAiPrompts(ai?.AppliedPrompts || []);
+        
+        // Check Accept AI checkboxes if user has already accepted the AI classification
+        const aiAccepted = ai?.SuggestedWorkloadId && user?.ConfirmedWorkloadId === ai.SuggestedWorkloadId;
+        const summaryCheckbox = document.getElementById('accept-ai-checkbox-summary');
+        const detailCheckbox = document.getElementById('accept-ai-checkbox-detail');
+        if (summaryCheckbox) summaryCheckbox.checked = aiAccepted;
+        if (detailCheckbox) detailCheckbox.checked = aiAccepted;
 
         // Human decisions
         this.setText('user-workload', userWorkload);
@@ -542,6 +549,18 @@ const volumeDetailPage = {
         document.getElementById('btn-exclude')?.addEventListener('click', () => this.quickExclude());
         document.getElementById('btn-approve')?.addEventListener('click', () => this.quickApprove());
         document.getElementById('btn-undo')?.addEventListener('click', () => this.undoLastChange());
+        
+        // Inline accept AI checkboxes
+        document.getElementById('accept-ai-checkbox-summary')?.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                this.acceptAiClassification();
+            }
+        });
+        document.getElementById('accept-ai-checkbox-detail')?.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                this.acceptAiClassification();
+            }
+        });
 
         // Auto-save on changes
         workloadSelect?.addEventListener('change', () => this.scheduleAutoSave());
@@ -612,13 +631,27 @@ const volumeDetailPage = {
         workloadSelect.value = ai.SuggestedWorkloadId;
         statusSelect.value = 'UnderReview';
         
-        // Update the current data to include the workload name for display
+        // Update the current data model
         if (!this.currentData.UserAnnotations) {
             this.currentData.UserAnnotations = {};
         }
         this.currentData.UserAnnotations.ConfirmedWorkloadId = ai.SuggestedWorkloadId;
         this.currentData.UserAnnotations.ConfirmedWorkloadName = ai.SuggestedWorkloadName;
         this.currentData.UserAnnotations.MigrationStatus = 'UnderReview';
+        
+        // Update the summary display immediately
+        document.getElementById('summary-user-workload').textContent = ai.SuggestedWorkloadName;
+        const statusEl = document.getElementById('summary-migration-status');
+        statusEl.textContent = 'UnderReview';
+        statusEl.className = 'badge-status UnderReview';
+        document.getElementById('user-workload').textContent = ai.SuggestedWorkloadName;
+        document.getElementById('user-status').textContent = 'UnderReview';
+        
+        // Check the Accept AI checkboxes
+        const summaryCheckbox = document.getElementById('accept-ai-checkbox-summary');
+        const detailCheckbox = document.getElementById('accept-ai-checkbox-detail');
+        if (summaryCheckbox) summaryCheckbox.checked = true;
+        if (detailCheckbox) detailCheckbox.checked = true;
         
         this.scheduleAutoSave();
         Toast.success('Accepted AI classification');
