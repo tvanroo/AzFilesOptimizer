@@ -1,5 +1,6 @@
 using Azure.Core;
 using Azure.ResourceManager;
+using Azure.ResourceManager.Compute;
 using Azure.ResourceManager.Storage;
 using Azure.ResourceManager.NetApp;
 using AzFilesOptimizer.Backend.Models;
@@ -57,12 +58,18 @@ public class DiscoveryService
             await LogProgressAsync($"✓ Found {result.AzureFileShares.Count} Azure Files shares");
 
             // Discover ANF volumes
-            await LogProgressAsync("Step 2/2: Discovering Azure NetApp Files volumes...");
+            await LogProgressAsync("Step 2/3: Discovering Azure NetApp Files volumes...");
             result.AnfVolumes = await DiscoverAnfVolumesAsync(
                 subscription.Value, resourceGroupNames);
             await LogProgressAsync($"✓ Found {result.AnfVolumes.Count} ANF volumes");
 
-            await LogProgressAsync($"Discovery completed successfully. Total: {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes");
+            // Discover managed disks
+            await LogProgressAsync("Step 3/3: Discovering managed disks (excluding OS disks)...");
+            result.ManagedDisks = await DiscoverManagedDisksAsync(
+                subscription.Value, resourceGroupNames, tenantId);
+            await LogProgressAsync($"✓ Found {result.ManagedDisks.Count} managed disks");
+
+            await LogProgressAsync($"Discovery completed successfully. Total: {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes, {result.ManagedDisks.Count} disks");
 
             return result;
         }
@@ -595,5 +602,30 @@ public class DiscoveryService
         }
 
         return volumes;
+    }
+
+    private async Task<List<DiscoveredManagedDisk>> DiscoverManagedDisksAsync(
+        Azure.ResourceManager.Resources.SubscriptionResource subscription,
+        string[]? resourceGroupFilters,
+        string? tenantId = null)
+    {
+        var disks = new List<DiscoveredManagedDisk>();
+
+        try
+        {
+            await LogProgressAsync("  • Starting managed disk discovery...");
+            
+            // TODO: Implement disk discovery logic in next step
+            
+            await LogProgressAsync($"  → Total: {disks.Count} managed disks discovered (excluding OS disks)");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error discovering managed disks");
+            await LogProgressAsync($"  ⚠ ERROR during managed disk discovery: {ex.Message}");
+            throw;
+        }
+
+        return disks;
     }
 }
