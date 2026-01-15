@@ -80,10 +80,10 @@ public partial class DiscoveryService
                                 Location = disk.Data.Location.Name,
                                 DiskSku = diskData.Sku?.Name.ToString() ?? "",
                                 DiskTier = ParseDiskTier(diskData.Sku?.Name.ToString() ?? ""),
-                                DiskSizeGB = diskData.DiskSizeGB,
+                                DiskSizeGB = diskData.DiskSizeGB ?? 0,
                                 DiskState = diskData.DiskState?.ToString() ?? "",
                                 ProvisioningState = diskData.ProvisioningState?.ToString() ?? "",
-                                DiskSizeBytes = diskData.DiskSizeGB * 1024L * 1024L * 1024L,
+                                DiskSizeBytes = (diskData.DiskSizeGB ?? 0) * 1024L * 1024L * 1024L,
                                 DiskType = ParseDiskType(diskData.Sku?.Name.ToString() ?? ""),
                                 BurstingEnabled = diskData.BurstingEnabled,
                                 Tags = diskData.Tags?.ToDictionary(t => t.Key, t => t.Value),
@@ -113,7 +113,7 @@ public partial class DiscoveryService
 
                                     // Check if this is an OS disk
                                     discoveredDisk.IsOsDisk = !string.IsNullOrEmpty(vmInfo.osDiskId) &&
-                                        string.Equals(disk.Id.ToString(), vmInfo.osDiskId, StringComparison.OrdinalIgnoreCase);
+                                        string.Equals(disk.Data.Id.ToString(), vmInfo.osDiskId, StringComparison.OrdinalIgnoreCase);
                                 }
                                 else
                                 {
