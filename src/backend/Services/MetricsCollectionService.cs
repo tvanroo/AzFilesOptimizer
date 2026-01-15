@@ -186,11 +186,10 @@ public class MetricsCollectionService
             diskName,
             new (string name, string aggregation)[]
             {
-                ("Disk Read Bytes/sec","Average,Total,Maximum,Minimum"),
-                ("Disk Write Bytes/sec","Average,Total,Maximum,Minimum"),
-                ("Disk Read Operations/Sec","Average,Total,Maximum,Minimum"),
-                ("Disk Write Operations/Sec","Average,Total,Maximum,Minimum"),
-                ("Disk Used Capacity","Average,Maximum,Minimum")
+                ("Composite Disk Read Bytes/sec","Average,Total,Maximum,Minimum"),
+                ("Composite Disk Write Bytes/sec","Average,Total,Maximum,Minimum"),
+                ("Composite Disk Read Operations/Sec","Average,Total,Maximum,Minimum"),
+                ("Composite Disk Write Operations/Sec","Average,Total,Maximum,Minimum")
             },
             excludeZeroDataPoints: true);
     }
@@ -198,7 +197,7 @@ public class MetricsCollectionService
     public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectVmDataDiskMetricsAsync(
         string vmResourceId,
         string vmName,
-        string diskName)
+        int lun)
     {
         return await CollectMetricsAsync(
             vmResourceId,
@@ -214,7 +213,7 @@ public class MetricsCollectionService
             },
             dimensionFilters: new Dictionary<string, string>
             {
-                { "DiskName", diskName }
+                { "LUN", lun.ToString(System.Globalization.CultureInfo.InvariantCulture) }
             },
             excludeZeroDataPoints: true);
     }

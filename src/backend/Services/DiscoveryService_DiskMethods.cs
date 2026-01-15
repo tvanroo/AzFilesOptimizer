@@ -15,7 +15,7 @@ public partial class DiscoveryService
         string? tenantId = null)
     {
         var disks = new List<DiscoveredManagedDisk>();
-        var vmCache = new Dictionary<string, (string name, string location, string size, int cpu, double memory, string osType, string osDiskId, Dictionary<string, string> tags)>();
+        var vmCache = new Dictionary<string, (string name, string location, string size, int cpu, double memory, string osType, string osDiskId, Dictionary<string, string> tags, Dictionary<string, int> dataDiskLuns)>();
 
         try
         {
@@ -45,6 +45,19 @@ public partial class DiscoveryService
                             var osDiskId = vmData.StorageProfile?.OSDisk?.ManagedDisk?.Id ?? "";
                             var vmSize = vmData.HardwareProfile?.VmSize?.ToString() ?? "";
 
+                            // Build a map of data disk managed disk ID -> LUN
+                            var dataDiskLuns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                            if (vmData.StorageProfile?.DataDisks != null)
+                            {
+                                foreach (var dataDisk in vmData.StorageProfile.DataDisks)
+                                {
+                                    if (dataDisk.ManagedDisk?.Id != null)
+                                    {
+                                        dataDiskLuns[dataDisk.ManagedDisk.Id] = dataDisk.Lun;
+                                    }
+                                }
+                            }
+
                             vmCache[vm.Id.ToString()] = (
                                 vm.Data.Name,
                                 vm.Data.Location.Name,
@@ -53,7 +66,8 @@ public partial class DiscoveryService
                                 0,
                                 osType,
                                 osDiskId,
-                                vm.Data.Tags?.ToDictionary(t => t.Key, t => t.Value) ?? new()
+                                vm.Data.Tags?.ToDictionary(t => t.Key, t => t.Value) ?? new(),
+                                dataDiskLuns
                             );
                         }
                         catch (Exception vmEx)
@@ -144,12 +158,20 @@ public partial class DiscoveryService
                                     discoveredDisk.IsOsDisk = !string.IsNullOrEmpty(vmInfo.osDiskId) &&
                                         string.Equals(disk.Id.ToString(), vmInfo.osDiskId, StringComparison.OrdinalIgnoreCase);
 
-                                    if (_metricsService != null)
+                                    // Try to find the LUN for this data disk
+                                    int? lun = null;
+                                    if (vmInfo.dataDiskLuns.TryGetValue(disk.Id.ToString(), out var lunValue))
+                                    {
+                                        lun = lunValue;
+                                        discoveredDisk.Lun = lun;
+                                    }
+
+                                    if (_metricsService != null && lun.HasValue)
                                     {
                                         try
                                         {
                                             var (vmHasData, vmDays, vmSummary) = await _metricsService
-                                                .CollectVmDataDiskMetricsAsync(managedBy, vmInfo.name, disk.Data.Name);
+                                                .CollectVmDataDiskMetricsAsync(managedBy, vmInfo.name, lun.Value);
 
                                             if (vmHasData && !string.IsNullOrEmpty(vmSummary))
                                             {
@@ -158,12 +180,12 @@ public partial class DiscoveryService
                                             }
                                             else
                                             {
-                                                await LogProgressAsync($"        ⚠ No VM metrics data available for disk {disk.Data.Name}");
+                                                await LogProgressAsync($"        ⚠ No VM metrics data available for disk {disk.Data.Name} (LUN {lun})");
                                             }
                                         }
                                         catch (Exception vmMetricsEx)
                                         {
-                                            _logger.LogWarning(vmMetricsEx, "Failed to collect VM disk metrics for {DiskName}", disk.Data.Name);
+                                            _logger.LogWarning(vmMetricsEx, "Failed to collect VM disk metrics for {DiskName} (LUN {Lun})", disk.Data.Name, lun);
                                         }
                                     }
                                 }
@@ -279,25 +301,17 @@ public partial class DiscoveryService
             using var doc = System.Text.Json.JsonDocument.Parse(metricsSummary);
             var root = doc.RootElement;
 
-            disk.AverageReadIops = GetMetricAverageIgnorePreview(root, "Disk Read Operations/Sec");
-            disk.AverageWriteIops = GetMetricAverageIgnorePreview(root, "Disk Write Operations/Sec");
+            disk.AverageReadIops = GetMetricAverageIgnorePreview(root, "Composite Disk Read Operations/Sec");
+            disk.AverageWriteIops = GetMetricAverageIgnorePreview(root, "Composite Disk Write Operations/Sec");
 
-            var readBytes = GetMetricAverageIgnorePreview(root, "Disk Read Bytes/sec");
-            var writeBytes = GetMetricAverageIgnorePreview(root, "Disk Write Bytes/sec");
+            var readBytes = GetMetricAverageIgnorePreview(root, "Composite Disk Read Bytes/sec");
+            var writeBytes = GetMetricAverageIgnorePreview(root, "Composite Disk Write Bytes/sec");
 
             disk.AverageReadThroughputMiBps = readBytes.HasValue ? readBytes.Value / (1024 * 1024) : null;
             disk.AverageWriteThroughputMiBps = writeBytes.HasValue ? writeBytes.Value / (1024 * 1024) : null;
 
-            var usedBytes = GetMetricAverageIgnorePreview(root, "Disk Used Capacity");
-            disk.UsedBytes = usedBytes.HasValue ? (long?)Math.Round(usedBytes.Value) : null;
-
-            // If used capacity metric is missing, fall back to full disk size
-            if (!disk.UsedBytes.HasValue && disk.DiskSizeBytes.HasValue)
-            {
-                disk.UsedBytes = disk.DiskSizeBytes;
-            }
-
-            // If used capacity metric is missing, fall back to full disk size
+            // Note: Managed disks do not expose a "Disk Used Capacity" metric
+            // Fall back to full disk size
             if (!disk.UsedBytes.HasValue && disk.DiskSizeBytes.HasValue)
             {
                 disk.UsedBytes = disk.DiskSizeBytes;

@@ -138,6 +138,7 @@ public class DiscoveredManagedDisk
     public bool IsAttached { get; set; }
     public string? AttachedVmId { get; set; }
     public string? AttachedVmName { get; set; }
+    public int? Lun { get; set; }
     public string? VmSize { get; set; }
     public int? VmCpuCount { get; set; }
     public double? VmMemoryGiB { get; set; }
