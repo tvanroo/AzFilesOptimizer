@@ -318,8 +318,8 @@ public class VolumeAnnotationService
         return volume.VolumeType switch
         {
             "AzureFiles" => ((volume.VolumeData as DiscoveredAzureFileShare)?.ShareQuotaGiB ?? 0).ToString(),
-            "ANF" => ((volume.VolumeData as DiscoveredAnfVolume)?.ProvisionedThroughputMiBps ?? 0).ToString(),
-            "ManagedDisk" => ((volume.VolumeData as DiscoveredManagedDisk)?.DiskSizeGb ?? 0).ToString(),
+            "ANF" => (((volume.VolumeData as DiscoveredAnfVolume)?.ProvisionedSizeBytes ?? 0) / (1024 * 1024 * 1024)).ToString(), // Convert bytes to GiB
+            "ManagedDisk" => ((volume.VolumeData as DiscoveredManagedDisk)?.DiskSizeGB ?? 0).ToString(),
             _ => "0"
         };
     }
@@ -329,7 +329,7 @@ public class VolumeAnnotationService
         return volume.VolumeType switch
         {
             "AzureFiles" => FormatBytes((volume.VolumeData as DiscoveredAzureFileShare)?.ShareUsageBytes ?? 0),
-            "ANF" => ((volume.VolumeData as DiscoveredAnfVolume)?.UsedCapacityGiB ?? 0) + " GiB",
+            "ANF" => (((volume.VolumeData as DiscoveredAnfVolume)?.ProvisionedSizeBytes ?? 0) / (1024 * 1024 * 1024)).ToString() + " GiB", // Use provisioned size as capacity
             "ManagedDisk" => "N/A",
             _ => ""
         };
