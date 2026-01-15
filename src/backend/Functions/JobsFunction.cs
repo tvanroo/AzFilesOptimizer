@@ -454,8 +454,10 @@ public class JobsFunction
             job.CompletedAt = DateTime.UtcNow;
             job.AzureFilesSharesFound = result.AzureFileShares.Count;
             job.AnfVolumesFound = result.AnfVolumes.Count;
+            job.ManagedDisksFound = result.ManagedDisks.Count;
             job.TotalCapacityBytes = result.AzureFileShares.Sum(s => (s.ShareQuotaGiB ?? 0) * 1024L * 1024L * 1024L) +
-                                     result.AnfVolumes.Sum(v => v.ProvisionedSizeBytes);
+                                     result.AnfVolumes.Sum(v => v.ProvisionedSizeBytes) +
+                                     result.ManagedDisks.Sum(d => d.DiskSizeBytes ?? 0);
 
             await _jobStorage.UpdateDiscoveryJobAsync(job);
             await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Found {result.AzureFileShares.Count} Azure Files shares, {result.AnfVolumes.Count} ANF volumes, and {result.ManagedDisks.Count} managed disks");

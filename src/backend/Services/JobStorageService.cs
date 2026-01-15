@@ -89,6 +89,7 @@ public class JobStorageService
                 latestJob.CompletedAt = job.CompletedAt;
                 latestJob.AzureFilesSharesFound = job.AzureFilesSharesFound;
                 latestJob.AnfVolumesFound = job.AnfVolumesFound;
+                latestJob.ManagedDisksFound = job.ManagedDisksFound;
                 latestJob.TotalCapacityBytes = job.TotalCapacityBytes;
                 latestJob.ErrorMessage = job.ErrorMessage;
                 latestJob.ErrorDetails = job.ErrorDetails;
