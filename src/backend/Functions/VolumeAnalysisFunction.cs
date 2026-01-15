@@ -294,7 +294,8 @@ public class VolumeAnalysisFunction
             var dto = new VolumeWithAnalysis
             {
                 VolumeId = volume.VolumeId,
-                VolumeData = volume.Volume,
+                VolumeType = volume.VolumeType,
+                VolumeData = volume.VolumeData,
                 AiAnalysis = volume.AiAnalysis,
                 UserAnnotations = volume.UserAnnotations,
                 AnnotationHistory = volume.AnnotationHistory
