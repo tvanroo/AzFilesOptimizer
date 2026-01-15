@@ -168,6 +168,10 @@ public class DiscoveredManagedDisk
     // VM-side data disk metrics
     public string? VmMetricsSummary { get; set; }
     public int? VmMonitoringDataAvailableDays { get; set; }
+
+    // VM-level overall disk metrics
+    public string? VmOverallMetricsSummary { get; set; }
+    public int? VmOverallMonitoringDataAvailableDays { get; set; }
 }
 
 public class DiscoveryResult

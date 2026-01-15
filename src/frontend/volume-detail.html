@@ -392,12 +392,15 @@
         </div>
 
         <div class="card">
-            <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 0.75rem;">
                 <div>
                     <h2 id="volume-title">Volume Details</h2>
                     <div id="volume-subtitle" style="color: var(--text-secondary); font-size: 0.9rem;"></div>
                 </div>
-                <button class="btn" id="back-to-job-btn">← Back to Job</button>
+                <div style="display:flex; flex-direction: column; align-items:flex-end; gap:0.4rem;">
+                    <button class="btn" id="back-to-job-btn">← Back to Job</button>
+                    <a id="download-json-link" href="#" style="font-size:0.8rem; color:var(--primary-color); text-decoration:underline;">Download volume JSON</a>
+                </div>
             </div>
 
             <div id="volume-loading" style="text-align:center; padding: 2rem;">

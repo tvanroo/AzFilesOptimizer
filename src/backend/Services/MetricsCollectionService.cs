@@ -189,7 +189,8 @@ public class MetricsCollectionService
                 ("Composite Disk Read Bytes/sec","Average,Total,Maximum,Minimum"),
                 ("Composite Disk Write Bytes/sec","Average,Total,Maximum,Minimum"),
                 ("Composite Disk Read Operations/Sec","Average,Total,Maximum,Minimum"),
-                ("Composite Disk Write Operations/Sec","Average,Total,Maximum,Minimum")
+                ("Composite Disk Write Operations/Sec","Average,Total,Maximum,Minimum"),
+                ("DiskPaidBurstIOPS","Average,Maximum,Minimum")
             },
             excludeZeroDataPoints: true);
     }
@@ -209,11 +210,39 @@ public class MetricsCollectionService
                 ("Data Disk IOPS Consumed Percentage","Average,Maximum,Minimum"),
                 ("Data Disk Latency","Average,Maximum,Minimum"),
                 ("Data Disk Max Burst Bandwidth","Average,Maximum,Minimum"),
-                ("Data Disk Max Burst IOPS","Average,Maximum,Minimum")
+                ("Data Disk Max Burst IOPS","Average,Maximum,Minimum"),
+                ("Data Disk Queue Depth","Average,Maximum,Minimum"),
+                ("Data Disk Read Bytes/sec","Average,Total,Maximum,Minimum"),
+                ("Data Disk Write Bytes/sec","Average,Total,Maximum,Minimum"),
+                ("Data Disk Read Operations/Sec","Average,Total,Maximum,Minimum"),
+                ("Data Disk Write Operations/Sec","Average,Total,Maximum,Minimum"),
+                ("Data Disk Target Bandwidth","Average,Maximum,Minimum"),
+                ("Data Disk Target IOPS","Average,Maximum,Minimum"),
+                ("Data Disk Used Burst BPS Credits Percentage","Average,Maximum,Minimum"),
+                ("Premium Data Disk Cache Read Hit","Average,Maximum,Minimum"),
+                ("Premium Data Disk Cache Read Miss","Average,Maximum,Minimum")
             },
             dimensionFilters: new Dictionary<string, string>
             {
                 { "LUN", lun.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+            },
+            excludeZeroDataPoints: true);
+    }
+
+    public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectVmOverallDiskMetricsAsync(
+        string vmResourceId,
+        string vmName)
+    {
+        return await CollectMetricsAsync(
+            vmResourceId,
+            "microsoft.compute%2Fvirtualmachines",
+            vmName,
+            new (string name, string aggregation)[]
+            {
+                ("Disk Read Bytes","Average,Total,Maximum,Minimum"),
+                ("Disk Write Bytes","Average,Total,Maximum,Minimum"),
+                ("Disk Read Operations/Sec","Average,Total,Maximum,Minimum"),
+                ("Disk Write Operations/Sec","Average,Total,Maximum,Minimum")
             },
             excludeZeroDataPoints: true);
     }

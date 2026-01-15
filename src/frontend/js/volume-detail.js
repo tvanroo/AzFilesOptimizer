@@ -5,6 +5,7 @@ const volumeDetailPage = {
     workloadProfiles: [],
     undoStack: [],
     autoSaveTimeout: null,
+    _downloadUrl: null,
 
     async init() {
         const params = new URLSearchParams(window.location.search);
@@ -65,6 +66,9 @@ const volumeDetailPage = {
         this.currentData = model; // Store for decision panel
         const v = model;
         const volumeType = v.VolumeType || 'AzureFiles';
+
+        // Update JSON download link
+        this.updateDownloadLink(model);
         const vol = v.VolumeData || {};
         const ai = v.AiAnalysis || null;
         const user = v.UserAnnotations || null;
@@ -97,7 +101,8 @@ const volumeDetailPage = {
 
         const capacityGiB = props.capacityGiB ?? 0;
         document.getElementById('summary-capacity').textContent = `${capacityGiB} GiB`;
-        document.getElementById('summary-used').textContent = this.formatBytes(props.usedBytes || 0);
+        const usedSummary = props.usedBytes != null ? this.formatBytes(props.usedBytes) : 'Unknown';
+        document.getElementById('summary-used').textContent = usedSummary;
 
         document.getElementById('summary-location').textContent = vol.Location || '-';
         document.getElementById('summary-tier').textContent = props.tier || '-';
@@ -112,7 +117,8 @@ const volumeDetailPage = {
         this.setText('prop-protocols', props.protocols.join(', '));
         this.setText('prop-sku', props.sku || 'N/A');
         this.setText('prop-quota', capacityGiB.toString());
-        this.setText('prop-used', this.formatBytes(props.usedBytes || 0));
+        const usedDetail = props.usedBytes != null ? this.formatBytes(props.usedBytes) : 'Unknown';
+        this.setText('prop-used', usedDetail);
         this.renderTags('prop-tags', vol.Tags);
 
         // Add type-specific properties
@@ -151,7 +157,7 @@ const volumeDetailPage = {
         }
 
         // Metrics
-        this.renderMetrics(vol.HistoricalMetricsSummary, vol.MonitoringDataAvailableDays);
+        this.renderAllMetrics(volumeType, vol);
 
         // Capacity Sizing
         this.renderCapacitySizing(ai?.CapacitySizing);
@@ -213,24 +219,44 @@ const volumeDetailPage = {
         }).join('');
     },
 
-    renderMetrics(summaryJson, daysAvailable) {
+    renderAllMetrics(volumeType, vol) {
         const container = document.getElementById('metrics-container');
         if (!container) return;
-        if (!summaryJson) {
-            container.innerHTML = '<p style="font-size:0.85rem; color:var(--text-secondary);">No historical metrics summary available.</p>';
-            return;
+        container.innerHTML = '';
+
+        let panels = 0;
+
+        // Primary resource metrics (share, ANF volume, or managed disk)
+        const primaryTitle = volumeType === 'ManagedDisk'
+            ? 'Managed Disk Metrics'
+            : volumeType === 'ANF'
+                ? 'ANF Volume Metrics'
+                : 'Share Metrics';
+        panels += this.renderMetricsPanel(container, vol.HistoricalMetricsSummary, vol.MonitoringDataAvailableDays, primaryTitle);
+
+        // VM-side metrics for managed disks
+        if (volumeType === 'ManagedDisk') {
+            panels += this.renderMetricsPanel(container, vol.VmMetricsSummary, vol.VmMonitoringDataAvailableDays, 'VM Data Disk Metrics');
+            panels += this.renderMetricsPanel(container, vol.VmOverallMetricsSummary, vol.VmOverallMonitoringDataAvailableDays, 'VM Overall Disk Metrics');
         }
+
+        if (panels === 0) {
+            container.innerHTML = '<p style="font-size:0.85rem; color:var(--text-secondary);">No historical metrics summary available.</p>';
+        }
+    },
+
+    renderMetricsPanel(container, summaryJson, daysAvailable, title) {
+        if (!summaryJson) return 0;
         let metrics;
         try {
             metrics = JSON.parse(summaryJson);
         } catch (e) {
             console.error('Failed to parse metrics summary', e);
-            container.innerHTML = '<p style="font-size:0.85rem; color:var(--text-secondary);">Could not parse metrics summary.</p>';
-            return;
+            container.innerHTML += '<p style="font-size:0.85rem; color:var(--text-secondary);">Could not parse metrics summary.</p>';
+            return 0;
         }
         if (!metrics || Object.keys(metrics).length === 0) {
-            container.innerHTML = '<p style="font-size:0.85rem; color:var(--text-secondary);">No metrics data.</p>';
-            return;
+            return 0;
         }
         const labels = {
             'Transactions': 'Transactions (count/hour)',
@@ -244,29 +270,65 @@ const volumeDetailPage = {
             'WriteIops': 'Write IOPS',
             'VolumeThroughputReadBytes': 'Read Throughput (bytes/s)',
             'VolumeThroughputWriteBytes': 'Write Throughput (bytes/s)',
-            'VolumeConsumedSizePercentage': 'Consumed %'
+            'VolumeConsumedSizePercentage': 'Consumed %',
+            // Managed disk composite metrics
+            'Composite Disk Read Bytes/sec': 'Disk Read (bytes/sec)',
+            'Composite Disk Write Bytes/sec': 'Disk Write (bytes/sec)',
+            'Composite Disk Read Operations/Sec': 'Disk Read IOPS',
+            'Composite Disk Write Operations/Sec': 'Disk Write IOPS',
+            'DiskPaidBurstIOPS': 'Burst IOPS (paid)',
+            // VM data disk metrics (per LUN)
+            'Data Disk Bandwidth Consumed Percentage': 'Data Disk Bandwidth Used (%)',
+            'Data Disk IOPS Consumed Percentage': 'Data Disk IOPS Used (%)',
+            'Data Disk Latency': 'Data Disk Latency (ms)',
+            'Data Disk Max Burst Bandwidth': 'Data Disk Max Burst Bandwidth',
+            'Data Disk Max Burst IOPS': 'Data Disk Max Burst IOPS',
+            'Data Disk Queue Depth': 'Data Disk Queue Depth',
+            'Data Disk Read Bytes/sec': 'Data Disk Read (bytes/sec)',
+            'Data Disk Write Bytes/sec': 'Data Disk Write (bytes/sec)',
+            'Data Disk Read Operations/Sec': 'Data Disk Read IOPS',
+            'Data Disk Write Operations/Sec': 'Data Disk Write IOPS',
+            'Data Disk Target Bandwidth': 'Data Disk Target Bandwidth',
+            'Data Disk Target IOPS': 'Data Disk Target IOPS',
+            'Data Disk Used Burst BPS Credits Percentage': 'Data Disk Burst BPS Credits Used (%)',
+            'Premium Data Disk Cache Read Hit': 'Premium Disk Cache Read Hit',
+            'Premium Data Disk Cache Read Miss': 'Premium Disk Cache Read Miss',
+            // VM overall disk metrics
+            'Disk Read Bytes': 'VM Disk Read Bytes',
+            'Disk Write Bytes': 'VM Disk Write Bytes',
+            'Disk Read Operations/Sec': 'VM Disk Read IOPS',
+            'Disk Write Operations/Sec': 'VM Disk Write IOPS'
         };
 
         let html = '<div class="metrics-panel">';
+        if (title) {
+            html += `<div style="font-size:0.9rem; font-weight:600; margin-bottom:4px;">${this.escapeHtml(title)}</div>`;
+        }
         html += `<div style="font-size:0.85rem;">${daysAvailable ? `${daysAvailable} days of hourly metrics` : 'Hourly metrics'} summarized (avg/max).</div>`;
         html += '<div class="metrics-grid">';
 
         for (const [name, data] of Object.entries(metrics)) {
-            const avg = data.average || 0;
-            const max = data.max || 0;
+            if (name.startsWith('_')) continue; // Skip metadata entries
+            if (typeof data !== 'object' || data === null) continue;
+            const avg = data.average;
+            const max = data.max;
+            if (avg === undefined && max === undefined) continue;
+
+            const avgVal = avg ?? 0;
+            const maxVal = max ?? 0;
             const label = labels[name] || name;
-            let avgDisplay = this.formatNumber(avg);
-            let maxDisplay = this.formatNumber(max);
+            let avgDisplay = this.formatNumber(avgVal);
+            let maxDisplay = this.formatNumber(maxVal);
 
             if (name.includes('Bytes') || name.includes('Size')) {
-                avgDisplay = this.formatBytes(avg);
-                maxDisplay = this.formatBytes(max);
-            } else if (name.includes('Availability')) {
-                avgDisplay = avg.toFixed(2) + '%';
-                maxDisplay = max.toFixed(2) + '%';
+                avgDisplay = this.formatBytes(avgVal);
+                maxDisplay = this.formatBytes(maxVal);
+            } else if (name.includes('Availability') || name.endsWith('Percentage')) {
+                avgDisplay = avgVal.toFixed(2) + '%';
+                maxDisplay = maxVal.toFixed(2) + '%';
             } else if (name.includes('Latency')) {
-                avgDisplay = avg.toFixed(2);
-                maxDisplay = max.toFixed(2);
+                avgDisplay = avgVal.toFixed(2);
+                maxDisplay = maxVal.toFixed(2);
             }
 
             html += `
@@ -279,7 +341,8 @@ const volumeDetailPage = {
         }
 
         html += '</div></div>';
-        container.innerHTML = html;
+        container.innerHTML += html;
+        return 1;
     },
 
     renderCapacitySizing(sizing) {
@@ -492,6 +555,20 @@ const volumeDetailPage = {
         }).join('');
     },
 
+    updateDownloadLink(model) {
+        const link = document.getElementById('download-json-link');
+        if (!link) return;
+
+        const json = JSON.stringify(model, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        if (this._downloadUrl) {
+            URL.revokeObjectURL(this._downloadUrl);
+        }
+        this._downloadUrl = URL.createObjectURL(blob);
+        link.href = this._downloadUrl;
+        link.download = `job-${this.jobId}-volume-${this.volumeId}.json`;
+    },
+
     // Helpers
     setText(id, value) {
         const el = document.getElementById(id);
@@ -535,7 +612,8 @@ const volumeDetailPage = {
                     name: vol.DiskName || 'Unknown Disk',
                     parentName: vol.AttachedVmName || 'Not Attached',
                     capacityGiB: vol.DiskSizeGB || 0,
-                    usedBytes: vol.UsedBytes || vol.DiskSizeBytes || (vol.DiskSizeGB || 0) * 1024 * 1024 * 1024,
+                    // Used capacity for managed disks is unknown; use full size for sizing, but show as unknown in UI
+                    usedBytes: null,
                     tier: vol.DiskTier || vol.DiskSku || 'Unknown',
                     protocols: [vol.DiskType || 'Unknown'],
                     sku: vol.DiskSku || 'N/A'

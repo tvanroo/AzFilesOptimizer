@@ -16,6 +16,7 @@ public partial class DiscoveryService
     {
         var disks = new List<DiscoveredManagedDisk>();
         var vmCache = new Dictionary<string, (string name, string location, string size, int cpu, double memory, string osType, string osDiskId, Dictionary<string, string> tags, Dictionary<string, int> dataDiskLuns)>();
+        var vmOverallMetricsCache = new Dictionary<string, (bool hasData, int? days, string? summary)>();
 
         try
         {
@@ -181,6 +182,19 @@ public partial class DiscoveryService
                                             else
                                             {
                                                 await LogProgressAsync($"        ⚠ No VM metrics data available for disk {disk.Data.Name} (LUN {lun})");
+                                            }
+
+                                            // Collect VM-level overall disk metrics once per VM
+                                            if (!vmOverallMetricsCache.TryGetValue(managedBy, out var overall))
+                                            {
+                                                overall = await _metricsService.CollectVmOverallDiskMetricsAsync(managedBy, vmInfo.name);
+                                                vmOverallMetricsCache[managedBy] = overall;
+                                            }
+
+                                            if (overall.hasData && !string.IsNullOrEmpty(overall.summary))
+                                            {
+                                                discoveredDisk.VmOverallMetricsSummary = overall.summary;
+                                                discoveredDisk.VmOverallMonitoringDataAvailableDays = overall.days;
                                             }
                                         }
                                         catch (Exception vmMetricsEx)
