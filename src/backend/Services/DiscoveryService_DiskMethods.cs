@@ -63,7 +63,7 @@ public partial class DiscoveryService
                     }
 
                     // Discover disks in this RG
-                    await foreach (var disk in rg.GetDisks())
+                    await foreach (var disk in rg.GetManagedDisks())
                     {
                         try
                         {
