@@ -186,11 +186,35 @@ public class MetricsCollectionService
             diskName,
             new (string name, string aggregation)[]
             {
-                ("Disk Read Bytes","Average,Total,Maximum,Minimum"),
-                ("Disk Write Bytes","Average,Total,Maximum,Minimum"),
+                ("Disk Read Bytes/sec","Average,Total,Maximum,Minimum"),
+                ("Disk Write Bytes/sec","Average,Total,Maximum,Minimum"),
                 ("Disk Read Operations/Sec","Average,Total,Maximum,Minimum"),
                 ("Disk Write Operations/Sec","Average,Total,Maximum,Minimum"),
                 ("Disk Used Capacity","Average,Maximum,Minimum")
+            },
+            excludeZeroDataPoints: true);
+    }
+
+    public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectVmDataDiskMetricsAsync(
+        string vmResourceId,
+        string vmName,
+        string diskName)
+    {
+        return await CollectMetricsAsync(
+            vmResourceId,
+            "microsoft.compute%2Fvirtualmachines",
+            vmName,
+            new (string name, string aggregation)[]
+            {
+                ("Data Disk Bandwidth Consumed Percentage","Average,Maximum,Minimum"),
+                ("Data Disk IOPS Consumed Percentage","Average,Maximum,Minimum"),
+                ("Data Disk Latency","Average,Maximum,Minimum"),
+                ("Data Disk Max Burst Bandwidth","Average,Maximum,Minimum"),
+                ("Data Disk Max Burst IOPS","Average,Maximum,Minimum")
+            },
+            dimensionFilters: new Dictionary<string, string>
+            {
+                { "DiskName", diskName }
             },
             excludeZeroDataPoints: true);
     }
@@ -200,7 +224,8 @@ public class MetricsCollectionService
         string metricNamespace,
         string displayName,
         IEnumerable<(string name, string aggregation)> preferredMetrics,
-        bool excludeZeroDataPoints = false)
+        bool excludeZeroDataPoints = false,
+        Dictionary<string, string>? dimensionFilters = null)
     {
         try
         {
@@ -238,6 +263,19 @@ public class MetricsCollectionService
                     var apiUrl = $"https://management.azure.com{resourceId}/providers/Microsoft.Insights/metrics" +
                         $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
                         $"&interval=PT1H&metricNamespace={metricNamespace}&metricnames={Uri.EscapeDataString(metricName)}&aggregation={aggregation}";
+
+                    if (dimensionFilters != null && dimensionFilters.Count > 0)
+                    {
+                        var filterParts = dimensionFilters
+                            .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Value))
+                            .Select(kvp => $"{kvp.Key} eq '{kvp.Value.Replace("'", "''")}'")
+                            .ToArray();
+                        if (filterParts.Length > 0)
+                        {
+                            var filter = string.Join(" and ", filterParts);
+                            apiUrl += $"&$filter={Uri.EscapeDataString(filter)}";
+                        }
+                    }
 
                     _logger.LogDebug("Fetching metric {MetricName} with {Aggregation} from: {Url}", metricName, aggregation, apiUrl);
                     var response = await httpClient.GetAsync(apiUrl);

@@ -163,6 +163,10 @@ public class DiscoveredManagedDisk
     public double? AverageWriteIops { get; set; }
     public double? AverageReadThroughputMiBps { get; set; }
     public double? AverageWriteThroughputMiBps { get; set; }
+
+    // VM-side data disk metrics
+    public string? VmMetricsSummary { get; set; }
+    public int? VmMonitoringDataAvailableDays { get; set; }
 }
 
 public class DiscoveryResult

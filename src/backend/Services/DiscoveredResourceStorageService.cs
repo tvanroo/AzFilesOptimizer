@@ -352,7 +352,9 @@ public class DiscoveredResourceStorageService
             { "AverageReadIops", disk.AverageReadIops },
             { "AverageWriteIops", disk.AverageWriteIops },
             { "AverageReadThroughputMiBps", disk.AverageReadThroughputMiBps },
-            { "AverageWriteThroughputMiBps", disk.AverageWriteThroughputMiBps }
+            { "AverageWriteThroughputMiBps", disk.AverageWriteThroughputMiBps },
+            { "VmMetricsSummary", disk.VmMetricsSummary },
+            { "VmMonitoringDataAvailableDays", disk.VmMonitoringDataAvailableDays }
         };
 
         if (disk.Tags != null && disk.Tags.Count > 0)
@@ -419,7 +421,9 @@ public class DiscoveredResourceStorageService
             AverageReadIops = entity.GetDouble("AverageReadIops"),
             AverageWriteIops = entity.GetDouble("AverageWriteIops"),
             AverageReadThroughputMiBps = entity.GetDouble("AverageReadThroughputMiBps"),
-            AverageWriteThroughputMiBps = entity.GetDouble("AverageWriteThroughputMiBps")
+            AverageWriteThroughputMiBps = entity.GetDouble("AverageWriteThroughputMiBps"),
+            VmMetricsSummary = entity.GetString("VmMetricsSummary"),
+            VmMonitoringDataAvailableDays = entity.GetInt32("VmMonitoringDataAvailableDays")
         };
     }
 }

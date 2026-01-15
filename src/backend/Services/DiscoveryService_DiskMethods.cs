@@ -143,6 +143,29 @@ public partial class DiscoveryService
                                     // Check if this is an OS disk
                                     discoveredDisk.IsOsDisk = !string.IsNullOrEmpty(vmInfo.osDiskId) &&
                                         string.Equals(disk.Id.ToString(), vmInfo.osDiskId, StringComparison.OrdinalIgnoreCase);
+
+                                    if (_metricsService != null)
+                                    {
+                                        try
+                                        {
+                                            var (vmHasData, vmDays, vmSummary) = await _metricsService
+                                                .CollectVmDataDiskMetricsAsync(managedBy, vmInfo.name, disk.Data.Name);
+
+                                            if (vmHasData && !string.IsNullOrEmpty(vmSummary))
+                                            {
+                                                discoveredDisk.VmMetricsSummary = vmSummary;
+                                                discoveredDisk.VmMonitoringDataAvailableDays = vmDays;
+                                            }
+                                            else
+                                            {
+                                                await LogProgressAsync($"        ⚠ No VM metrics data available for disk {disk.Data.Name}");
+                                            }
+                                        }
+                                        catch (Exception vmMetricsEx)
+                                        {
+                                            _logger.LogWarning(vmMetricsEx, "Failed to collect VM disk metrics for {DiskName}", disk.Data.Name);
+                                        }
+                                    }
                                 }
                                 else
                                 {
@@ -256,17 +279,23 @@ public partial class DiscoveryService
             using var doc = System.Text.Json.JsonDocument.Parse(metricsSummary);
             var root = doc.RootElement;
 
-            disk.AverageReadIops = GetMetricAverage(root, "Disk Read Operations/Sec");
-            disk.AverageWriteIops = GetMetricAverage(root, "Disk Write Operations/Sec");
+            disk.AverageReadIops = GetMetricAverageIgnorePreview(root, "Disk Read Operations/Sec");
+            disk.AverageWriteIops = GetMetricAverageIgnorePreview(root, "Disk Write Operations/Sec");
 
-            var readBytes = GetMetricAverage(root, "Disk Read Bytes");
-            var writeBytes = GetMetricAverage(root, "Disk Write Bytes");
+            var readBytes = GetMetricAverageIgnorePreview(root, "Disk Read Bytes/sec");
+            var writeBytes = GetMetricAverageIgnorePreview(root, "Disk Write Bytes/sec");
 
             disk.AverageReadThroughputMiBps = readBytes.HasValue ? readBytes.Value / (1024 * 1024) : null;
             disk.AverageWriteThroughputMiBps = writeBytes.HasValue ? writeBytes.Value / (1024 * 1024) : null;
 
-            var usedBytes = GetMetricAverage(root, "Disk Used Capacity");
+            var usedBytes = GetMetricAverageIgnorePreview(root, "Disk Used Capacity");
             disk.UsedBytes = usedBytes.HasValue ? (long?)Math.Round(usedBytes.Value) : null;
+
+            // If used capacity metric is missing, fall back to full disk size
+            if (!disk.UsedBytes.HasValue && disk.DiskSizeBytes.HasValue)
+            {
+                disk.UsedBytes = disk.DiskSizeBytes;
+            }
 
             // If used capacity metric is missing, fall back to full disk size
             if (!disk.UsedBytes.HasValue && disk.DiskSizeBytes.HasValue)
@@ -291,5 +320,15 @@ public partial class DiscoveryService
             return avg;
         }
         return null;
+    }
+
+    private static double? GetMetricAverageIgnorePreview(System.Text.Json.JsonElement root, string metricName)
+    {
+        if (GetMetricAverage(root, metricName) is { } avg)
+        {
+            return avg;
+        }
+
+        return GetMetricAverage(root, $"{metricName}(Preview)");
     }
 }
