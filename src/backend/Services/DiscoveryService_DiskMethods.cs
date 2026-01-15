@@ -113,7 +113,7 @@ public partial class DiscoveryService
 
                                     // Check if this is an OS disk
                                     discoveredDisk.IsOsDisk = !string.IsNullOrEmpty(vmInfo.osDiskId) &&
-                                        string.Equals(disk.Data.Id.ToString(), vmInfo.osDiskId, StringComparison.OrdinalIgnoreCase);
+                                        string.Equals(disk.Id.ToString(), vmInfo.osDiskId, StringComparison.OrdinalIgnoreCase);
                                 }
                                 else
                                 {
