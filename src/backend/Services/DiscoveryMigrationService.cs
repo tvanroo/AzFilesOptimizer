@@ -51,35 +51,50 @@ public class DiscoveryMigrationService
 
             // Convert all to unified volume format
             var volumes = new List<DiscoveredVolumeWithAnalysis>();
-            
+
             // Add Azure Files shares
-            volumes.AddRange(shares.Select(share => new DiscoveredVolumeWithAnalysis
+            volumes.AddRange(shares.Select(share =>
             {
-                VolumeType = "AzureFiles",
-                VolumeData = share,
-                AiAnalysis = null,
-                UserAnnotations = new UserAnnotations(),
-                AnnotationHistory = new List<AnnotationHistoryEntry>()
+                var volume = new DiscoveredVolumeWithAnalysis
+                {
+                    VolumeType = "AzureFiles",
+                    VolumeData = share,
+                    AiAnalysis = null,
+                    UserAnnotations = new UserAnnotations(),
+                    AnnotationHistory = new List<AnnotationHistoryEntry>()
+                };
+                volume.ComputeVolumeIdFromResource();
+                return volume;
             }));
-            
+
             // Add ANF volumes
-            volumes.AddRange(anfVolumes.Select(volume => new DiscoveredVolumeWithAnalysis
+            volumes.AddRange(anfVolumes.Select(volume =>
             {
-                VolumeType = "ANF",
-                VolumeData = volume,
-                AiAnalysis = null,
-                UserAnnotations = new UserAnnotations(),
-                AnnotationHistory = new List<AnnotationHistoryEntry>()
+                var vol = new DiscoveredVolumeWithAnalysis
+                {
+                    VolumeType = "ANF",
+                    VolumeData = volume,
+                    AiAnalysis = null,
+                    UserAnnotations = new UserAnnotations(),
+                    AnnotationHistory = new List<AnnotationHistoryEntry>()
+                };
+                vol.ComputeVolumeIdFromResource();
+                return vol;
             }));
-            
+
             // Add Managed Disks
-            volumes.AddRange(disks.Select(disk => new DiscoveredVolumeWithAnalysis
+            volumes.AddRange(disks.Select(disk =>
             {
-                VolumeType = "ManagedDisk",
-                VolumeData = disk,
-                AiAnalysis = null,
-                UserAnnotations = new UserAnnotations(),
-                AnnotationHistory = new List<AnnotationHistoryEntry>()
+                var vol = new DiscoveredVolumeWithAnalysis
+                {
+                    VolumeType = "ManagedDisk",
+                    VolumeData = disk,
+                    AiAnalysis = null,
+                    UserAnnotations = new UserAnnotations(),
+                    AnnotationHistory = new List<AnnotationHistoryEntry>()
+                };
+                vol.ComputeVolumeIdFromResource();
+                return vol;
             }));
 
             var discoveryData = new DiscoveryData

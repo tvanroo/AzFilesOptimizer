@@ -26,20 +26,41 @@ public class VolumeAnnotationService
         try
         {
             var blobClient = _blobContainer.GetBlobClient($"jobs/{discoveryJobId}/discovered-volumes.json");
-            
+
             if (!await blobClient.ExistsAsync())
             {
                 _logger.LogWarning("Discovery data not found for job: {JobId}", discoveryJobId);
                 return null;
             }
-            
+
             var response = await blobClient.DownloadContentAsync();
             var json = response.Value.Content.ToString();
             var options = new JsonSerializerOptions
             {
                 Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
             };
-            return JsonSerializer.Deserialize<DiscoveryData>(json, options);
+            var data = JsonSerializer.Deserialize<DiscoveryData>(json, options);
+
+            if (data != null)
+            {
+                var needsSave = false;
+                foreach (var volume in data.Volumes)
+                {
+                    if (string.IsNullOrEmpty(volume.VolumeId))
+                    {
+                        volume.ComputeVolumeIdFromResource();
+                        needsSave = true;
+                    }
+                }
+
+                if (needsSave)
+                {
+                    await SaveDiscoveryDataAsync(data);
+                    _logger.LogInformation("Updated VolumeIds for job {JobId}", discoveryJobId);
+                }
+            }
+
+            return data;
         }
         catch (Exception ex)
         {

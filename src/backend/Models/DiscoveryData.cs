@@ -41,21 +41,27 @@ public class DiscoveredVolumeWithAnalysis
     /// Type discriminator: "AzureFiles", "ANF", or "ManagedDisk"
     /// </summary>
     public string VolumeType { get; set; } = string.Empty;
-    
+
+    /// <summary>
+    /// Unique identifier for this volume (hash of ResourceId)
+    /// This is serialized to JSON for storage and retrieval
+    /// </summary>
+    public string VolumeId { get; set; } = string.Empty;
+
     /// <summary>
     /// The volume data - can be DiscoveredAzureFileShare, DiscoveredAnfVolume, or DiscoveredManagedDisk
     /// </summary>
     public object VolumeData { get; set; } = new();
-    
+
     /// <summary>
     /// Convenience property for Azure Files shares (backwards compatibility)
     /// </summary>
-    public DiscoveredAzureFileShare? Volume 
-    { 
+    public DiscoveredAzureFileShare? Volume
+    {
         get => VolumeData as DiscoveredAzureFileShare;
         set { if (value != null) { VolumeData = value; VolumeType = "AzureFiles"; } }
     }
-    
+
     public AiAnalysisResult? AiAnalysis { get; set; }
     public UserAnnotations? UserAnnotations { get; set; }
 
@@ -63,12 +69,15 @@ public class DiscoveredVolumeWithAnalysis
     /// History of user annotation changes for this volume.
     /// </summary>
     public List<AnnotationHistoryEntry> AnnotationHistory { get; set; } = new();
-    
+
     /// <summary>
-    /// Computed unique identifier for this volume (hash of ResourceId)
+    /// Computes VolumeId from ResourceId
     /// </summary>
-    public string VolumeId => ComputeVolumeId(GetResourceId());
-    
+    public void ComputeVolumeIdFromResource()
+    {
+        VolumeId = ComputeVolumeId(GetResourceId());
+    }
+
     private string GetResourceId()
     {
         return VolumeType switch
@@ -79,13 +88,12 @@ public class DiscoveredVolumeWithAnalysis
             _ => ""
         };
     }
-    
+
     private static string ComputeVolumeId(string resourceId)
     {
         if (string.IsNullOrEmpty(resourceId))
             return Guid.NewGuid().ToString();
-            
-        // Create a deterministic ID from the resource ID
+
         using var sha = System.Security.Cryptography.SHA256.Create();
         var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(resourceId));
         return Convert.ToHexString(hash)[..16].ToLowerInvariant();
