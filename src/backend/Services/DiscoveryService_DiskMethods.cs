@@ -22,7 +22,7 @@ public partial class DiscoveryService
             await LogProgressAsync("  • Starting managed disk discovery...");
 
             // Enumerate resource groups
-            await foreach (var rg in subscription.GetResourceGroupsAsync())
+            await foreach (var rg in subscription.GetResourceGroups())
             {
                 // Apply resource group filter
                 if (resourceGroupFilters != null && resourceGroupFilters.Length > 0)
