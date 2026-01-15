@@ -23,8 +23,7 @@ public partial class DiscoveryService
 
             // First, cache all VMs
             await LogProgressAsync("  • Caching VM data...");
-            var allVms = subscription.GetVirtualMachines();
-            await foreach (var vm in allVms)
+            await foreach (var vm in subscription.GetVirtualMachinesAsync())
             {
                 // Apply resource group filter
                 if (resourceGroupFilters != null && resourceGroupFilters.Length > 0)
@@ -62,8 +61,7 @@ public partial class DiscoveryService
 
             // Now discover all disks
             await LogProgressAsync("  • Discovering disks...");
-            var allDisks = subscription.GetDisks();
-            await foreach (var disk in allDisks)
+            await foreach (var disk in subscription.GetDisksAsync())
             {
                 // Apply resource group filter
                 var diskRg = disk.Id.ResourceGroupName;
