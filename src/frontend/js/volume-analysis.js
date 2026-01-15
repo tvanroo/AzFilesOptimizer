@@ -94,13 +94,18 @@ const volumeAnalysis = {
             const isSelected = this.selectedVolumes.has(v.VolumeId);
             const statusIcon = this.getStatusIcon(v.UserAnnotations?.MigrationStatus);
             const confidence = (v.AiAnalysis?.ConfidenceScore || 0) * 100;
+            
+            // Get volume name based on type
+            const volumeName = this.getVolumeName(v);
+            const storageAccount = this.getStorageAccountName(v);
+            const quota = this.getQuota(v);
 
             return `
                 <div class="grid-row ${isSelected ? 'selected' : ''}" data-id="${v.VolumeId}">
                     <div><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="volumeAnalysis.toggleSelect('${v.VolumeId}')"></div>
-                    <div onclick="volumeAnalysis.showDetail('${v.VolumeId}')">${this.escapeHtml(v.VolumeData.ShareName)}</div>
-                    <div onclick="volumeAnalysis.showDetail('${v.VolumeId}')">${this.escapeHtml(v.VolumeData.StorageAccountName)}</div>
-                    <div onclick="volumeAnalysis.showDetail('${v.VolumeId}')">${v.VolumeData.ShareQuotaGiB || 0}</div>
+                    <div onclick="volumeAnalysis.showDetail('${v.VolumeId}')">${this.escapeHtml(volumeName)}</div>
+                    <div onclick="volumeAnalysis.showDetail('${v.VolumeId}')">${this.escapeHtml(storageAccount)}</div>
+                    <div onclick="volumeAnalysis.showDetail('${v.VolumeId}')">${quota}</div>
                     <div onclick="volumeAnalysis.showDetail('${v.VolumeId}')">
                         ${v.AiAnalysis?.SuggestedWorkloadName || '-'}
                     </div>
@@ -117,6 +122,45 @@ const volumeAnalysis = {
                 </div>
             `;
         }).join('');
+    },
+    
+    getVolumeName(volume) {
+        switch (volume.VolumeType) {
+            case 'AzureFiles':
+                return volume.VolumeData?.ShareName || 'Unknown';
+            case 'ANF':
+                return volume.VolumeData?.VolumeName || 'Unknown';
+            case 'ManagedDisk':
+                return volume.VolumeData?.DiskName || 'Unknown';
+            default:
+                return 'Unknown';
+        }
+    },
+    
+    getStorageAccountName(volume) {
+        switch (volume.VolumeType) {
+            case 'AzureFiles':
+                return volume.VolumeData?.StorageAccountName || 'N/A';
+            case 'ANF':
+                return volume.VolumeData?.NetAppAccountName || 'N/A';
+            case 'ManagedDisk':
+                return volume.VolumeData?.ResourceGroup || 'N/A';
+            default:
+                return 'N/A';
+        }
+    },
+    
+    getQuota(volume) {
+        switch (volume.VolumeType) {
+            case 'AzureFiles':
+                return volume.VolumeData?.ShareQuotaGiB || 0;
+            case 'ANF':
+                return volume.VolumeData?.UsedCapacityGiB || 0;
+            case 'ManagedDisk':
+                return volume.VolumeData?.DiskSizeGb || 0;
+            default:
+                return 0;
+        }
     },
 
     getStatusIcon(status) {
@@ -205,7 +249,11 @@ const volumeAnalysis = {
         const panel = document.getElementById('detailPanel');
         const content = document.getElementById('detailContent');
         
-        document.getElementById('detailTitle').textContent = volume.VolumeData.ShareName;
+        const volumeName = this.getVolumeName(volume);
+        document.getElementById('detailTitle').textContent = volumeName;
+
+        // Generate type-specific properties
+        const propertiesHtml = this.generateVolumeProperties(volume);
 
         content.innerHTML = `
             <div class="tabs">
@@ -217,35 +265,7 @@ const volumeAnalysis = {
             <div class="tab-content active">
                 <h3>Volume Properties</h3>
                 <div class="property-grid">
-                    <div class="property-label">Name</div>
-                    <div>${this.escapeHtml(volume.VolumeData.ShareName)}</div>
-                    
-                    <div class="property-label">Storage Account</div>
-                    <div>${this.escapeHtml(volume.VolumeData.StorageAccountName)}</div>
-                    
-                    <div class="property-label">Resource Group</div>
-                    <div>${this.escapeHtml(volume.VolumeData.ResourceGroup)}</div>
-                    
-                    <div class="property-label">Size (Quota)</div>
-                    <div>${volume.VolumeData.ShareQuotaGiB} GiB</div>
-                    
-                    <div class="property-label">Used Capacity</div>
-                    <div>${this.formatBytes(volume.VolumeData.ShareUsageBytes)}</div>
-                    
-                    <div class="property-label">Access Tier</div>
-                    <div>${volume.VolumeData.AccessTier || 'N/A'}</div>
-                    
-                    <div class="property-label">SKU</div>
-                    <div>${volume.VolumeData.StorageAccountSku || 'N/A'}</div>
-                    
-                    <div class="property-label">Location</div>
-                    <div>${volume.VolumeData.Location || 'N/A'}</div>
-                    
-                    <div class="property-label">Protocols</div>
-                    <div>${volume.VolumeData.EnabledProtocols?.join(', ') || 'N/A'}</div>
-                    
-                    <div class="property-label">Tags</div>
-                    <div>${this.formatTags(volume.VolumeData.Tags)}</div>
+                    ${propertiesHtml}
                 </div>
             </div>
 
@@ -326,6 +346,121 @@ const volumeAnalysis = {
         }
 
         panel.classList.add('show');
+    },
+    
+    generateVolumeProperties(volume) {
+        switch (volume.VolumeType) {
+            case 'AzureFiles':
+                return this.generateAzureFilesProperties(volume.VolumeData);
+            case 'ANF':
+                return this.generateAnfProperties(volume.VolumeData);
+            case 'ManagedDisk':
+                return this.generateManagedDiskProperties(volume.VolumeData);
+            default:
+                return '<div>Unknown volume type</div>';
+        }
+    },
+    
+    generateAzureFilesProperties(data) {
+        return `
+            <div class="property-label">Name</div>
+            <div>${this.escapeHtml(data?.ShareName || 'N/A')}</div>
+            
+            <div class="property-label">Storage Account</div>
+            <div>${this.escapeHtml(data?.StorageAccountName || 'N/A')}</div>
+            
+            <div class="property-label">Resource Group</div>
+            <div>${this.escapeHtml(data?.ResourceGroup || 'N/A')}</div>
+            
+            <div class="property-label">Size (Quota)</div>
+            <div>${data?.ShareQuotaGiB || 0} GiB</div>
+            
+            <div class="property-label">Used Capacity</div>
+            <div>${this.formatBytes(data?.ShareUsageBytes || 0)}</div>
+            
+            <div class="property-label">Access Tier</div>
+            <div>${data?.AccessTier || 'N/A'}</div>
+            
+            <div class="property-label">SKU</div>
+            <div>${data?.StorageAccountSku || 'N/A'}</div>
+            
+            <div class="property-label">Location</div>
+            <div>${data?.Location || 'N/A'}</div>
+            
+            <div class="property-label">Protocols</div>
+            <div>${data?.EnabledProtocols?.join(', ') || 'N/A'}</div>
+            
+            <div class="property-label">Tags</div>
+            <div>${this.formatTags(data?.Tags) || 'None'}</div>
+        `;
+    },
+    
+    generateAnfProperties(data) {
+        return `
+            <div class="property-label">Volume Name</div>
+            <div>${this.escapeHtml(data?.VolumeName || 'N/A')}</div>
+            
+            <div class="property-label">NetApp Account</div>
+            <div>${this.escapeHtml(data?.NetAppAccountName || 'N/A')}</div>
+            
+            <div class="property-label">Capacity Pool</div>
+            <div>${this.escapeHtml(data?.CapacityPoolName || 'N/A')}</div>
+            
+            <div class="property-label">Resource Group</div>
+            <div>${this.escapeHtml(data?.ResourceGroup || 'N/A')}</div>
+            
+            <div class="property-label">Provisioned Size</div>
+            <div>${data?.ProvisionedThroughputMiBps || 0} GiB</div>
+            
+            <div class="property-label">Used Capacity</div>
+            <div>${data?.UsedCapacityGiB || 0} GiB</div>
+            
+            <div class="property-label">Service Level</div>
+            <div>${data?.ServiceLevel || 'N/A'}</div>
+            
+            <div class="property-label">Location</div>
+            <div>${data?.Location || 'N/A'}</div>
+            
+            <div class="property-label">Protocols</div>
+            <div>${data?.EnabledProtocols?.join(', ') || 'N/A'}</div>
+            
+            <div class="property-label">Resource ID</div>
+            <div style="word-break: break-all; font-size: 12px;">${this.escapeHtml(data?.ResourceId || 'N/A')}</div>
+        `;
+    },
+    
+    generateManagedDiskProperties(data) {
+        return `
+            <div class="property-label">Disk Name</div>
+            <div>${this.escapeHtml(data?.DiskName || 'N/A')}</div>
+            
+            <div class="property-label">Resource Group</div>
+            <div>${this.escapeHtml(data?.ResourceGroup || 'N/A')}</div>
+            
+            <div class="property-label">Size</div>
+            <div>${data?.DiskSizeGb || 0} GiB</div>
+            
+            <div class="property-label">Type</div>
+            <div>${data?.ManagedBy ? 'Data Disk (Attached)' : 'Data Disk (Unattached)'}</div>
+            
+            <div class="property-label">SKU</div>
+            <div>${data?.Sku || 'N/A'}</div>
+            
+            <div class="property-label">Location</div>
+            <div>${data?.Location || 'N/A'}</div>
+            
+            <div class="property-label">Attached VM</div>
+            <div>${data?.ManagedBy ? this.escapeHtml(data.ManagedBy.split('/').pop() || 'N/A') : 'Not attached'}</div>
+            
+            <div class="property-label">Creation Time</div>
+            <div>${data?.TimeCreated ? new Date(data.TimeCreated).toLocaleString() : 'N/A'}</div>
+            
+            <div class="property-label">Encryption</div>
+            <div>${data?.EncryptionType || 'N/A'}</div>
+            
+            <div class="property-label">Resource ID</div>
+            <div style="word-break: break-all; font-size: 12px;">${this.escapeHtml(data?.ResourceId || 'N/A')}</div>
+        `;
     },
 
     closeDetail() {

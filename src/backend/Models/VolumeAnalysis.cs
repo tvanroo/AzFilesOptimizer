@@ -183,7 +183,18 @@ public class VolumeListResponse
 public class VolumeWithAnalysis
 {
     public string VolumeId { get; set; } = string.Empty; // Computed from ResourceId
-    public DiscoveredAzureFileShare VolumeData { get; set; } = new();
+    
+    /// <summary>
+    /// Type discriminator: "AzureFiles", "ANF", or "ManagedDisk"
+    /// </summary>
+    public string VolumeType { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// The volume data - can be DiscoveredAzureFileShare, DiscoveredAnfVolume, or DiscoveredManagedDisk.
+    /// Use polymorphic serialization to handle all types.
+    /// </summary>
+    public object VolumeData { get; set; } = new();
+    
     public AiAnalysisResult? AiAnalysis { get; set; }
     public UserAnnotations? UserAnnotations { get; set; }
 

@@ -90,7 +90,8 @@ public class VolumeAnnotationService
         var volumes = paged.Select(v => new VolumeWithAnalysis
         {
             VolumeId = v.VolumeId,
-            VolumeData = v.Volume,
+            VolumeType = v.VolumeType,
+            VolumeData = v.VolumeData,  // Support all volume types: Azure Files, ANF, Managed Disk
             AiAnalysis = v.AiAnalysis,
             UserAnnotations = v.UserAnnotations,
             // List view does not currently need full history; omit for payload size.
@@ -236,23 +237,30 @@ public class VolumeAnnotationService
         var sb = new StringBuilder();
         
         // Header
-        sb.AppendLine("Volume Name,Storage Account,Resource Group,Size (GiB),Used Capacity,Access Tier," +
+        sb.AppendLine("Volume Type,Volume Name,Storage Account/Account,Resource Group,Size (GiB),Used Capacity," +
                      "AI Workload,AI Confidence,User Workload,Migration Status,Custom Tags,Notes");
 
-        // Data rows
+        // Data rows - handle all three volume types
         foreach (var volume in data.Volumes)
         {
-            sb.Append(CsvEscape(volume.Volume.ShareName ?? ""));
+            string volumeType = volume.VolumeType;
+            string volumeName = GetCsvVolumeName(volume);
+            string storageAccount = GetCsvStorageAccount(volume);
+            string resourceGroup = GetCsvResourceGroup(volume);
+            string size = GetCsvSize(volume);
+            string usedCapacity = GetCsvUsedCapacity(volume);
+            
+            sb.Append(CsvEscape(volumeType ?? ""));
             sb.Append(',');
-            sb.Append(CsvEscape(volume.Volume.StorageAccountName ?? ""));
+            sb.Append(CsvEscape(volumeName));
             sb.Append(',');
-            sb.Append(CsvEscape(volume.Volume.ResourceGroup ?? ""));
+            sb.Append(CsvEscape(storageAccount));
             sb.Append(',');
-            sb.Append(volume.Volume.ShareQuotaGiB ?? 0);
+            sb.Append(CsvEscape(resourceGroup));
             sb.Append(',');
-            sb.Append(FormatBytes(volume.Volume.ShareUsageBytes ?? 0));
+            sb.Append(size);
             sb.Append(',');
-            sb.Append(CsvEscape(volume.Volume.AccessTier ?? ""));
+            sb.Append(usedCapacity);
             sb.Append(',');
             sb.Append(CsvEscape(volume.AiAnalysis?.SuggestedWorkloadName ?? ""));
             sb.Append(',');
@@ -270,6 +278,61 @@ public class VolumeAnnotationService
         }
 
         return sb.ToString();
+    }
+    
+    private string GetCsvVolumeName(DiscoveredVolumeWithAnalysis volume)
+    {
+        return volume.VolumeType switch
+        {
+            "AzureFiles" => (volume.VolumeData as DiscoveredAzureFileShare)?.ShareName ?? "",
+            "ANF" => (volume.VolumeData as DiscoveredAnfVolume)?.VolumeName ?? "",
+            "ManagedDisk" => (volume.VolumeData as DiscoveredManagedDisk)?.DiskName ?? "",
+            _ => ""
+        };
+    }
+    
+    private string GetCsvStorageAccount(DiscoveredVolumeWithAnalysis volume)
+    {
+        return volume.VolumeType switch
+        {
+            "AzureFiles" => (volume.VolumeData as DiscoveredAzureFileShare)?.StorageAccountName ?? "",
+            "ANF" => (volume.VolumeData as DiscoveredAnfVolume)?.NetAppAccountName ?? "",
+            "ManagedDisk" => (volume.VolumeData as DiscoveredManagedDisk)?.DiskName ?? "",
+            _ => ""
+        };
+    }
+    
+    private string GetCsvResourceGroup(DiscoveredVolumeWithAnalysis volume)
+    {
+        return volume.VolumeType switch
+        {
+            "AzureFiles" => (volume.VolumeData as DiscoveredAzureFileShare)?.ResourceGroup ?? "",
+            "ANF" => (volume.VolumeData as DiscoveredAnfVolume)?.ResourceGroup ?? "",
+            "ManagedDisk" => (volume.VolumeData as DiscoveredManagedDisk)?.ResourceGroup ?? "",
+            _ => ""
+        };
+    }
+    
+    private string GetCsvSize(DiscoveredVolumeWithAnalysis volume)
+    {
+        return volume.VolumeType switch
+        {
+            "AzureFiles" => ((volume.VolumeData as DiscoveredAzureFileShare)?.ShareQuotaGiB ?? 0).ToString(),
+            "ANF" => ((volume.VolumeData as DiscoveredAnfVolume)?.ProvisionedThroughputMiBps ?? 0).ToString(),
+            "ManagedDisk" => ((volume.VolumeData as DiscoveredManagedDisk)?.DiskSizeGb ?? 0).ToString(),
+            _ => "0"
+        };
+    }
+    
+    private string GetCsvUsedCapacity(DiscoveredVolumeWithAnalysis volume)
+    {
+        return volume.VolumeType switch
+        {
+            "AzureFiles" => FormatBytes((volume.VolumeData as DiscoveredAzureFileShare)?.ShareUsageBytes ?? 0),
+            "ANF" => ((volume.VolumeData as DiscoveredAnfVolume)?.UsedCapacityGiB ?? 0) + " GiB",
+            "ManagedDisk" => "N/A",
+            _ => ""
+        };
     }
 
     private string CsvEscape(string value)
