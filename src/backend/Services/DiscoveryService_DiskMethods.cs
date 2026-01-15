@@ -21,131 +21,135 @@ public partial class DiscoveryService
         {
             await LogProgressAsync("  • Starting managed disk discovery...");
 
-            var resourceGroups = subscription.GetResourceGroups();
-            await foreach (var rg in resourceGroups)
+            // First, cache all VMs
+            await LogProgressAsync("  • Caching VM data...");
+            var allVms = subscription.GetVirtualMachines();
+            await foreach (var vm in allVms.GetAllAsync())
             {
+                // Apply resource group filter
                 if (resourceGroupFilters != null && resourceGroupFilters.Length > 0)
                 {
-                    bool matchesAnyRg = resourceGroupFilters.Any(f => rg.Data.Name.Equals(f, StringComparison.OrdinalIgnoreCase));
-                    if (!matchesAnyRg) continue;
+                    var vmRg = vm.Id.ResourceGroupName;
+                    if (!resourceGroupFilters.Any(f => vmRg.Equals(f, StringComparison.OrdinalIgnoreCase)))
+                        continue;
                 }
-
-                await LogProgressAsync($"  • Scanning resource group: {rg.Data.Name}");
 
                 try
                 {
-                    // Cache VM data first
-                    var vms = rg.GetVirtualMachines();
-                    await foreach (var vm in vms.GetAllAsync())
-                    {
-                        try
-                        {
-                            var vmData = vm.Data;
-                            var osType = vmData.OSProfile?.WindowsConfiguration != null ? "Windows" : "Linux";
-                            var osDiskId = vmData.StorageProfile?.OSDisk?.ManagedDisk?.Id ?? "";
-                            var vmSize = vmData.HardwareProfile?.VmSize?.ToString() ?? "";
+                    var vmData = vm.Data;
+                    var osType = vmData.OSProfile?.WindowsConfiguration != null ? "Windows" : "Linux";
+                    var osDiskId = vmData.StorageProfile?.OSDisk?.ManagedDisk?.Id ?? "";
+                    var vmSize = vmData.HardwareProfile?.VmSize?.ToString() ?? "";
 
-                            int cpu = 0;
-                            double memory = 0;
-
-                            vmCache[vm.Id.ToString()] = (
-                                vm.Data.Name,
-                                vm.Data.Location.Name,
-                                vmSize,
-                                cpu,
-                                memory,
-                                osType,
-                                osDiskId,
-                                vm.Data.Tags?.ToDictionary(t => t.Key, t => t.Value) ?? new()
-                            );
-                        }
-                        catch (Exception vmEx)
-                        {
-                            _logger.LogWarning(vmEx, "Failed to cache VM data for {VmName}", vm.Data.Name);
-                        }
-                    }
-
-                    // Discover disks
-                    var allDisks = rg.GetDisks();
-                    await foreach (var disk in allDisks.GetAllAsync())
-                    {
-                        try
-                        {
-                            var diskData = disk.Data;
-                            var managedBy = diskData.ManagedBy?.Id?.ToString();
-
-                            var discoveredDisk = new DiscoveredManagedDisk
-                            {
-                                TenantId = tenantId ?? "",
-                                SubscriptionId = disk.Id.SubscriptionId ?? "",
-                                ResourceGroup = disk.Id.ResourceGroupName ?? "",
-                                DiskName = disk.Data.Name,
-                                ResourceId = disk.Id.ToString(),
-                                Location = disk.Data.Location.Name,
-                                DiskSku = diskData.Sku?.Name.ToString() ?? "",
-                                DiskTier = ParseDiskTier(diskData.Sku?.Name.ToString() ?? ""),
-                                DiskSizeGB = diskData.DiskSizeGB,
-                                DiskState = diskData.DiskState?.ToString() ?? "",
-                                ProvisioningState = diskData.ProvisioningState?.ToString() ?? "",
-                                DiskSizeBytes = diskData.DiskSizeGB * 1024L * 1024L * 1024L,
-                                DiskType = ParseDiskType(diskData.Sku?.Name.ToString() ?? ""),
-                                BurstingEnabled = diskData.BurstingEnabled,
-                                Tags = diskData.Tags?.ToDictionary(t => t.Key, t => t.Value),
-                                TimeCreated = diskData.TimeCreated?.UtcDateTime,
-                                DiscoveredAt = DateTime.UtcNow,
-                                IsAttached = !string.IsNullOrEmpty(managedBy)
-                            };
-
-                            // Estimate performance
-                            var (estIops, estBw) = EstimateDiskPerformance(discoveredDisk);
-                            discoveredDisk.EstimatedIops = estIops;
-                            discoveredDisk.EstimatedThroughputMiBps = estBw;
-
-                            // Check if attached to VM
-                            if (discoveredDisk.IsAttached && !string.IsNullOrEmpty(managedBy))
-                            {
-                                discoveredDisk.AttachedVmId = managedBy;
-
-                                if (vmCache.TryGetValue(managedBy, out var vmInfo))
-                                {
-                                    discoveredDisk.AttachedVmName = vmInfo.name;
-                                    discoveredDisk.VmSize = vmInfo.size;
-                                    discoveredDisk.VmCpuCount = vmInfo.cpu;
-                                    discoveredDisk.VmMemoryGiB = vmInfo.memory;
-                                    discoveredDisk.VmOsType = vmInfo.osType;
-                                    discoveredDisk.VmTags = vmInfo.tags;
-
-                                    // Check if this is an OS disk
-                                    discoveredDisk.IsOsDisk = !string.IsNullOrEmpty(vmInfo.osDiskId) &&
-                                        string.Equals(disk.Id.ToString(), vmInfo.osDiskId, StringComparison.OrdinalIgnoreCase);
-                                }
-                                else
-                                {
-                                    discoveredDisk.IsOsDisk = false;
-                                }
-                            }
-                            else
-                            {
-                                discoveredDisk.IsOsDisk = false;
-                            }
-
-                            // Only add data disks (exclude OS disks)
-                            if (discoveredDisk.IsOsDisk != true)
-                            {
-                                disks.Add(discoveredDisk);
-                            }
-                        }
-                        catch (Exception diskEx)
-                        {
-                            _logger.LogWarning(diskEx, "Failed to process disk {DiskName}", disk.Data.Name);
-                        }
-                    }
+                    vmCache[vm.Id.ToString()] = (
+                        vm.Data.Name,
+                        vm.Data.Location.Name,
+                        vmSize,
+                        0, // cpu
+                        0, // memory
+                        osType,
+                        osDiskId,
+                        vm.Data.Tags?.ToDictionary(t => t.Key, t => t.Value) ?? new()
+                    );
                 }
-                catch (Exception rgEx)
+                catch (Exception vmEx)
                 {
-                    _logger.LogWarning(rgEx, "Failed to scan resource group {RgName}", rg.Data.Name);
-                    await LogProgressAsync($"    ⚠ Failed to scan resource group {rg.Data.Name}: {rgEx.Message}");
+                    _logger.LogWarning(vmEx, "Failed to cache VM data for {VmName}", vm.Data.Name);
                 }
+            }
+
+            await LogProgressAsync($"  • Cached {vmCache.Count} VMs");
+
+            // Now discover all disks
+            await LogProgressAsync("  • Discovering disks...");
+            var allDisks = subscription.GetDisks();
+            await foreach (var disk in allDisks.GetAllAsync())
+            {
+                // Apply resource group filter
+                var diskRg = disk.Id.ResourceGroupName;
+                if (resourceGroupFilters != null && resourceGroupFilters.Length > 0)
+                {
+                    if (!resourceGroupFilters.Any(f => diskRg.Equals(f, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                }
+
+                try
+                {
+                    var diskData = disk.Data;
+                    var managedBy = diskData.ManagedBy?.Id?.ToString();
+
+                    var discoveredDisk = new DiscoveredManagedDisk
+                    {
+                        TenantId = tenantId ?? "",
+                        SubscriptionId = disk.Id.SubscriptionId ?? "",
+                        ResourceGroup = disk.Id.ResourceGroupName ?? "",
+                        DiskName = disk.Data.Name,
+                        ResourceId = disk.Id.ToString(),
+                        Location = disk.Data.Location.Name,
+                        DiskSku = diskData.Sku?.Name.ToString() ?? "",
+                        DiskTier = ParseDiskTier(diskData.Sku?.Name.ToString() ?? ""),
+                        DiskSizeGB = diskData.DiskSizeGB,
+                        DiskState = diskData.DiskState?.ToString() ?? "",
+                        ProvisioningState = diskData.ProvisioningState?.ToString() ?? "",
+                        DiskSizeBytes = diskData.DiskSizeGB * 1024L * 1024L * 1024L,
+                        DiskType = ParseDiskType(diskData.Sku?.Name.ToString() ?? ""),
+                        BurstingEnabled = diskData.BurstingEnabled,
+                        Tags = diskData.Tags?.ToDictionary(t => t.Key, t => t.Value),
+                        TimeCreated = diskData.TimeCreated?.UtcDateTime,
+                        DiscoveredAt = DateTime.UtcNow,
+                        IsAttached = !string.IsNullOrEmpty(managedBy)
+                    };
+
+                    // Estimate performance
+                    var (estIops, estBw) = EstimateDiskPerformance(discoveredDisk);
+                    discoveredDisk.EstimatedIops = estIops;
+                    discoveredDisk.EstimatedThroughputMiBps = estBw;
+
+                    // Check if attached to VM
+                    if (discoveredDisk.IsAttached && !string.IsNullOrEmpty(managedBy))
+                    {
+                        discoveredDisk.AttachedVmId = managedBy;
+
+                        if (vmCache.TryGetValue(managedBy, out var vmInfo))
+                        {
+                            discoveredDisk.AttachedVmName = vmInfo.name;
+                            discoveredDisk.VmSize = vmInfo.size;
+                            discoveredDisk.VmCpuCount = vmInfo.cpu;
+                            discoveredDisk.VmMemoryGiB = vmInfo.memory;
+                            discoveredDisk.VmOsType = vmInfo.osType;
+                            discoveredDisk.VmTags = vmInfo.tags;
+
+                            // Check if this is an OS disk
+                            discoveredDisk.IsOsDisk = !string.IsNullOrEmpty(vmInfo.osDiskId) &&
+                                string.Equals(disk.Id.ToString(), vmInfo.osDiskId, StringComparison.OrdinalIgnoreCase);
+                        }
+                        else
+                        {
+                            discoveredDisk.IsOsDisk = false;
+                        }
+                    }
+                    else
+                    {
+                        discoveredDisk.IsOsDisk = false;
+                    }
+
+                    // Only add data disks (exclude OS disks)
+                    if (discoveredDisk.IsOsDisk != true)
+                    {
+                        disks.Add(discoveredDisk);
+                    }
+                }
+                catch (Exception diskEx)
+                {
+                    _logger.LogWarning(diskEx, "Failed to process disk {DiskName}", disk.Data.Name);
+                }
+            }
+
+            // Group by resource group for logging
+            var disksByRg = disks.GroupBy(d => d.ResourceGroup);
+            foreach (var rgGroup in disksByRg)
+            {
+                await LogProgressAsync($"  • Found {rgGroup.Count()} data disk(s) in {rgGroup.Key}");
             }
 
             await LogProgressAsync($"  → Total: {disks.Count} managed disks discovered (excluding OS disks)");
@@ -187,7 +191,7 @@ public partial class DiscoveryService
 
         return sku switch
         {
-            var s when s.Contains("ultrassd") => (null, null), // Ultra SSD configured by user
+            var s when s.Contains("ultrassd") => (null, null),
             var s when s.Contains("premium") => sizeGb switch
             {
                 <= 128 => (500, 100),
@@ -214,7 +218,7 @@ public partial class DiscoveryService
                 <= 32768 => (76800, 800),
                 _ => (153600, 1000)
             },
-            _ => (500, 60) // Standard HDD
+            _ => (500, 60)
         };
     }
 }
