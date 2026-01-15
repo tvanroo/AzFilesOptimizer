@@ -70,92 +70,14 @@ public class DiscoveredAzureFileShare
     // Monitoring availability
     public bool MonitoringEnabled { get; set; }
     public int? MonitoringDataAvailableDays { get; set; }
-    public string? HistoricalMetricsSummary { get; set; } // JSON-serialized metrics summary
-}
-
-public class DiscoveredAnfVolume
-{
-    public string ResourceId { get; set; } = string.Empty;
-    public string VolumeName { get; set; } = string.Empty;
-    public string NetAppAccountName { get; set; } = string.Empty;
-    public string CapacityPoolName { get; set; } = string.Empty;
-    public string ResourceGroup { get; set; } = string.Empty;
-    public string SubscriptionId { get; set; } = string.Empty;
-    public string Location { get; set; } = string.Empty;
-    public string ServiceLevel { get; set; } = string.Empty; // "Standard", "Premium", "Ultra"
-    public string? PoolQosType { get; set; } // "Auto" or "Manual"
-    public long ProvisionedSizeBytes { get; set; }
-    public double? ThroughputMibps { get; set; }
-    public double? ActualThroughputMibps { get; set; }
-    public bool? CoolAccessEnabled { get; set; }
-    public string? CoolTieringPolicy { get; set; } // e.g., "Auto", "SnapshotOnly"
-    public int? EstimatedIops { get; set; }
-    public double? EstimatedThroughputMiBps { get; set; }
-    public string[]? ProtocolTypes { get; set; } // e.g., ["NFSv3", "NFSv4.1", "CIFS"]
-    public Dictionary<string, string>? Tags { get; set; }
-    public DateTime DiscoveredAt { get; set; } = DateTime.UtcNow;
-    public string? MinimumTlsVersion { get; set; }
-    
-    // Snapshot and Backup metadata
-    public int? SnapshotCount { get; set; }
-    public long? TotalSnapshotSizeBytes { get; set; }
-    public double? ChurnRateBytesPerDay { get; set; }
-    public bool? BackupPolicyConfigured { get; set; }
-    
-    // Monitoring availability
-    public bool MonitoringEnabled { get; set; }
-    public int? MonitoringDataAvailableDays { get; set; }
-    public string? HistoricalMetricsSummary { get; set; } // JSON-serialized metrics summary
-}
-
-public class DiscoveredManagedDisk
-{
-    // Hierarchy identifiers
-    public string TenantId { get; set; } = string.Empty;
-    public string SubscriptionId { get; set; } = string.Empty;
-    public string ResourceGroup { get; set; } = string.Empty;
-    public string DiskName { get; set; } = string.Empty;
-
-    // Resource identification
-    public string ResourceId { get; set; } = string.Empty;
-    public string Location { get; set; } = string.Empty;
-
-    // Disk properties
-    public string DiskSku { get; set; } = string.Empty;
-    public string DiskTier { get; set; } = string.Empty;
-    public long DiskSizeGB { get; set; }
-    public string DiskState { get; set; } = string.Empty;
-    public string ProvisioningState { get; set; } = string.Empty;
-    public long? DiskSizeBytes { get; set; }
-    public string? DiskType { get; set; }
-    public bool? BurstingEnabled { get; set; }
-
-    // Performance estimation
-    public int? EstimatedIops { get; set; }
-    public double? EstimatedThroughputMiBps { get; set; }
-
-    // Attachment information
-    public bool IsAttached { get; set; }
-    public string? AttachedVmId { get; set; }
-    public string? AttachedVmName { get; set; }
-    public string? VmSize { get; set; }
-    public int? VmCpuCount { get; set; }
-    public double? VmMemoryGiB { get; set; }
-    public string? VmOsType { get; set; }
-    public bool? IsOsDisk { get; set; }
-
-    // Tags and metadata
-    public Dictionary<string, string>? Tags { get; set; }
-    public Dictionary<string, string>? VmTags { get; set; }
-
-    // Timestamps
-    public DateTime? TimeCreated { get; set; }
-    public DateTime DiscoveredAt { get; set; } = DateTime.UtcNow;
-
-    // Monitoring availability
-    public bool MonitoringEnabled { get; set; }
-    public int? MonitoringDataAvailableDays { get; set; }
     public string? HistoricalMetricsSummary { get; set; }
+
+    // Managed disk usage/metrics
+    public long? UsedBytes { get; set; }
+    public double? AverageReadIops { get; set; }
+    public double? AverageWriteIops { get; set; }
+    public double? AverageReadThroughputMiBps { get; set; }
+    public double? AverageWriteThroughputMiBps { get; set; }
 }
 
 public class DiscoveryResult

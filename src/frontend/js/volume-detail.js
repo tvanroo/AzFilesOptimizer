@@ -535,7 +535,7 @@ const volumeDetailPage = {
                     name: vol.DiskName || 'Unknown Disk',
                     parentName: vol.AttachedVmName || 'Not Attached',
                     capacityGiB: vol.DiskSizeGB || 0,
-                    usedBytes: vol.DiskSizeBytes || (vol.DiskSizeGB || 0) * 1024 * 1024 * 1024,
+                    usedBytes: vol.UsedBytes || vol.DiskSizeBytes || (vol.DiskSizeGB || 0) * 1024 * 1024 * 1024,
                     tier: vol.DiskTier || vol.DiskSku || 'Unknown',
                     protocols: [vol.DiskType || 'Unknown'],
                     sku: vol.DiskSku || 'N/A'
@@ -619,6 +619,21 @@ const volumeDetailPage = {
             { label: 'Bursting Enabled', value: vol.BurstingEnabled ? 'Yes' : 'No' },
             { label: 'Is OS Disk', value: vol.IsOsDisk ? 'Yes' : 'No' }
         ];
+
+        // Add performance metrics if available
+        if (vol.AverageReadIops || vol.AverageWriteIops) {
+            const readIops = vol.AverageReadIops ? vol.AverageReadIops.toFixed(1) : '-';
+            const writeIops = vol.AverageWriteIops ? vol.AverageWriteIops.toFixed(1) : '-';
+            diskProps.push({ label: 'Avg Read IOPS', value: readIops });
+            diskProps.push({ label: 'Avg Write IOPS', value: writeIops });
+        }
+
+        if (vol.AverageReadThroughputMiBps || vol.AverageWriteThroughputMiBps) {
+            const readMb = vol.AverageReadThroughputMiBps ? vol.AverageReadThroughputMiBps.toFixed(1) : '-';
+            const writeMb = vol.AverageWriteThroughputMiBps ? vol.AverageWriteThroughputMiBps.toFixed(1) : '-';
+            diskProps.push({ label: 'Avg Read Throughput (MiB/s)', value: readMb });
+            diskProps.push({ label: 'Avg Write Throughput (MiB/s)', value: writeMb });
+        }
 
         // Add VM details if attached
         if (vol.IsAttached && vol.AttachedVmName) {

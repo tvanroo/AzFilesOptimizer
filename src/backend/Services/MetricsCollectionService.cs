@@ -155,15 +155,11 @@ public class MetricsCollectionService
     public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectAnfVolumeMetricsAsync(
         string resourceId, string volumeName)
     {
-        try
-        {
-            var endTime = DateTime.UtcNow;
-            var startTime = endTime.AddDays(-30);
-            
-            // Ask which metrics are supported for this ANF volume
-            var supported = await GetSupportedMetricNamesAsync(resourceId);
-            // Preferred metrics (will be filtered by what exists)
-            var preferred = new (string name, string aggregation)[]
+        return await CollectMetricsAsync(
+            resourceId,
+            "microsoft.netapp%2Fnetappaccounts%2Fcapacitypools%2Fvolumes",
+            volumeName,
+            new (string name, string aggregation)[]
             {
                 ("VolumeLogicalSize","Average"),
                 ("ReadIOPS","Average"),
@@ -172,10 +168,41 @@ public class MetricsCollectionService
                 ("WriteThroughput","Average"),
                 ("VolumeThroughputReadBytes","Average"),
                 ("VolumeThroughputWriteBytes","Average")
-            };
-            var metrics = preferred.Where(p => supported.Contains(p.name, StringComparer.OrdinalIgnoreCase))
-                                   .Distinct()
-                                   .ToList();
+            });
+    }
+
+    public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectManagedDiskMetricsAsync(
+        string resourceId, string diskName)
+    {
+        return await CollectMetricsAsync(
+            resourceId,
+            "microsoft.compute%2Fdisks",
+            diskName,
+            new (string name, string aggregation)[]
+            {
+                ("Disk Read Bytes","Average"),
+                ("Disk Write Bytes","Average"),
+                ("Disk Read Operations/Sec","Average"),
+                ("Disk Write Operations/Sec","Average"),
+                ("Disk Used Capacity","Average")
+            });
+    }
+
+    private async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectMetricsAsync(
+        string resourceId,
+        string metricNamespace,
+        string displayName,
+        IEnumerable<(string name, string aggregation)> preferredMetrics)
+    {
+        try
+        {
+            var endTime = DateTime.UtcNow;
+            var startTime = endTime.AddDays(-30);
+
+            var supported = await GetSupportedMetricNamesAsync(resourceId);
+            var metrics = preferredMetrics.Where(p => supported.Contains(p.name, StringComparer.OrdinalIgnoreCase))
+                                           .Distinct()
+                                           .ToList();
 
             var metricsData = new Dictionary<string, object>();
             bool hasAnyData = false;
@@ -184,7 +211,7 @@ public class MetricsCollectionService
             using var httpClient = new HttpClient();
             var token = await _credential.GetTokenAsync(
                 new TokenRequestContext(new[] { "https://management.azure.com/.default" }), default);
-            httpClient.DefaultRequestHeaders.Authorization = 
+            httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
 
             foreach (var metric in metrics)
@@ -196,24 +223,23 @@ public class MetricsCollectionService
                     var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
                     var apiUrl = $"https://management.azure.com{resourceId}/providers/Microsoft.Insights/metrics" +
                         $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
-                        $"&interval=PT1H&metricNamespace=microsoft.netapp%2Fnetappaccounts%2Fcapacitypools%2Fvolumes&metricnames={metricName}&aggregation={aggregation}";
-                    
-                    _logger.LogDebug("Fetching ANF metric {MetricName} with {Aggregation} from: {Url}", metricName, aggregation, apiUrl);
+                        $"&interval=PT1H&metricNamespace={metricNamespace}&metricnames={Uri.EscapeDataString(metricName)}&aggregation={aggregation}";
+
+                    _logger.LogDebug("Fetching metric {MetricName} with {Aggregation} from: {Url}", metricName, aggregation, apiUrl);
                     var response = await httpClient.GetAsync(apiUrl);
                     if (response.IsSuccessStatusCode)
                     {
                         var content = await response.Content.ReadAsStringAsync();
                         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                         var result = JsonSerializer.Deserialize<MetricsApiResponse>(content, options);
-                        
+
                         if (result?.value?.Any() == true)
                         {
                             foreach (var metricValue in result.value)
                             {
-                                // Check all timeseries (not just the first one)
                                 var allTimeseries = metricValue.timeseries ?? Array.Empty<Timeseries>();
                                 var dataPoints = new List<DataPoint>();
-                                
+
                                 foreach (var timeseries in allTimeseries)
                                 {
                                     if (timeseries?.data?.Any() == true)
@@ -221,13 +247,13 @@ public class MetricsCollectionService
                                         dataPoints.AddRange(timeseries.data.Where(d => d.total.HasValue || d.average.HasValue));
                                     }
                                 }
-                                
+
                                 if (dataPoints.Any())
                                 {
                                     hasAnyData = true;
                                     var oldestPoint = dataPoints.Min(d => DateTime.Parse(d.timeStamp));
                                     oldestDataDays = Math.Max(oldestDataDays, (endTime - oldestPoint).Days);
-                                    
+
                                     metricsData[metricName] = new
                                     {
                                         average = dataPoints.Average(d => d.average ?? d.total ?? 0),
@@ -235,30 +261,30 @@ public class MetricsCollectionService
                                         total = dataPoints.Where(d => d.total.HasValue).Sum(d => d.total ?? 0),
                                         dataPointCount = dataPoints.Count
                                     };
-                                    _logger.LogDebug("Collected {Count} data points for ANF metric {MetricName}", dataPoints.Count, metricName);
+                                    _logger.LogDebug("Collected {Count} data points for metric {MetricName}", dataPoints.Count, metricName);
                                 }
                                 else
                                 {
-                                    _logger.LogDebug("ANF metric {MetricName} returned but has no valid data points", metricName);
+                                    _logger.LogDebug("Metric {MetricName} returned but has no valid data points", metricName);
                                 }
                             }
                         }
                         else
                         {
-                            _logger.LogInformation("No metric data returned for {MetricName} on ANF volume {Volume}. Response: {Response}", 
-                                metricName, volumeName, content.Length > 500 ? content.Substring(0, 500) : content);
+                            _logger.LogInformation("No metric data returned for {MetricName} on {Resource}. Response: {Response}",
+                                metricName, displayName, content.Length > 500 ? content.Substring(0, 500) : content);
                         }
                     }
                     else
                     {
                         var errorContent = await response.Content.ReadAsStringAsync();
-                        _logger.LogWarning("Failed to fetch metric {MetricName} for ANF volume {Volume}. Status: {Status}, Error: {Error}", 
-                            metricName, volumeName, (int)response.StatusCode, errorContent.Length > 500 ? errorContent.Substring(0, 500) : errorContent);
+                        _logger.LogWarning("Failed to fetch metric {MetricName} for {Resource}. Status: {Status}, Error: {Error}",
+                            metricName, displayName, (int)response.StatusCode, errorContent.Length > 500 ? errorContent.Substring(0, 500) : errorContent);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to collect metric {MetricName} for ANF {Volume}", metricName, volumeName);
+                    _logger.LogWarning(ex, "Failed to collect metric {MetricName} for {Resource}", metricName, displayName);
                 }
             }
 
@@ -267,7 +293,7 @@ public class MetricsCollectionService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error collecting metrics for ANF {Volume}", volumeName);
+            _logger.LogError(ex, "Error collecting metrics for {Resource}", displayName);
             return (false, null, null);
         }
     }

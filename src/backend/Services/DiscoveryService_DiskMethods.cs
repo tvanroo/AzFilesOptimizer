@@ -97,6 +97,35 @@ public partial class DiscoveryService
                             discoveredDisk.EstimatedIops = estIops;
                             discoveredDisk.EstimatedThroughputMiBps = estBw;
 
+                            // Collect Azure Monitor metrics for managed disks (only if attached)
+                            if (_metricsService != null && discoveredDisk.IsAttached)
+                            {
+                                try
+                                {
+                                    await LogProgressAsync($"        → Collecting Azure Monitor metrics for disk {disk.Data.Name}...");
+                                    var (hasData, daysAvailable, metricsSummary) = await _metricsService
+                                        .CollectManagedDiskMetricsAsync(disk.Id.ToString(), disk.Data.Name);
+
+                                    discoveredDisk.MonitoringEnabled = hasData;
+                                    discoveredDisk.MonitoringDataAvailableDays = daysAvailable;
+                                    discoveredDisk.HistoricalMetricsSummary = metricsSummary;
+
+                                    if (hasData && !string.IsNullOrEmpty(metricsSummary))
+                                    {
+                                        ApplyDiskMetricsSummary(discoveredDisk, metricsSummary);
+                                        await LogProgressAsync($"        ✓ Metrics collected: {daysAvailable} days available");
+                                    }
+                                    else
+                                    {
+                                        await LogProgressAsync($"        ⚠ No metrics data available for disk {disk.Data.Name}");
+                                    }
+                                }
+                                catch (Exception metricsEx)
+                                {
+                                    _logger.LogWarning(metricsEx, "Failed to collect metrics for disk {DiskName}", disk.Data.Name);
+                                }
+                            }
+
                             // Check if attached to VM
                             if (discoveredDisk.IsAttached && !string.IsNullOrEmpty(managedBy))
                             {
@@ -218,5 +247,43 @@ public partial class DiscoveryService
             },
             _ => (500, 60)
         };
+    }
+
+    private static void ApplyDiskMetricsSummary(DiscoveredManagedDisk disk, string metricsSummary)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(metricsSummary);
+            var root = doc.RootElement;
+
+            disk.AverageReadIops = GetMetricAverage(root, "Disk Read Operations/Sec");
+            disk.AverageWriteIops = GetMetricAverage(root, "Disk Write Operations/Sec");
+
+            var readBytes = GetMetricAverage(root, "Disk Read Bytes");
+            var writeBytes = GetMetricAverage(root, "Disk Write Bytes");
+
+            disk.AverageReadThroughputMiBps = readBytes.HasValue ? readBytes.Value / (1024 * 1024) : null;
+            disk.AverageWriteThroughputMiBps = writeBytes.HasValue ? writeBytes.Value / (1024 * 1024) : null;
+
+            var usedBytes = GetMetricAverage(root, "Disk Used Capacity");
+            disk.UsedBytes = usedBytes.HasValue ? (long?)Math.Round(usedBytes.Value) : null;
+        }
+        catch (Exception ex)
+        {
+            // Ignore parse errors; metrics summary is best-effort
+            Console.WriteLine($"Failed to parse disk metrics summary: {ex.Message}");
+        }
+    }
+
+    private static double? GetMetricAverage(System.Text.Json.JsonElement root, string metricName)
+    {
+        if (root.TryGetProperty(metricName, out var metric) &&
+            metric.TryGetProperty("average", out var averageProp) &&
+            averageProp.ValueKind == System.Text.Json.JsonValueKind.Number &&
+            averageProp.TryGetDouble(out var avg))
+        {
+            return avg;
+        }
+        return null;
     }
 }

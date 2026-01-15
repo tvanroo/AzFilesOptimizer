@@ -347,7 +347,12 @@ public class DiscoveredResourceStorageService
             { "DiscoveredAt", disk.DiscoveredAt },
             { "MonitoringEnabled", disk.MonitoringEnabled },
             { "MonitoringDataAvailableDays", disk.MonitoringDataAvailableDays },
-            { "HistoricalMetricsSummary", disk.HistoricalMetricsSummary }
+            { "HistoricalMetricsSummary", disk.HistoricalMetricsSummary },
+            { "UsedBytes", disk.UsedBytes },
+            { "AverageReadIops", disk.AverageReadIops },
+            { "AverageWriteIops", disk.AverageWriteIops },
+            { "AverageReadThroughputMiBps", disk.AverageReadThroughputMiBps },
+            { "AverageWriteThroughputMiBps", disk.AverageWriteThroughputMiBps }
         };
 
         if (disk.Tags != null && disk.Tags.Count > 0)
@@ -409,7 +414,12 @@ public class DiscoveredResourceStorageService
             DiscoveredAt = entity.GetDateTime("DiscoveredAt") ?? DateTime.UtcNow,
             MonitoringEnabled = entity.GetBoolean("MonitoringEnabled") ?? false,
             MonitoringDataAvailableDays = entity.GetInt32("MonitoringDataAvailableDays"),
-            HistoricalMetricsSummary = entity.GetString("HistoricalMetricsSummary")
+            HistoricalMetricsSummary = entity.GetString("HistoricalMetricsSummary"),
+            UsedBytes = entity.GetInt64("UsedBytes"),
+            AverageReadIops = entity.GetDouble("AverageReadIops"),
+            AverageWriteIops = entity.GetDouble("AverageWriteIops"),
+            AverageReadThroughputMiBps = entity.GetDouble("AverageReadThroughputMiBps"),
+            AverageWriteThroughputMiBps = entity.GetDouble("AverageWriteThroughputMiBps")
         };
     }
 }
