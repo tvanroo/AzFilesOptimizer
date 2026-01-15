@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace AzFilesOptimizer.Backend.Services;
 
-public class DiscoveryService
+public partial class DiscoveryService
 {
     private readonly ILogger _logger;
     private readonly JobLogService? _jobLogService;
@@ -602,30 +602,5 @@ public class DiscoveryService
         }
 
         return volumes;
-    }
-
-    private async Task<List<DiscoveredManagedDisk>> DiscoverManagedDisksAsync(
-        Azure.ResourceManager.Resources.SubscriptionResource subscription,
-        string[]? resourceGroupFilters,
-        string? tenantId = null)
-    {
-        var disks = new List<DiscoveredManagedDisk>();
-
-        try
-        {
-            await LogProgressAsync("  • Starting managed disk discovery...");
-            
-            // TODO: Implement disk discovery logic in next step
-            
-            await LogProgressAsync($"  → Total: {disks.Count} managed disks discovered (excluding OS disks)");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error discovering managed disks");
-            await LogProgressAsync($"  ⚠ ERROR during managed disk discovery: {ex.Message}");
-            throw;
-        }
-
-        return disks;
     }
 }

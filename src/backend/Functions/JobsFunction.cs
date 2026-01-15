@@ -117,13 +117,16 @@ public class JobsFunction
         {
             var shares = await _resourceStorage.GetSharesByJobIdAsync(jobId);
             var volumes = await _resourceStorage.GetVolumesByJobIdAsync(jobId);
-            
+            var disks = await _resourceStorage.GetDisksByJobIdAsync(jobId);
+
             var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(new { 
+            await response.WriteAsJsonAsync(new {
                 shares = shares,
                 volumes = volumes,
+                disks = disks,
                 totalShares = shares.Count,
-                totalVolumes = volumes.Count
+                totalVolumes = volumes.Count,
+                totalDisks = disks.Count
             });
             return response;
         }
@@ -442,8 +445,9 @@ public class JobsFunction
             // Persist discovered resources to Table Storage
             await _resourceStorage.SaveSharesAsync(jobId, result.AzureFileShares);
             await _resourceStorage.SaveVolumesAsync(jobId, result.AnfVolumes);
-            
-            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Saved {result.AzureFileShares.Count} shares and {result.AnfVolumes.Count} volumes to storage");
+            await _resourceStorage.SaveDisksAsync(jobId, result.ManagedDisks);
+
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Saved {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes, and {result.ManagedDisks.Count} disks to storage");
 
             // Update job with results
             job.Status = JobStatus.Completed;
@@ -454,11 +458,11 @@ public class JobsFunction
                                      result.AnfVolumes.Sum(v => v.ProvisionedSizeBytes);
 
             await _jobStorage.UpdateDiscoveryJobAsync(job);
-            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Found {result.AzureFileShares.Count} Azure Files shares and {result.AnfVolumes.Count} ANF volumes");
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Found {result.AzureFileShares.Count} Azure Files shares, {result.AnfVolumes.Count} ANF volumes, and {result.ManagedDisks.Count} managed disks");
             await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Job completed successfully");
 
-            _logger.LogInformation("Discovery job completed: {JobId}. Found {SharesCount} shares and {VolumesCount} volumes",
-                jobId, result.AzureFileShares.Count, result.AnfVolumes.Count);
+            _logger.LogInformation("Discovery job completed: {JobId}. Found {SharesCount} shares, {VolumesCount} volumes, and {DisksCount} disks",
+                jobId, result.AzureFileShares.Count, result.AnfVolumes.Count, result.ManagedDisks.Count);
         }
         catch (Exception ex)
         {

@@ -10,16 +10,20 @@ public class DiscoveredResourceStorageService
 {
     private readonly TableClient _sharesTableClient;
     private readonly TableClient _volumesTableClient;
+    private readonly TableClient _disksTableClient;
 
     public DiscoveredResourceStorageService(string storageConnectionString)
     {
         var tableServiceClient = new TableServiceClient(storageConnectionString);
-        
+
         _sharesTableClient = tableServiceClient.GetTableClient("discoveredshares");
         _sharesTableClient.CreateIfNotExists();
-        
+
         _volumesTableClient = tableServiceClient.GetTableClient("discoveredanfvolumes");
         _volumesTableClient.CreateIfNotExists();
+
+        _disksTableClient = tableServiceClient.GetTableClient("discovereddisks");
+        _disksTableClient.CreateIfNotExists();
     }
 
     public async Task SaveSharesAsync(string jobId, List<DiscoveredAzureFileShare> shares)
@@ -292,7 +296,7 @@ public class DiscoveredResourceStorageService
     private static Dictionary<string, string>? DeserializeDictionary(string? json)
     {
         if (string.IsNullOrEmpty(json)) return null;
-        
+
         try
         {
             return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
@@ -301,5 +305,111 @@ public class DiscoveredResourceStorageService
         {
             return null;
         }
+    }
+
+    public async Task SaveDisksAsync(string jobId, List<DiscoveredManagedDisk> disks)
+    {
+        if (disks == null || disks.Count == 0) return;
+
+        var tasks = disks.Select(disk => SaveDiskAsync(jobId, disk));
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task SaveDiskAsync(string jobId, DiscoveredManagedDisk disk)
+    {
+        var entity = new TableEntity(jobId, EncodeResourceId(disk.ResourceId))
+        {
+            { "TenantId", disk.TenantId },
+            { "SubscriptionId", disk.SubscriptionId },
+            { "ResourceGroup", disk.ResourceGroup },
+            { "DiskName", disk.DiskName },
+            { "ResourceId", disk.ResourceId },
+            { "Location", disk.Location },
+            { "DiskSku", disk.DiskSku },
+            { "DiskTier", disk.DiskTier },
+            { "DiskSizeGB", disk.DiskSizeGB },
+            { "DiskState", disk.DiskState },
+            { "ProvisioningState", disk.ProvisioningState },
+            { "DiskSizeBytes", disk.DiskSizeBytes },
+            { "DiskType", disk.DiskType },
+            { "BurstingEnabled", disk.BurstingEnabled },
+            { "EstimatedIops", disk.EstimatedIops },
+            { "EstimatedThroughputMiBps", disk.EstimatedThroughputMiBps },
+            { "IsAttached", disk.IsAttached },
+            { "AttachedVmId", disk.AttachedVmId },
+            { "AttachedVmName", disk.AttachedVmName },
+            { "VmSize", disk.VmSize },
+            { "VmCpuCount", disk.VmCpuCount },
+            { "VmMemoryGiB", disk.VmMemoryGiB },
+            { "VmOsType", disk.VmOsType },
+            { "IsOsDisk", disk.IsOsDisk },
+            { "TimeCreated", disk.TimeCreated },
+            { "DiscoveredAt", disk.DiscoveredAt },
+            { "MonitoringEnabled", disk.MonitoringEnabled },
+            { "MonitoringDataAvailableDays", disk.MonitoringDataAvailableDays },
+            { "HistoricalMetricsSummary", disk.HistoricalMetricsSummary }
+        };
+
+        if (disk.Tags != null && disk.Tags.Count > 0)
+        {
+            entity["Tags"] = System.Text.Json.JsonSerializer.Serialize(disk.Tags);
+        }
+
+        if (disk.VmTags != null && disk.VmTags.Count > 0)
+        {
+            entity["VmTags"] = System.Text.Json.JsonSerializer.Serialize(disk.VmTags);
+        }
+
+        await _disksTableClient.UpsertEntityAsync(entity);
+    }
+
+    public async Task<List<DiscoveredManagedDisk>> GetDisksByJobIdAsync(string jobId)
+    {
+        var disks = new List<DiscoveredManagedDisk>();
+
+        await foreach (var entity in _disksTableClient.QueryAsync<TableEntity>(filter: $"PartitionKey eq '{jobId}'"))
+        {
+            disks.Add(EntityToDisk(entity));
+        }
+
+        return disks;
+    }
+
+    private static DiscoveredManagedDisk EntityToDisk(TableEntity entity)
+    {
+        return new DiscoveredManagedDisk
+        {
+            TenantId = entity.GetString("TenantId") ?? string.Empty,
+            SubscriptionId = entity.GetString("SubscriptionId") ?? string.Empty,
+            ResourceGroup = entity.GetString("ResourceGroup") ?? string.Empty,
+            DiskName = entity.GetString("DiskName") ?? string.Empty,
+            ResourceId = entity.GetString("ResourceId") ?? string.Empty,
+            Location = entity.GetString("Location") ?? string.Empty,
+            DiskSku = entity.GetString("DiskSku") ?? string.Empty,
+            DiskTier = entity.GetString("DiskTier") ?? string.Empty,
+            DiskSizeGB = entity.GetInt64("DiskSizeGB") ?? 0,
+            DiskState = entity.GetString("DiskState") ?? string.Empty,
+            ProvisioningState = entity.GetString("ProvisioningState") ?? string.Empty,
+            DiskSizeBytes = entity.GetInt64("DiskSizeBytes"),
+            DiskType = entity.GetString("DiskType"),
+            BurstingEnabled = entity.GetBoolean("BurstingEnabled"),
+            EstimatedIops = entity.GetInt32("EstimatedIops"),
+            EstimatedThroughputMiBps = entity.GetDouble("EstimatedThroughputMiBps"),
+            IsAttached = entity.GetBoolean("IsAttached") ?? false,
+            AttachedVmId = entity.GetString("AttachedVmId"),
+            AttachedVmName = entity.GetString("AttachedVmName"),
+            VmSize = entity.GetString("VmSize"),
+            VmCpuCount = entity.GetInt32("VmCpuCount"),
+            VmMemoryGiB = entity.GetDouble("VmMemoryGiB"),
+            VmOsType = entity.GetString("VmOsType"),
+            IsOsDisk = entity.GetBoolean("IsOsDisk"),
+            Tags = DeserializeDictionary(entity.GetString("Tags")),
+            VmTags = DeserializeDictionary(entity.GetString("VmTags")),
+            TimeCreated = entity.GetDateTime("TimeCreated"),
+            DiscoveredAt = entity.GetDateTime("DiscoveredAt") ?? DateTime.UtcNow,
+            MonitoringEnabled = entity.GetBoolean("MonitoringEnabled") ?? false,
+            MonitoringDataAvailableDays = entity.GetInt32("MonitoringDataAvailableDays"),
+            HistoricalMetricsSummary = entity.GetString("HistoricalMetricsSummary")
+        };
     }
 }
