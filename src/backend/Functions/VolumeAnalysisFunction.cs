@@ -252,12 +252,14 @@ public class VolumeAnalysisFunction
             var result = await _annotationService.GetVolumesWithFiltersAsync(
                 jobId, workloadFilter, statusFilter, confidenceMin, page, pageSize);
             
+            var response = req.CreateResponse(HttpStatusCode.OK);
             var options = new JsonSerializerOptions
             {
                 Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
             };
-            var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(result, options);
+            var json = JsonSerializer.Serialize(result, options);
+            response.Headers.Add("Content-Type", "application/json");
+            await response.WriteStringAsync(json);
             return response;
         }
         catch (Exception ex)
@@ -298,12 +300,14 @@ public class VolumeAnalysisFunction
                 AnnotationHistory = volume.AnnotationHistory
             };
 
+            var response = req.CreateResponse(HttpStatusCode.OK);
             var options = new JsonSerializerOptions
             {
                 Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
             };
-            var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(dto, options);
+            var json = JsonSerializer.Serialize(dto, options);
+            response.Headers.Add("Content-Type", "application/json");
+            await response.WriteStringAsync(json);
             return response;
         }
         catch (Exception ex)
