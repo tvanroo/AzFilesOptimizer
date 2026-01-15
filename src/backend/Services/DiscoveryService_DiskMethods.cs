@@ -267,6 +267,12 @@ public partial class DiscoveryService
 
             var usedBytes = GetMetricAverage(root, "Disk Used Capacity");
             disk.UsedBytes = usedBytes.HasValue ? (long?)Math.Round(usedBytes.Value) : null;
+
+            // If used capacity metric is missing, fall back to full disk size
+            if (!disk.UsedBytes.HasValue && disk.DiskSizeBytes.HasValue)
+            {
+                disk.UsedBytes = disk.DiskSizeBytes;
+            }
         }
         catch (Exception ex)
         {

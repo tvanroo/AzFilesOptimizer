@@ -47,11 +47,17 @@ public class MetricsCollectionService
                                    .Distinct()
                                    .ToList();
 
-            var metricsData = new Dictionary<string, object>();
-            bool hasAnyData = false;
-            int oldestDataDays = 0;
+             var metricsData = new Dictionary<string, object>();
+             bool hasAnyData = false;
+             int oldestDataDays = 0;
 
-            using var httpClient = new HttpClient();
+             metricsData["_meta"] = new
+             {
+                 interval = "PT1H",
+                 timespan = new { start = startTime, end = endTime }
+             };
+
+             using var httpClient = new HttpClient();
             var token = await _credential.GetTokenAsync(
                 new TokenRequestContext(new[] { "https://management.azure.com/.default" }), default);
             httpClient.DefaultRequestHeaders.Authorization = 
@@ -155,20 +161,20 @@ public class MetricsCollectionService
     public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectAnfVolumeMetricsAsync(
         string resourceId, string volumeName)
     {
-        return await CollectMetricsAsync(
-            resourceId,
-            "microsoft.netapp%2Fnetappaccounts%2Fcapacitypools%2Fvolumes",
-            volumeName,
-            new (string name, string aggregation)[]
-            {
-                ("VolumeLogicalSize","Average"),
-                ("ReadIOPS","Average"),
-                ("WriteIOPS","Average"),
-                ("ReadThroughput","Average"),
-                ("WriteThroughput","Average"),
-                ("VolumeThroughputReadBytes","Average"),
-                ("VolumeThroughputWriteBytes","Average")
-            });
+            return await CollectMetricsAsync(
+                resourceId,
+                "microsoft.netapp%2Fnetappaccounts%2Fcapacitypools%2Fvolumes",
+                volumeName,
+                new (string name, string aggregation)[]
+                {
+                    ("VolumeLogicalSize","Average,Total,Maximum,Minimum"),
+                    ("ReadIOPS","Average,Total,Maximum,Minimum"),
+                    ("WriteIOPS","Average,Total,Maximum,Minimum"),
+                    ("ReadThroughput","Average,Total,Maximum,Minimum"),
+                    ("WriteThroughput","Average,Total,Maximum,Minimum"),
+                    ("VolumeThroughputReadBytes","Average,Total,Maximum,Minimum"),
+                    ("VolumeThroughputWriteBytes","Average,Total,Maximum,Minimum")
+                });
     }
 
     public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectManagedDiskMetricsAsync(
@@ -180,19 +186,21 @@ public class MetricsCollectionService
             diskName,
             new (string name, string aggregation)[]
             {
-                ("Disk Read Bytes","Average"),
-                ("Disk Write Bytes","Average"),
-                ("Disk Read Operations/Sec","Average"),
-                ("Disk Write Operations/Sec","Average"),
-                ("Disk Used Capacity","Average")
-            });
+                ("Disk Read Bytes","Average,Total,Maximum,Minimum"),
+                ("Disk Write Bytes","Average,Total,Maximum,Minimum"),
+                ("Disk Read Operations/Sec","Average,Total,Maximum,Minimum"),
+                ("Disk Write Operations/Sec","Average,Total,Maximum,Minimum"),
+                ("Disk Used Capacity","Average,Maximum,Minimum")
+            },
+            excludeZeroDataPoints: true);
     }
 
     private async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectMetricsAsync(
         string resourceId,
         string metricNamespace,
         string displayName,
-        IEnumerable<(string name, string aggregation)> preferredMetrics)
+        IEnumerable<(string name, string aggregation)> preferredMetrics,
+        bool excludeZeroDataPoints = false)
     {
         try
         {
@@ -203,6 +211,12 @@ public class MetricsCollectionService
             var metrics = preferredMetrics.Where(p => supported.Contains(p.name, StringComparer.OrdinalIgnoreCase))
                                            .Distinct()
                                            .ToList();
+
+            if (metrics.Count == 0)
+            {
+                _logger.LogDebug("No supported metrics found for {Resource}. Supported: {Supported}", displayName, string.Join(", ", supported));
+                return (false, null, null);
+            }
 
             var metricsData = new Dictionary<string, object>();
             bool hasAnyData = false;
@@ -244,7 +258,13 @@ public class MetricsCollectionService
                                 {
                                     if (timeseries?.data?.Any() == true)
                                     {
-                                        dataPoints.AddRange(timeseries.data.Where(d => d.total.HasValue || d.average.HasValue));
+                                        foreach (var dp in timeseries.data)
+                                        {
+                                            if (dp == null) continue;
+                                            if (!dp.HasAnyValue()) continue;
+                                            if (excludeZeroDataPoints && dp.IsAllZero()) continue;
+                                            dataPoints.Add(dp);
+                                        }
                                     }
                                 }
 
@@ -254,10 +274,17 @@ public class MetricsCollectionService
                                     var oldestPoint = dataPoints.Min(d => DateTime.Parse(d.timeStamp));
                                     oldestDataDays = Math.Max(oldestDataDays, (endTime - oldestPoint).Days);
 
+                                    var values = dataPoints
+                                        .Select(d => d.GetPrimaryValue())
+                                        .Where(v => v.HasValue)
+                                        .Select(v => v!.Value)
+                                        .ToList();
+
                                     metricsData[metricName] = new
                                     {
-                                        average = dataPoints.Average(d => d.average ?? d.total ?? 0),
-                                        max = dataPoints.Max(d => d.average ?? d.total ?? 0),
+                                        average = values.Count > 0 ? values.Average() : 0,
+                                        max = values.Count > 0 ? values.Max() : 0,
+                                        min = values.Count > 0 ? values.Min() : 0,
                                         total = dataPoints.Where(d => d.total.HasValue).Sum(d => d.total ?? 0),
                                         dataPointCount = dataPoints.Count
                                     };
@@ -318,6 +345,23 @@ public class MetricsCollectionService
         public string timeStamp { get; set; } = "";
         public double? average { get; set; }
         public double? total { get; set; }
+        public double? maximum { get; set; }
+        public double? minimum { get; set; }
+
+        public bool HasAnyValue()
+        {
+            return average.HasValue || total.HasValue || maximum.HasValue || minimum.HasValue;
+        }
+
+        public bool IsAllZero()
+        {
+            return (average ?? 0) == 0 && (total ?? 0) == 0 && (maximum ?? 0) == 0 && (minimum ?? 0) == 0;
+        }
+
+        public double? GetPrimaryValue()
+        {
+            return average ?? total ?? maximum ?? minimum;
+        }
     }
 
     private class MetricDefinitionsResponse
