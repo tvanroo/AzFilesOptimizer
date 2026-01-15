@@ -34,11 +34,8 @@ public partial class DiscoveryService
 
                 try
                 {
-                    var rgResource = subscription.GetResourceGroup(rg.Data.Name);
-                    if (rgResource == null) continue;
-
                     // Cache VM data first
-                    var vms = rgResource.Value.GetVirtualMachines();
+                    var vms = rg.GetVirtualMachines();
                     await foreach (var vm in vms.GetAllAsync())
                     {
                         try
@@ -69,7 +66,7 @@ public partial class DiscoveryService
                     }
 
                     // Discover disks
-                    var allDisks = rgResource.Value.GetDisks();
+                    var allDisks = rg.GetDisks();
                     await foreach (var disk in allDisks.GetAllAsync())
                     {
                         try
