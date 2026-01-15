@@ -452,7 +452,10 @@
                             <span class="log-status-indicator" id="log-status-indicator"></span>
                             <span>Discovery Progress</span>
                         </div>
-                        <button class="btn" onclick="jobDetail.toggleLogConsole()" style="background: rgba(255,255,255,0.2); padding: 6px 12px; font-size: 12px;">Collapse</button>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn" onclick="jobDetail.copyLogContent('discovery-log-body')" style="background: rgba(255,255,255,0.15); padding: 6px 12px; font-size: 12px;" title="Copy log to clipboard">📋 Copy</button>
+                            <button class="btn" onclick="jobDetail.toggleLogConsole()" style="background: rgba(255,255,255,0.2); padding: 6px 12px; font-size: 12px;">Collapse</button>
+                        </div>
                     </div>
                     <div class="discovery-log-body" id="discovery-log-body">
                         <div style="color: #888; text-align: center; padding: 20px;">Waiting for discovery logs...</div>
@@ -520,7 +523,10 @@
                             <span class="log-status-indicator" id="analysis-status-indicator"></span>
                             <span id="analysis-status-text">Analysis Progress</span>
                         </div>
-                        <button class="btn" onclick="jobDetail.toggleAnalysisConsole()" style="background: rgba(255,255,255,0.2); padding: 6px 12px; font-size: 12px;">Collapse</button>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn" onclick="jobDetail.copyLogContent('analysis-log-body')" style="background: rgba(255,255,255,0.15); padding: 6px 12px; font-size: 12px;" title="Copy log to clipboard">📋 Copy</button>
+                            <button class="btn" onclick="jobDetail.toggleAnalysisConsole()" style="background: rgba(255,255,255,0.2); padding: 6px 12px; font-size: 12px;">Collapse</button>
+                        </div>
                     </div>
                     <div class="discovery-log-body" id="analysis-log-body">
                         <div style="color: #888; text-align: center; padding: 20px;">Waiting for analysis logs...</div>

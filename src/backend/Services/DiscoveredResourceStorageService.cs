@@ -10,20 +10,16 @@ public class DiscoveredResourceStorageService
 {
     private readonly TableClient _sharesTableClient;
     private readonly TableClient _volumesTableClient;
-    private readonly TableClient _disksTableClient;
 
     public DiscoveredResourceStorageService(string storageConnectionString)
     {
         var tableServiceClient = new TableServiceClient(storageConnectionString);
-
+        
         _sharesTableClient = tableServiceClient.GetTableClient("discoveredshares");
         _sharesTableClient.CreateIfNotExists();
-
+        
         _volumesTableClient = tableServiceClient.GetTableClient("discoveredanfvolumes");
         _volumesTableClient.CreateIfNotExists();
-
-        _disksTableClient = tableServiceClient.GetTableClient("discovereddisks");
-        _disksTableClient.CreateIfNotExists();
     }
 
     public async Task SaveSharesAsync(string jobId, List<DiscoveredAzureFileShare> shares)
@@ -305,179 +301,5 @@ public class DiscoveredResourceStorageService
         {
             return null;
         }
-    }
-
-    public async Task SaveDisksAsync(string jobId, List<DiscoveredManagedDisk> disks)
-    {
-        if (disks == null || disks.Count == 0) return;
-
-        var tasks = disks.Select(disk => SaveDiskAsync(jobId, disk));
-        await Task.WhenAll(tasks);
-    }
-
-    private async Task SaveDiskAsync(string jobId, DiscoveredManagedDisk disk)
-    {
-        var entity = new TableEntity(jobId, EncodeResourceId(disk.ResourceId))
-        {
-            // Hierarchy
-            { "TenantId", disk.TenantId },
-            { "SubscriptionId", disk.SubscriptionId },
-            { "ResourceGroup", disk.ResourceGroup },
-            { "DiskName", disk.DiskName },
-
-            // Resource identification
-            { "ResourceId", disk.ResourceId },
-            { "Location", disk.Location },
-
-            // Disk properties
-            { "DiskSku", disk.DiskSku },
-            { "DiskTier", disk.DiskTier },
-            { "DiskSizeGB", disk.DiskSizeGB },
-            { "DiskState", disk.DiskState },
-            { "ProvisioningState", disk.ProvisioningState },
-            { "DiskIopsReadWrite", disk.DiskIopsReadWrite },
-            { "DiskMBpsReadWrite", disk.DiskMBpsReadWrite },
-            { "DiskSizeBytes", disk.DiskSizeBytes },
-            { "DiskType", disk.DiskType },
-            { "BurstingEnabled", disk.BurstingEnabled },
-            { "BurstingBandwidthMibps", disk.BurstingBandwidthMibps },
-            { "BurstingIops", disk.BurstingIops },
-
-            // Performance properties
-            { "EstimatedIops", disk.EstimatedIops },
-            { "EstimatedThroughputMiBps", disk.EstimatedThroughputMiBps },
-
-            // Attachment information
-            { "IsAttached", disk.IsAttached },
-            { "AttachedVmId", disk.AttachedVmId },
-            { "AttachedVmName", disk.AttachedVmName },
-            { "AttachedVmLocation", disk.AttachedVmLocation },
-            { "VmSize", disk.VmSize },
-            { "VmFamily", disk.VmFamily },
-            { "VmCpuCount", disk.VmCpuCount },
-            { "VmMemoryGiB", disk.VmMemoryGiB },
-            { "Lun", disk.Lun },
-            { "CachingType", disk.CachingType },
-
-            // VM properties
-            { "VmOsType", disk.VmOsType },
-            { "VmOsDiskId", disk.VmOsDiskId },
-            { "IsOsDisk", disk.IsOsDisk },
-            { "AvailabilitySetId", disk.AvailabilitySetId },
-            { "ProximityPlacementGroupId", disk.ProximityPlacementGroupId },
-            { "Zone", disk.Zone },
-
-            // Timestamps
-            { "TimeCreated", disk.TimeCreated },
-            { "LastModifiedTime", disk.LastModifiedTime },
-            { "DiscoveredAt", disk.DiscoveredAt },
-
-            // Monitoring / Metrics
-            { "MonitoringEnabled", disk.MonitoringEnabled },
-            { "MonitoringDataAvailableDays", disk.MonitoringDataAvailableDays },
-            { "HistoricalMetricsSummary", disk.HistoricalMetricsSummary },
-
-            // VM host monitoring
-            { "VmMonitoringEnabled", disk.VmMonitoringEnabled },
-            { "VmMonitoringDataAvailableDays", disk.VmMonitoringDataAvailableDays },
-            { "VmHistoricalMetricsSummary", disk.VmHistoricalMetricsSummary }
-        };
-
-        if (disk.Metadata != null && disk.Metadata.Count > 0)
-        {
-            entity["Metadata"] = System.Text.Json.JsonSerializer.Serialize(disk.Metadata);
-        }
-
-        if (disk.Tags != null && disk.Tags.Count > 0)
-        {
-            entity["Tags"] = System.Text.Json.JsonSerializer.Serialize(disk.Tags);
-        }
-
-        if (disk.VmTags != null && disk.VmTags.Count > 0)
-        {
-            entity["VmTags"] = System.Text.Json.JsonSerializer.Serialize(disk.VmTags);
-        }
-
-        await _disksTableClient.UpsertEntityAsync(entity);
-    }
-
-    public async Task<List<DiscoveredManagedDisk>> GetDisksByJobIdAsync(string jobId)
-    {
-        var disks = new List<DiscoveredManagedDisk>();
-
-        await foreach (var entity in _disksTableClient.QueryAsync<TableEntity>(filter: $"PartitionKey eq '{jobId}'"))
-        {
-            disks.Add(EntityToDisk(entity));
-        }
-
-        return disks;
-    }
-
-    public async Task DeleteDisksByJobIdAsync(string jobId)
-    {
-        var entities = new List<TableEntity>();
-
-        await foreach (var entity in _disksTableClient.QueryAsync<TableEntity>(filter: $"PartitionKey eq '{jobId}'"))
-        {
-            entities.Add(entity);
-        }
-
-        var tasks = entities.Select(entity => _disksTableClient.DeleteEntityAsync(entity.PartitionKey, entity.RowKey));
-        await Task.WhenAll(tasks);
-    }
-
-    private static DiscoveredManagedDisk EntityToDisk(TableEntity entity)
-    {
-        return new DiscoveredManagedDisk
-        {
-            TenantId = entity.GetString("TenantId") ?? string.Empty,
-            SubscriptionId = entity.GetString("SubscriptionId") ?? string.Empty,
-            ResourceGroup = entity.GetString("ResourceGroup") ?? string.Empty,
-            DiskName = entity.GetString("DiskName") ?? string.Empty,
-            ResourceId = entity.GetString("ResourceId") ?? string.Empty,
-            Location = entity.GetString("Location") ?? string.Empty,
-            DiskSku = entity.GetString("DiskSku") ?? string.Empty,
-            DiskTier = entity.GetString("DiskTier") ?? string.Empty,
-            DiskSizeGB = entity.GetInt64("DiskSizeGB") ?? 0,
-            DiskState = entity.GetString("DiskState") ?? string.Empty,
-            ProvisioningState = entity.GetString("ProvisioningState") ?? string.Empty,
-            DiskIopsReadWrite = entity.GetString("DiskIopsReadWrite"),
-            DiskMBpsReadWrite = entity.GetString("DiskMBpsReadWrite"),
-            DiskSizeBytes = entity.GetInt64("DiskSizeBytes"),
-            DiskType = entity.GetString("DiskType"),
-            BurstingEnabled = entity.GetBoolean("BurstingEnabled"),
-            BurstingBandwidthMibps = entity.GetString("BurstingBandwidthMibps"),
-            BurstingIops = entity.GetString("BurstingIops"),
-            EstimatedIops = entity.GetInt32("EstimatedIops"),
-            EstimatedThroughputMiBps = entity.GetDouble("EstimatedThroughputMiBps"),
-            IsAttached = entity.GetBoolean("IsAttached") ?? false,
-            AttachedVmId = entity.GetString("AttachedVmId"),
-            AttachedVmName = entity.GetString("AttachedVmName"),
-            AttachedVmLocation = entity.GetString("AttachedVmLocation"),
-            VmSize = entity.GetString("VmSize"),
-            VmFamily = entity.GetString("VmFamily"),
-            VmCpuCount = entity.GetInt32("VmCpuCount"),
-            VmMemoryGiB = entity.GetDouble("VmMemoryGiB"),
-            Lun = entity.GetString("Lun"),
-            CachingType = entity.GetString("CachingType"),
-            VmOsType = entity.GetString("VmOsType"),
-            VmOsDiskId = entity.GetString("VmOsDiskId"),
-            IsOsDisk = entity.GetBoolean("IsOsDisk"),
-            AvailabilitySetId = entity.GetString("AvailabilitySetId"),
-            ProximityPlacementGroupId = entity.GetString("ProximityPlacementGroupId"),
-            Zone = entity.GetString("Zone"),
-            Tags = DeserializeDictionary(entity.GetString("Tags")),
-            VmTags = DeserializeDictionary(entity.GetString("VmTags")),
-            Metadata = DeserializeDictionary(entity.GetString("Metadata")),
-            TimeCreated = entity.GetDateTime("TimeCreated"),
-            LastModifiedTime = entity.GetDateTime("LastModifiedTime"),
-            DiscoveredAt = entity.GetDateTime("DiscoveredAt") ?? DateTime.UtcNow,
-            MonitoringEnabled = entity.GetBoolean("MonitoringEnabled") ?? false,
-            MonitoringDataAvailableDays = entity.GetInt32("MonitoringDataAvailableDays"),
-            HistoricalMetricsSummary = entity.GetString("HistoricalMetricsSummary"),
-            VmMonitoringEnabled = entity.GetBoolean("VmMonitoringEnabled") ?? false,
-            VmMonitoringDataAvailableDays = entity.GetInt32("VmMonitoringDataAvailableDays"),
-            VmHistoricalMetricsSummary = entity.GetString("VmHistoricalMetricsSummary")
-        };
     }
 }

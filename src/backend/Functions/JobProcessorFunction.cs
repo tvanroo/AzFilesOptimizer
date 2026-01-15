@@ -95,8 +95,8 @@ job.TotalCapacityBytes = result.AzureFileShares.Sum(s => (s.ShareQuotaGiB ?? 0) 
 
             await _jobStorage.UpdateDiscoveryJobAsync(job);
 
-            _logger.LogInformation("Discovery job completed: {JobId}. Found {SharesCount} shares, {VolumesCount} volumes, and {DisksCount} disks",
-                jobId, result.AzureFileShares.Count, result.AnfVolumes.Count, result.ManagedDisks.Count);
+            _logger.LogInformation("Discovery job completed: {JobId}. Found {SharesCount} shares and {VolumesCount} volumes",
+                jobId, result.AzureFileShares.Count, result.AnfVolumes.Count);
         }
         catch (Exception ex)
         {

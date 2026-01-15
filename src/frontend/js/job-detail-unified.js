@@ -922,7 +922,7 @@ const jobDetail = {
     toggleLogConsole() {
         const logBody = document.getElementById('discovery-log-body');
         const toggleBtn = event.target;
-        
+
         if (this.isLogConsoleCollapsed) {
             logBody.style.display = 'block';
             toggleBtn.textContent = 'Collapse';
@@ -933,7 +933,30 @@ const jobDetail = {
             this.isLogConsoleCollapsed = true;
         }
     },
-    
+
+    copyLogContent(elementId) {
+        const logBody = document.getElementById(elementId);
+        if (!logBody) return;
+
+        const logText = logBody.innerText || '';
+        if (!logText) {
+            alert('No log content to copy');
+            return;
+        }
+
+        navigator.clipboard.writeText(logText).then(() => {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Copied!';
+            setTimeout(() => {
+                btn.textContent = originalText;
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy log:', err);
+            alert('Failed to copy log. Please select and copy manually.');
+        });
+    },
+
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;

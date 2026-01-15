@@ -60,7 +60,6 @@ public class DiscoveryJob : ITableEntity
     // Results summary
     public int AzureFilesSharesFound { get; set; }
     public int AnfVolumesFound { get; set; }
-    public int ManagedDisksFound { get; set; }
     public int AnfAccountsFound { get; set; }
     public long TotalCapacityBytes { get; set; }
     
