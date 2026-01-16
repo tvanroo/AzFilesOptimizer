@@ -584,42 +584,11 @@ public class SettingsFunction
             throw new InvalidOperationException($"AI API call failed: {(int)response.StatusCode} {response.ReasonPhrase}. Body: {truncated}");
         }
 
-        var json = JsonDocument.Parse(responseBody);
-        var root = json.RootElement;
-        var messageEl = root.GetProperty("choices")[0].GetProperty("message");
-        var contentEl = messageEl.GetProperty("content");
-
-        string contentText = string.Empty;
-        if (contentEl.ValueKind == JsonValueKind.String)
-        {
-            contentText = contentEl.GetString() ?? string.Empty;
-        }
-        else if (contentEl.ValueKind == JsonValueKind.Array)
-        {
-            // Newer models may return an array of content parts; concatenate any text fields.
-            var sb = new System.Text.StringBuilder();
-            foreach (var part in contentEl.EnumerateArray())
-            {
-                if (part.ValueKind == JsonValueKind.String)
-                {
-                    sb.Append(part.GetString());
-                }
-                else if (part.ValueKind == JsonValueKind.Object && part.TryGetProperty("text", out var textEl))
-                {
-                    sb.Append(textEl.GetString());
-                }
-            }
-            contentText = sb.ToString();
-        }
-
-        // As a last resort, if we couldn't extract any text, return a generic message
-        // instead of an empty string so the caller knows the model responded.
-        if (string.IsNullOrWhiteSpace(contentText))
-        {
-            return "(Model responded but no plain-text content could be extracted.)";
-        }
-
-        return contentText;
+        // For TestApiKey we don't need to fully parse the model's structured response; we
+        // just want to confirm that a successful 2xx response was returned. To make this
+        // endpoint robust to future schema changes, return the raw response body and let
+        // callers truncate or inspect it as needed.
+        return responseBody;
     }
 
     private static bool ModelRequiresMaxCompletionTokens(string modelName)
