@@ -42,12 +42,18 @@ public class KeyVaultService
         try
         {
             var secretName = GetSecretName(userId);
+
+            // Start soft-delete operation (required when soft-delete is enabled)
             var operation = await _secretClient.StartDeleteSecretAsync(secretName);
             await operation.WaitForCompletionAsync();
+
+            // Immediately purge so the name can be reused without hitting
+            // "deleted but recoverable" conflicts in future SetSecret calls.
+            await _secretClient.PurgeDeletedSecretAsync(secretName);
         }
         catch (Azure.RequestFailedException ex) when (ex.Status == 404)
         {
-            // Already deleted or doesn't exist
+            // Already deleted or doesn't exist (including already purged)
         }
     }
 

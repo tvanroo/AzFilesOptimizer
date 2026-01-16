@@ -179,9 +179,29 @@ public class SettingsFunction
 
                 var content = await response.Content.ReadAsStringAsync();
                 var modelsResponse = JsonSerializer.Deserialize<OpenAIModelsResponse>(content);
-                var models = modelsResponse?.data?.Select(m => m.id).ToArray() ?? Array.Empty<string>();
-                
-                return (true, models, null);
+                var allModels = modelsResponse?.data?.Select(m => m.id)
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .ToArray() ?? Array.Empty<string>();
+
+                if (allModels.Length == 0)
+                {
+                    return (false, null, "API key is valid, but no models are available for this account.");
+                }
+
+                // Restrict to GPT-5 family chat models that are compatible with this app's
+                // Chat Completions usage (e.g., gpt-5.1, gpt-5, gpt-5-mini, gpt-5-nano).
+                var supported = allModels.Where(IsSupportedModel).ToArray();
+                if (supported.Length == 0)
+                {
+                    return (
+                        false,
+                        null,
+                        "API key is valid, but no GPT-5 family chat models are available. " +
+                        "Please enable at least one GPT-5 series model (for example: gpt-5.1, gpt-5, gpt-5-mini, or gpt-5-nano) and try again."
+                    );
+                }
+
+                return (true, supported, null);
             }
             else if (provider == "AzureOpenAI")
             {
@@ -200,9 +220,27 @@ public class SettingsFunction
 
                 var content = await response.Content.ReadAsStringAsync();
                 var deploymentsResponse = JsonSerializer.Deserialize<AzureOpenAIDeploymentsResponse>(content);
-                var models = deploymentsResponse?.data?.Select(d => d.model).ToArray() ?? Array.Empty<string>();
-                
-                return (true, models, null);
+                var allModels = deploymentsResponse?.data?.Select(d => d.model)
+                    .Where(m => !string.IsNullOrWhiteSpace(m))
+                    .ToArray() ?? Array.Empty<string>();
+
+                if (allModels.Length == 0)
+                {
+                    return (false, null, "API key is valid, but no deployments are available for this Azure OpenAI resource.");
+                }
+
+                var supported = allModels.Where(IsSupportedModel).ToArray();
+                if (supported.Length == 0)
+                {
+                    return (
+                        false,
+                        null,
+                        "API key is valid, but no GPT-5 family chat models are available in this Azure OpenAI resource. " +
+                        "Please deploy at least one GPT-5 series model (for example: gpt-5.1, gpt-5, gpt-5-mini, or gpt-5-nano) and try again."
+                    );
+                }
+
+                return (true, supported, null);
             }
 
             return (false, null, "Unknown provider");
@@ -283,6 +321,19 @@ public class SettingsFunction
                 return badRequest;
             }
 
+            // Require at least one GPT-5 family model in the preferred list so that
+            // downstream analysis and chat calls use the new GPT-5-style parameters.
+            if (request.PreferredModels == null ||
+                !request.PreferredModels.Any(m => IsSupportedModel(m)))
+            {
+                var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequest.WriteAsJsonAsync(new
+                {
+                    error = "Model preference must include at least one GPT-5 family chat model (for example: gpt-5.1, gpt-5, gpt-5-mini, or gpt-5-nano)."
+                });
+                return badRequest;
+            }
+
             var preferences = new ModelPreferences
             {
                 PreferredModels = request.PreferredModels,
@@ -303,6 +354,22 @@ public class SettingsFunction
             await errorResponse.WriteAsJsonAsync(new { error = "Failed to update model preferences", details = ex.Message });
             return errorResponse;
         }
+    }
+
+    private static bool IsSupportedModel(string? modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+            return false;
+
+        var name = modelName.Trim().ToLowerInvariant();
+
+        // Exclude responses-only / Codex variants which are not compatible with this app's
+        // Chat Completions usage.
+        if (name.Contains("codex"))
+            return false;
+
+        // Treat GPT-5 family chat models as supported: gpt-5, gpt-5.1, gpt-5-mini, gpt-5-nano, etc.
+        return name.StartsWith("gpt-5");
     }
 
     private string GetUserIdFromRequest(HttpRequestData req)
