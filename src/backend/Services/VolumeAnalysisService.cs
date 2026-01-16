@@ -62,6 +62,11 @@ public class VolumeAnalysisService
             return;
         }
 
+        // When DiscoveryData is loaded from Blob storage, VolumeData is deserialized as JsonElement
+        // because its static type is 'object'. Normalize it back to strongly-typed models so that
+        // downstream 'is DiscoveredAnfVolume' / 'is DiscoveredManagedDisk' checks succeed.
+        RehydrateVolumeData(discoveryData);
+
         // Partition volumes by type. DiscoveryData may contain Azure Files, ANF volumes,
         // and managed disks. We currently support AI analysis for all three types.
         var azureFileVolumes = discoveryData.Volumes
@@ -1140,12 +1145,46 @@ public class VolumeAnalysisService
             
             var response = await blobClient.DownloadContentAsync();
             var json = response.Value.Content.ToString();
-            return JsonSerializer.Deserialize<DiscoveryData>(json);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+            };
+            return JsonSerializer.Deserialize<DiscoveryData>(json, options);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error loading discovery data for job: {JobId}", jobId);
             throw;
+        }
+    }
+
+    private void RehydrateVolumeData(DiscoveryData discoveryData)
+    {
+        foreach (var volume in discoveryData.Volumes)
+        {
+            if (volume.VolumeData is JsonElement element)
+            {
+                try
+                {
+                    switch (volume.VolumeType)
+                    {
+                        case "AzureFiles":
+                            volume.VolumeData = element.Deserialize<DiscoveredAzureFileShare>() ?? new DiscoveredAzureFileShare();
+                            break;
+                        case "ANF":
+                            volume.VolumeData = element.Deserialize<DiscoveredAnfVolume>() ?? new DiscoveredAnfVolume();
+                            break;
+                        case "ManagedDisk":
+                            volume.VolumeData = element.Deserialize<DiscoveredManagedDisk>() ?? new DiscoveredManagedDisk();
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to rehydrate VolumeData for volume {VolumeId} of type {VolumeType}", volume.VolumeId, volume.VolumeType);
+                }
+            }
         }
     }
 
