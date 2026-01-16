@@ -511,7 +511,8 @@ public class SettingsFunction
 
         var messages = new[]
         {
-            new { role = "user", content = "Reply with the single word OK." }
+            new { role = "system", content = "You are AzFilesOptimizer's AI assistant. Answer clearly and concisely." },
+            new { role = "user", content = "In one short sentence, confirm that you can respond to requests for storage analysis and optimization recommendations." }
         };
 
         object requestPayload;
