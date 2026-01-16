@@ -62,20 +62,33 @@ public class VolumeAnalysisService
             return;
         }
 
-        // For now, AI analysis is implemented for Azure Files shares only.
-        // DiscoveryData may also contain ANF volumes and managed disks; these should
-        // not cause null reference exceptions when accessing the Azure Files wrapper
-        // property (Volume).
+        // Partition volumes by type. DiscoveryData may contain Azure Files, ANF volumes,
+        // and managed disks. We currently support AI analysis for all three types.
         var azureFileVolumes = discoveryData.Volumes
             .Where(v => string.Equals(v.VolumeType, "AzureFiles", StringComparison.OrdinalIgnoreCase)
                         && v.Volume != null)
             .ToList();
 
-        if (azureFileVolumes.Count == 0)
+        var anfVolumes = discoveryData.Volumes
+            .Where(v => string.Equals(v.VolumeType, "ANF", StringComparison.OrdinalIgnoreCase)
+                        && v.VolumeData is DiscoveredAnfVolume)
+            .ToList();
+
+        var managedDiskVolumes = discoveryData.Volumes
+            .Where(v => string.Equals(v.VolumeType, "ManagedDisk", StringComparison.OrdinalIgnoreCase)
+                        && v.VolumeData is DiscoveredManagedDisk)
+            .ToList();
+
+        var volumesToAnalyze = azureFileVolumes
+            .Concat(anfVolumes)
+            .Concat(managedDiskVolumes)
+            .ToList();
+
+        if (volumesToAnalyze.Count == 0)
         {
-            _logger.LogWarning("Discovery job {JobId} contains no Azure Files volumes to analyze.", discoveryJobId);
+            _logger.LogWarning("Discovery job {JobId} contains no supported volumes (Azure Files, ANF, Managed Disks) to analyze.", discoveryJobId);
             if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
-                await _logService.LogProgressAsync(analysisJobId, "No Azure Files volumes found for analysis", "WARNING");
+                await _logService.LogProgressAsync(analysisJobId, "No supported volumes found for analysis", "WARNING");
             return;
         }
 
@@ -85,54 +98,140 @@ public class VolumeAnalysisService
 
         _logger.LogInformation("Loaded {PromptCount} prompts and {ProfileCount} profiles", prompts.Count, profiles.Count);
         if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
-            await _logService.LogProgressAsync(analysisJobId, $"Found {azureFileVolumes.Count} Azure Files volumes to analyze using {prompts.Count} prompts");
+        {
+            await _logService.LogProgressAsync(
+                analysisJobId,
+                $"Found {azureFileVolumes.Count} Azure Files shares, {anfVolumes.Count} ANF volumes, and {managedDiskVolumes.Count} managed disks to analyze using {prompts.Count} prompts");
+        }
 
         int processedCount = 0;
         int failedCount = 0;
-        int totalCount = azureFileVolumes.Count;
+        int totalCount = volumesToAnalyze.Count;
 
-        // Analyze each Azure Files volume
-        foreach (var volumeWrapper in azureFileVolumes)
+        // Analyze each volume according to its type
+        foreach (var volumeWrapper in volumesToAnalyze)
         {
             processedCount++;
-            var share = volumeWrapper.Volume!;
 
             try
             {
-                _logger.LogInformation("Analyzing volume: {VolumeName}", share.ShareName);
-                if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
-                    await _logService.LogVolumeStartAsync(analysisJobId, share.ShareName ?? "Unknown", processedCount, totalCount);
-                
-                var analysis = await AnalyzeSingleVolumeAsync(
-                    share,
-                    prompts.ToArray(),
-                    profiles.ToArray(),
-                    apiKey,
-                    provider,
-                    endpoint,
-                    analysisJobId,
-                    share.ShareName ?? "Unknown",
-                    preferredModel,
-                    bufferPercent);
-                
-                volumeWrapper.AiAnalysis = analysis;
-                volumeWrapper.UserAnnotations ??= new UserAnnotations();
-                
-                if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                if (string.Equals(volumeWrapper.VolumeType, "AzureFiles", StringComparison.OrdinalIgnoreCase)
+                    && volumeWrapper.Volume != null)
                 {
-                    var workloadName = analysis.SuggestedWorkloadName ?? "Unclassified";
-                    await _logService.LogVolumeCompleteAsync(analysisJobId, share.ShareName ?? "Unknown", workloadName, analysis.ConfidenceScore);
+                    var share = volumeWrapper.Volume!;
+                    var volumeName = share.ShareName ?? "Unknown";
+
+                    _logger.LogInformation("Analyzing Azure Files volume: {VolumeName}", volumeName);
+                    if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                    {
+                        await _logService.LogVolumeStartAsync(analysisJobId, volumeName, processedCount, totalCount);
+                    }
+
+                    var analysis = await AnalyzeSingleVolumeAsync(
+                        share,
+                        prompts.ToArray(),
+                        profiles.ToArray(),
+                        apiKey,
+                        provider,
+                        endpoint,
+                        analysisJobId,
+                        volumeName,
+                        preferredModel,
+                        bufferPercent);
+
+                    volumeWrapper.AiAnalysis = analysis;
+                    volumeWrapper.UserAnnotations ??= new UserAnnotations();
+
+                    if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                    {
+                        var workloadName = analysis.SuggestedWorkloadName ?? "Unclassified";
+                        await _logService.LogVolumeCompleteAsync(analysisJobId, volumeName, workloadName, analysis.ConfidenceScore);
+                    }
                 }
-                
-                // Update job progress
+                else if (string.Equals(volumeWrapper.VolumeType, "ANF", StringComparison.OrdinalIgnoreCase)
+                         && volumeWrapper.VolumeData is DiscoveredAnfVolume anfVolume)
+                {
+                    var volumeName = anfVolume.VolumeName ?? "Unknown";
+
+                    _logger.LogInformation("Analyzing ANF volume: {VolumeName}", volumeName);
+                    if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                    {
+                        await _logService.LogVolumeStartAsync(analysisJobId, volumeName, processedCount, totalCount);
+                    }
+
+                    var analysis = await AnalyzeAnfVolumeAsync(
+                        anfVolume,
+                        prompts.ToArray(),
+                        profiles.ToArray(),
+                        apiKey,
+                        provider,
+                        endpoint,
+                        analysisJobId,
+                        volumeName,
+                        preferredModel,
+                        bufferPercent);
+
+                    volumeWrapper.AiAnalysis = analysis;
+                    volumeWrapper.UserAnnotations ??= new UserAnnotations();
+
+                    if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                    {
+                        var workloadName = analysis.SuggestedWorkloadName ?? "Unclassified";
+                        await _logService.LogVolumeCompleteAsync(analysisJobId, volumeName, workloadName, analysis.ConfidenceScore);
+                    }
+                }
+                else if (string.Equals(volumeWrapper.VolumeType, "ManagedDisk", StringComparison.OrdinalIgnoreCase)
+                         && volumeWrapper.VolumeData is DiscoveredManagedDisk disk)
+                {
+                    var volumeName = disk.DiskName ?? "Unknown";
+
+                    _logger.LogInformation("Analyzing Managed Disk: {VolumeName}", volumeName);
+                    if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                    {
+                        await _logService.LogVolumeStartAsync(analysisJobId, volumeName, processedCount, totalCount);
+                    }
+
+                    var analysis = await AnalyzeManagedDiskAsync(
+                        disk,
+                        prompts.ToArray(),
+                        profiles.ToArray(),
+                        apiKey,
+                        provider,
+                        endpoint,
+                        analysisJobId,
+                        volumeName,
+                        preferredModel,
+                        bufferPercent);
+
+                    volumeWrapper.AiAnalysis = analysis;
+                    volumeWrapper.UserAnnotations ??= new UserAnnotations();
+
+                    if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                    {
+                        var workloadName = analysis.SuggestedWorkloadName ?? "Unclassified";
+                        await _logService.LogVolumeCompleteAsync(analysisJobId, volumeName, workloadName, analysis.ConfidenceScore);
+                    }
+                }
+
+                // Update job progress after each volume regardless of type
                 await UpdateJobProgressAsync(processedCount, failedCount);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to analyze volume: {VolumeName}", share.ShareName);
+                var volumeName = volumeWrapper.VolumeType switch
+                {
+                    "AzureFiles" => volumeWrapper.Volume?.ShareName ?? "Unknown",
+                    "ANF" => (volumeWrapper.VolumeData as DiscoveredAnfVolume)?.VolumeName ?? "Unknown",
+                    "ManagedDisk" => (volumeWrapper.VolumeData as DiscoveredManagedDisk)?.DiskName ?? "Unknown",
+                    _ => "Unknown"
+                };
+
+                _logger.LogError(ex, "Failed to analyze volume: {VolumeType} {VolumeName}", volumeWrapper.VolumeType, volumeName);
                 if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
-                    await _logService.LogVolumeErrorAsync(analysisJobId, share.ShareName ?? "Unknown", ex.Message);
-                    
+                {
+                    await _logService.LogVolumeErrorAsync(analysisJobId, volumeName, ex.Message);
+                }
+
                 volumeWrapper.AiAnalysis = new AiAnalysisResult
                 {
                     LastAnalyzed = DateTime.UtcNow,
@@ -161,7 +260,10 @@ public class VolumeAnalysisService
         string? analysisJobId = null,
         string? volumeName = null,
         string? preferredModel = null,
-        double bufferPercent = 30.0)
+        double bufferPercent = 30.0,
+        string? metricsJsonOverride = null,
+        int? monitoringDaysOverride = null,
+        string metricsVolumeType = "AzureFiles")
     {
         var result = new AiAnalysisResult
         {
@@ -297,10 +399,10 @@ public class VolumeAnalysisService
             }
             
             var capacitySizing = _capacityAnalysisService.AnalyzeMetrics(
-                volume.HistoricalMetricsSummary,
+                metricsJsonOverride ?? volume.HistoricalMetricsSummary,
                 bufferPercent,
-                volume.MonitoringDataAvailableDays ?? 30,
-                "AzureFiles");
+                monitoringDaysOverride ?? (volume.MonitoringDataAvailableDays ?? 30),
+                metricsVolumeType);
             
             // Enhance with AI analysis if we have workload classification
             if (!string.IsNullOrEmpty(result.SuggestedWorkloadName) && capacitySizing.HasSufficientData)
@@ -335,6 +437,115 @@ public class VolumeAnalysisService
         }
 
         return result;
+    }
+
+    public async Task<AiAnalysisResult> AnalyzeAnfVolumeAsync(
+        DiscoveredAnfVolume volume,
+        AnalysisPrompt[] prompts,
+        WorkloadProfile[] profiles,
+        string apiKey,
+        string provider,
+        string? endpoint,
+        string? analysisJobId,
+        string? volumeName,
+        string? preferredModel,
+        double bufferPercent)
+    {
+        // Map ANF properties into a pseudo Azure Files share so existing prompt variables
+        // ({VolumeName}, {Size}, {Protocols}, etc.) continue to work without duplicating logic.
+        var pseudoShare = new DiscoveredAzureFileShare
+        {
+            SubscriptionId = volume.SubscriptionId,
+            ResourceGroup = volume.ResourceGroup,
+            StorageAccountName = volume.NetAppAccountName,
+            ShareName = volume.VolumeName,
+            ResourceId = volume.ResourceId,
+            Location = volume.Location,
+            StorageAccountSku = volume.ServiceLevel,
+            StorageAccountKind = "ANF",
+            ShareQuotaGiB = volume.ProvisionedSizeBytes / (1024L * 1024L * 1024L),
+            EnabledProtocols = volume.ProtocolTypes,
+            MinimumTlsVersion = volume.MinimumTlsVersion,
+            SnapshotCount = volume.SnapshotCount,
+            TotalSnapshotSizeBytes = volume.TotalSnapshotSizeBytes,
+            ChurnRateBytesPerDay = volume.ChurnRateBytesPerDay,
+            BackupPolicyConfigured = volume.BackupPolicyConfigured,
+            MonitoringEnabled = volume.MonitoringEnabled,
+            MonitoringDataAvailableDays = volume.MonitoringDataAvailableDays,
+            HistoricalMetricsSummary = volume.HistoricalMetricsSummary,
+            Tags = volume.Tags,
+            DiscoveredAt = volume.DiscoveredAt
+        };
+
+        return await AnalyzeSingleVolumeAsync(
+            pseudoShare,
+            prompts,
+            profiles,
+            apiKey,
+            provider,
+            endpoint,
+            analysisJobId,
+            volumeName ?? volume.VolumeName,
+            preferredModel,
+            bufferPercent,
+            volume.HistoricalMetricsSummary,
+            volume.MonitoringDataAvailableDays ?? 30,
+            "ANF");
+    }
+
+    public async Task<AiAnalysisResult> AnalyzeManagedDiskAsync(
+        DiscoveredManagedDisk disk,
+        AnalysisPrompt[] prompts,
+        WorkloadProfile[] profiles,
+        string apiKey,
+        string provider,
+        string? endpoint,
+        string? analysisJobId,
+        string? volumeName,
+        string? preferredModel,
+        double bufferPercent)
+    {
+        // Map managed disk properties into a pseudo Azure Files share for prompt variables.
+        var pseudoShare = new DiscoveredAzureFileShare
+        {
+            TenantId = disk.TenantId,
+            SubscriptionId = disk.SubscriptionId,
+            ResourceGroup = disk.ResourceGroup,
+            StorageAccountName = disk.AttachedVmName ?? "Unattached",
+            ShareName = disk.DiskName,
+            ResourceId = disk.ResourceId,
+            Location = disk.Location,
+            StorageAccountSku = disk.DiskSku,
+            StorageAccountKind = "ManagedDisk",
+            ShareQuotaGiB = disk.DiskSizeGB,
+            // Treat used bytes (if present) as usage; otherwise leave at 0.
+            ShareUsageBytes = disk.UsedBytes,
+            EnabledProtocols = new[] { "Block" },
+            Metadata = disk.Tags,
+            Tags = disk.VmTags,
+            MonitoringEnabled = disk.MonitoringEnabled,
+            MonitoringDataAvailableDays = disk.MonitoringDataAvailableDays,
+            HistoricalMetricsSummary = disk.HistoricalMetricsSummary,
+            DiscoveredAt = disk.DiscoveredAt
+        };
+
+        // For now, managed disk metrics are treated similarly to Azure Files for sizing
+        // purposes; CapacityAnalysisService will either extract what it can or mark
+        // the result as having insufficient data.
+        return await AnalyzeSingleVolumeAsync(
+            pseudoShare,
+            prompts,
+            profiles,
+            apiKey,
+            provider,
+            endpoint,
+            analysisJobId,
+            volumeName ?? disk.DiskName,
+            preferredModel,
+            bufferPercent,
+            disk.HistoricalMetricsSummary,
+            disk.MonitoringDataAvailableDays ?? 30,
+            "AzureFiles");
     }
 
     public string SubstitutePromptVariables(string template, DiscoveredAzureFileShare volume)
@@ -549,6 +760,7 @@ public class VolumeAnalysisService
             string apiUrl;
 
             var modelToUse = string.IsNullOrWhiteSpace(preferredModel) ? "gpt-4" : preferredModel.Trim();
+            var useMaxCompletionTokens = ModelRequiresMaxCompletionTokens(modelToUse);
 
             if (provider == "AzureOpenAI" && !string.IsNullOrEmpty(endpoint))
             {
@@ -567,23 +779,25 @@ public class VolumeAnalysisService
 
             if (provider == "AzureOpenAI")
             {
-                // For Azure, the deployment is already encoded in the URL; request body does not need a model field
+                // For Azure, the deployment is already encoded in the URL; request body does not need a model field.
+                // For GPT-5 / O-series models, temperature is fixed at the default value (1.0).
+                var temperature = useMaxCompletionTokens ? 1.0 : 0.3;
+
                 requestPayload = new
                 {
                     messages = new[]
                     {
                         new { role = "user", content = prompt }
                     },
-                    temperature = 0.3,
+                    temperature,
                     max_tokens = 500
                 };
             }
             else
             {
-                // For OpenAI, send the selected model in the body
-                // Newer GPT-5 / O-series models require max_completion_tokens instead of max_tokens
-                var useMaxCompletionTokens = ModelRequiresMaxCompletionTokens(modelToUse);
-
+                // For OpenAI, send the selected model in the body.
+                // Newer GPT-5 / O-series models require max_completion_tokens instead of max_tokens and
+                // only support the default temperature (1.0).
                 if (useMaxCompletionTokens)
                 {
                     requestPayload = new
@@ -593,7 +807,7 @@ public class VolumeAnalysisService
                         {
                             new { role = "user", content = prompt }
                         },
-                        temperature = 0.3,
+                        temperature = 1.0,
                         max_completion_tokens = 500
                     };
                 }

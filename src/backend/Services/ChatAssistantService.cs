@@ -178,10 +178,12 @@ public class ChatAssistantService
         {
             if (useMaxCompletionTokens)
             {
+                // GPT-5 / O-series on Azure use max_completion_tokens semantics and only support
+                // the default temperature (1.0).
                 requestPayload = new
                 {
                     messages,
-                    temperature = 0.7,
+                    temperature = 1.0,
                     max_completion_tokens = 800
                 };
             }
@@ -203,7 +205,7 @@ public class ChatAssistantService
                 {
                     model = modelToUse,
                     messages,
-                    temperature = 0.7,
+                    temperature = 1.0,
                     max_completion_tokens = 800
                 };
             }

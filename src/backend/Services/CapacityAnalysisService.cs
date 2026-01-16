@@ -413,6 +413,9 @@ public class CapacityAnalysisService
             
             string apiUrl;
             var modelToUse = string.IsNullOrWhiteSpace(preferredModel) ? "gpt-4" : preferredModel.Trim();
+            var useMaxCompletionTokens = modelToUse.StartsWith("gpt-5") ||
+                                         modelToUse.StartsWith("o3") ||
+                                         modelToUse.StartsWith("o4");
             
             if (provider == "AzureOpenAI" && !string.IsNullOrEmpty(endpoint))
             {
@@ -428,26 +431,27 @@ public class CapacityAnalysisService
             object requestPayload;
             if (provider == "AzureOpenAI")
             {
+                // For Azure, deployment is encoded in the URL. For GPT-5 / O-series models,
+                // use the default temperature (1.0) and rely on max_completion_tokens semantics
+                // on the server side.
+                var temperature = useMaxCompletionTokens ? 1.0 : 0.3;
+
                 requestPayload = new
                 {
                     messages = new[] { new { role = "user", content = prompt } },
-                    temperature = 0.3,
+                    temperature,
                     max_tokens = 400
                 };
             }
             else
             {
-                var useMaxCompletionTokens = modelToUse.StartsWith("gpt-5") || 
-                                             modelToUse.StartsWith("o3") || 
-                                             modelToUse.StartsWith("o4");
-                
                 if (useMaxCompletionTokens)
                 {
                     requestPayload = new
                     {
                         model = modelToUse,
                         messages = new[] { new { role = "user", content = prompt } },
-                        temperature = 0.3,
+                        temperature = 1.0,
                         max_completion_tokens = 400
                     };
                 }
