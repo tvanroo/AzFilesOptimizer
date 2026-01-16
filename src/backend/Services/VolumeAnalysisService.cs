@@ -62,37 +62,56 @@ public class VolumeAnalysisService
             return;
         }
 
+        // For now, AI analysis is implemented for Azure Files shares only.
+        // DiscoveryData may also contain ANF volumes and managed disks; these should
+        // not cause null reference exceptions when accessing the Azure Files wrapper
+        // property (Volume).
+        var azureFileVolumes = discoveryData.Volumes
+            .Where(v => string.Equals(v.VolumeType, "AzureFiles", StringComparison.OrdinalIgnoreCase)
+                        && v.Volume != null)
+            .ToList();
+
+        if (azureFileVolumes.Count == 0)
+        {
+            _logger.LogWarning("Discovery job {JobId} contains no Azure Files volumes to analyze.", discoveryJobId);
+            if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
+                await _logService.LogProgressAsync(analysisJobId, "No Azure Files volumes found for analysis", "WARNING");
+            return;
+        }
+
         // Load enabled prompts and workload profiles
         var prompts = await _promptService.GetEnabledPromptsAsync();
         var profiles = await _profileService.GetAllProfilesAsync();
 
         _logger.LogInformation("Loaded {PromptCount} prompts and {ProfileCount} profiles", prompts.Count, profiles.Count);
         if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
-            await _logService.LogProgressAsync(analysisJobId, $"Found {discoveryData.Volumes.Count} volumes to analyze using {prompts.Count} prompts");
+            await _logService.LogProgressAsync(analysisJobId, $"Found {azureFileVolumes.Count} Azure Files volumes to analyze using {prompts.Count} prompts");
 
         int processedCount = 0;
         int failedCount = 0;
-        int totalCount = discoveryData.Volumes.Count;
+        int totalCount = azureFileVolumes.Count;
 
-        // Analyze each volume
-        foreach (var volumeWrapper in discoveryData.Volumes)
+        // Analyze each Azure Files volume
+        foreach (var volumeWrapper in azureFileVolumes)
         {
             processedCount++;
+            var share = volumeWrapper.Volume!;
+
             try
             {
-                _logger.LogInformation("Analyzing volume: {VolumeName}", volumeWrapper.Volume.ShareName);
+                _logger.LogInformation("Analyzing volume: {VolumeName}", share.ShareName);
                 if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
-                    await _logService.LogVolumeStartAsync(analysisJobId, volumeWrapper.Volume.ShareName ?? "Unknown", processedCount, totalCount);
+                    await _logService.LogVolumeStartAsync(analysisJobId, share.ShareName ?? "Unknown", processedCount, totalCount);
                 
                 var analysis = await AnalyzeSingleVolumeAsync(
-                    volumeWrapper.Volume,
+                    share,
                     prompts.ToArray(),
                     profiles.ToArray(),
                     apiKey,
                     provider,
                     endpoint,
                     analysisJobId,
-                    volumeWrapper.Volume.ShareName ?? "Unknown",
+                    share.ShareName ?? "Unknown",
                     preferredModel,
                     bufferPercent);
                 
@@ -102,7 +121,7 @@ public class VolumeAnalysisService
                 if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
                 {
                     var workloadName = analysis.SuggestedWorkloadName ?? "Unclassified";
-                    await _logService.LogVolumeCompleteAsync(analysisJobId, volumeWrapper.Volume.ShareName ?? "Unknown", workloadName, analysis.ConfidenceScore);
+                    await _logService.LogVolumeCompleteAsync(analysisJobId, share.ShareName ?? "Unknown", workloadName, analysis.ConfidenceScore);
                 }
                 
                 // Update job progress
@@ -110,9 +129,9 @@ public class VolumeAnalysisService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to analyze volume: {VolumeName}", volumeWrapper.Volume.ShareName);
+                _logger.LogError(ex, "Failed to analyze volume: {VolumeName}", share.ShareName);
                 if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
-                    await _logService.LogVolumeErrorAsync(analysisJobId, volumeWrapper.Volume.ShareName ?? "Unknown", ex.Message);
+                    await _logService.LogVolumeErrorAsync(analysisJobId, share.ShareName ?? "Unknown", ex.Message);
                     
                 volumeWrapper.AiAnalysis = new AiAnalysisResult
                 {
