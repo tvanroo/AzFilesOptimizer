@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -155,6 +156,105 @@ public class SettingsFunction
             _logger.LogError(ex, "Error deleting API key");
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
             await errorResponse.WriteAsJsonAsync(new { error = "Failed to delete API key", details = ex.Message });
+            return errorResponse;
+        }
+    }
+
+    [Function("TestApiKey")]
+    public async Task<HttpResponseData> TestApiKey(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "settings/openai-key/test")] HttpRequestData req)
+    {
+        _logger.LogInformation("Testing API key and preferred model");
+
+        var userId = GetUserIdFromRequest(req);
+
+        try
+        {
+            var config = await _apiKeyStorage.GetApiKeyAsync(userId);
+            if (config == null)
+            {
+                var notConfigured = req.CreateResponse(HttpStatusCode.BadRequest);
+                await notConfigured.WriteAsJsonAsync(new { ok = false, error = "API key is not configured" });
+                return notConfigured;
+            }
+
+            var apiKey = await _keyVaultService.GetApiKeyAsync(userId);
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                var missingSecret = req.CreateResponse(HttpStatusCode.BadRequest);
+                await missingSecret.WriteAsJsonAsync(new { ok = false, error = "API key secret not found in Key Vault" });
+                return missingSecret;
+            }
+
+            var provider = config.Provider;
+            var endpoint = config.Endpoint;
+            var modelToUse = ResolvePreferredModel(config);
+
+            if (string.IsNullOrWhiteSpace(modelToUse))
+            {
+                var noModel = req.CreateResponse(HttpStatusCode.BadRequest);
+                await noModel.WriteAsJsonAsync(new { ok = false, error = "No preferred model is configured. Please select a model on the Settings page." });
+                return noModel;
+            }
+
+            if (!IsSupportedModel(modelToUse))
+            {
+                var unsupported = req.CreateResponse(HttpStatusCode.BadRequest);
+                await unsupported.WriteAsJsonAsync(new
+                {
+                    ok = false,
+                    error = "The selected model is not a supported GPT-5 family chat model. Please choose a GPT-5 series model (for example: gpt-5.1, gpt-5, gpt-5-mini, or gpt-5-nano)."
+                });
+                return unsupported;
+            }
+
+            var stopwatch = Stopwatch.StartNew();
+            string sampleResponse;
+
+            try
+            {
+                sampleResponse = await CallAiForTestAsync(apiKey, provider, endpoint, modelToUse);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "API key test failed for provider {Provider} and model {Model}", provider, modelToUse);
+
+                var failed = req.CreateResponse(HttpStatusCode.BadRequest);
+                await failed.WriteAsJsonAsync(new
+                {
+                    ok = false,
+                    error = ex.Message,
+                    provider,
+                    model = modelToUse
+                });
+                return failed;
+            }
+
+            stopwatch.Stop();
+
+            // Truncate the sample response to keep the payload small while still
+            // giving the user a hint that the model is responding correctly.
+            var truncatedSample = string.IsNullOrEmpty(sampleResponse)
+                ? string.Empty
+                : (sampleResponse.Length > 200 ? sampleResponse.Substring(0, 200) + "..." : sampleResponse);
+
+            var success = req.CreateResponse(HttpStatusCode.OK);
+            await success.WriteAsJsonAsync(new
+            {
+                ok = true,
+                provider,
+                model = modelToUse,
+                latencyMs = stopwatch.Elapsed.TotalMilliseconds,
+                sampleResponse = truncatedSample
+            });
+            return success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while testing API key");
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new { ok = false, error = "Failed to test API key", details = ex.Message });
             return errorResponse;
         }
     }
@@ -370,6 +470,131 @@ public class SettingsFunction
 
         // Treat GPT-5 family chat models as supported: gpt-5, gpt-5.1, gpt-5-mini, gpt-5-nano, etc.
         return name.StartsWith("gpt-5");
+    }
+
+    private static string ResolvePreferredModel(ApiKeyConfiguration config)
+    {
+        var preferred = config.Preferences?.PreferredModels?.FirstOrDefault(m => !string.IsNullOrWhiteSpace(m));
+        if (!string.IsNullOrWhiteSpace(preferred))
+        {
+            return preferred.Trim();
+        }
+
+        var available = config.AvailableModels?.FirstOrDefault(m => !string.IsNullOrWhiteSpace(m));
+        if (!string.IsNullOrWhiteSpace(available))
+        {
+            return available.Trim();
+        }
+
+        // Fallback: prefer a GPT-5 model name if configured; otherwise, return empty and let callers handle.
+        return string.Empty;
+    }
+
+    private async Task<string> CallAiForTestAsync(string apiKey, string provider, string? endpoint, string modelToUse)
+    {
+        using var httpClient = new HttpClient();
+        httpClient.Timeout = TimeSpan.FromSeconds(20);
+
+        string apiUrl;
+        if (string.Equals(provider, "AzureOpenAI", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(endpoint))
+        {
+            apiUrl = $"{endpoint.TrimEnd('/')}/openai/deployments/{modelToUse}/chat/completions?api-version=2024-02-15-preview";
+            httpClient.DefaultRequestHeaders.Add("api-key", apiKey);
+        }
+        else
+        {
+            apiUrl = "https://api.openai.com/v1/chat/completions";
+            httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        }
+
+        var useMaxCompletionTokens = ModelRequiresMaxCompletionTokens(modelToUse);
+
+        var messages = new[]
+        {
+            new { role = "user", content = "Reply with the single word OK." }
+        };
+
+        object requestPayload;
+
+        if (string.Equals(provider, "AzureOpenAI", StringComparison.OrdinalIgnoreCase))
+        {
+            if (useMaxCompletionTokens)
+            {
+                requestPayload = new
+                {
+                    messages,
+                    temperature = 1.0,
+                    max_completion_tokens = 16
+                };
+            }
+            else
+            {
+                requestPayload = new
+                {
+                    messages,
+                    temperature = 0.7,
+                    max_tokens = 16
+                };
+            }
+        }
+        else
+        {
+            if (useMaxCompletionTokens)
+            {
+                requestPayload = new
+                {
+                    model = modelToUse,
+                    messages,
+                    temperature = 1.0,
+                    max_completion_tokens = 16
+                };
+            }
+            else
+            {
+                requestPayload = new
+                {
+                    model = modelToUse,
+                    messages,
+                    temperature = 0.7,
+                    max_tokens = 16
+                };
+            }
+        }
+
+        var requestBody = JsonSerializer.Serialize(requestPayload);
+        var content = new StringContent(requestBody, System.Text.Encoding.UTF8, "application/json");
+
+        _logger.LogInformation("[Settings/TestApiKey] Calling AI provider {Provider} at {Url} with model {Model}", provider, apiUrl, modelToUse);
+
+        var response = await httpClient.PostAsync(apiUrl, content);
+        var responseBody = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var truncated = responseBody.Length > 2000
+                ? responseBody.Substring(0, 2000) + "... (truncated)"
+                : responseBody;
+
+            throw new InvalidOperationException($"AI API call failed: {(int)response.StatusCode} {response.ReasonPhrase}. Body: {truncated}");
+        }
+
+        var json = JsonDocument.Parse(responseBody);
+        var contentText = json.RootElement
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString();
+
+        return contentText ?? string.Empty;
+    }
+
+    private static bool ModelRequiresMaxCompletionTokens(string modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+            return false;
+
+        var name = modelName.Trim().ToLowerInvariant();
+        return name.StartsWith("gpt-5") || name.StartsWith("o3") || name.StartsWith("o4");
     }
 
     private string GetUserIdFromRequest(HttpRequestData req)

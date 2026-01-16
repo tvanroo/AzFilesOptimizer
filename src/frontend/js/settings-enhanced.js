@@ -45,6 +45,54 @@ function showUpdateForm() {
     }
 }
 
+async function testApiKey(event) {
+    const button = event?.target;
+    const originalText = button ? button.textContent : '';
+
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Testing...';
+    }
+
+    try {
+        const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:7071/api'
+            : 'https://azfo-dev-func-xy76b.azurewebsites.net/api';
+
+        const response = await fetch(`${API_BASE_URL}/settings/openai-key/test`, {
+            method: 'POST',
+            headers: authManager.isSignedIn() ? {
+                'Authorization': `Bearer ${await authManager.getAccessToken()}`
+            } : {}
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+            const message = result.error || 'API key test failed';
+            Toast.error(message);
+            return;
+        }
+
+        const latency = typeof result.latencyMs === 'number'
+            ? Math.round(result.latencyMs)
+            : null;
+
+        const modelLabel = result.model || 'model';
+        const latencyLabel = latency !== null ? ` in ${latency} ms` : '';
+
+        Toast.success(`API key and ${modelLabel} are responding${latencyLabel}.`);
+    } catch (error) {
+        console.error('Error testing API key:', error);
+        Toast.error(error.message || 'Failed to test API key');
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = originalText || 'Test API Key & Model';
+        }
+    }
+}
+
 async function loadPreferences() {
     try {
         const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'

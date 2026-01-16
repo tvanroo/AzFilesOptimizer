@@ -60,8 +60,9 @@
                     </div>
                     <div><strong>Last Validated:</strong> <span id="status-validated">-</span></div>
                 </div>
-                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <div style="display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap;">
                     <button class="btn" onclick="showUpdateForm()" style="background-color: var(--primary-color);">Update API Key</button>
+                    <button class="btn" onclick="testApiKey(event)" style="background-color: var(--surface); color: var(--text);">Test API Key &amp; Model</button>
                     <button class="btn" onclick="removeApiKey()" style="background-color: var(--error-color);">Remove API Key</button>
                 </div>
             </div>

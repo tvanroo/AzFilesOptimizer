@@ -46,7 +46,7 @@ public class VolumeAnalysisFunction
 
         if (!_useAnalysisQueue)
         {
-            _logger.LogWarning("AZFO_ENABLE_ANALYSIS_QUEUE is not enabled. Analysis jobs will run inline via StartAnalysis until queue processing is re-enabled.");
+            _logger.LogWarning("AZFO_ENABLE_ANALYSIS_QUEUE is not enabled. Analysis jobs will run via background tasks started from StartAnalysis instead of using the queue. For production, enable the queue pipeline.");
         }
     }
 
@@ -103,8 +103,28 @@ public class VolumeAnalysisFunction
             }
             else
             {
-                await _analysisLogService.LogProgressAsync(analysisJobId, "[HTTP] Queue processing bypassed via AZFO_ENABLE_ANALYSIS_QUEUE!=true. Running analysis inline...");
-                await _analysisJobRunner.RunAsync(analysisJobId, jobId);
+                await _analysisLogService.LogProgressAsync(analysisJobId, "[HTTP] Queue processing bypassed via AZFO_ENABLE_ANALYSIS_QUEUE!=true. Running analysis in background task...");
+
+                // Fire-and-forget background execution so the HTTP request can return quickly
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _analysisJobRunner.RunAsync(analysisJobId, jobId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Background analysis job failed for {AnalysisJobId}", analysisJobId);
+                        try
+                        {
+                            await _analysisLogService.LogProgressAsync(analysisJobId, $"[Background] Analysis job failed: {ex.Message}", "ERROR");
+                        }
+                        catch
+                        {
+                            // Swallow any logging exceptions here to avoid crashing the background task pipeline.
+                        }
+                    }
+                });
             }
             
             _logger.LogInformation("Started analysis job {AnalysisJobId} for discovery {DiscoveryJobId}", analysisJobId, jobId);
@@ -113,7 +133,7 @@ public class VolumeAnalysisFunction
             var responsePayload = new StartAnalysisResponse
             {
                 AnalysisJobId = analysisJobId,
-                Status = _useAnalysisQueue ? AnalysisJobStatus.Pending.ToString() : AnalysisJobStatus.Completed.ToString()
+                Status = AnalysisJobStatus.Pending.ToString()
             };
             await response.WriteAsJsonAsync(responsePayload);
             return response;
