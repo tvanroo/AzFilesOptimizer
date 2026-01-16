@@ -528,20 +528,24 @@ public class SettingsFunction
         {
             if (useMaxCompletionTokens)
             {
+                // GPT-5 / O-series on Azure: align with working pattern from manual test.
+                // Use explicit reasoning_effort=low and a higher max_completion_tokens so that
+                // not all tokens are consumed as reasoning tokens.
                 requestPayload = new
                 {
                     messages,
-                    temperature = 1.0,
-                    max_completion_tokens = 16
+                    reasoning_effort = "low",
+                    max_completion_tokens = 128
                 };
             }
             else
             {
+                // Older/non-reasoning models: keep a simpler schema with classic max_tokens.
                 requestPayload = new
                 {
                     messages,
                     temperature = 0.7,
-                    max_tokens = 16
+                    max_tokens = 128
                 };
             }
         }
@@ -549,12 +553,13 @@ public class SettingsFunction
         {
             if (useMaxCompletionTokens)
             {
+                // GPT-5 / O-series on OpenAI: same pattern that worked in your CLI test.
                 requestPayload = new
                 {
                     model = modelToUse,
                     messages,
-                    temperature = 1.0,
-                    max_completion_tokens = 16
+                    reasoning_effort = "low",
+                    max_completion_tokens = 128
                 };
             }
             else
@@ -564,7 +569,7 @@ public class SettingsFunction
                     model = modelToUse,
                     messages,
                     temperature = 0.7,
-                    max_tokens = 16
+                    max_tokens = 128
                 };
             }
         }
