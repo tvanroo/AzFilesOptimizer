@@ -81,7 +81,10 @@ async function testApiKey(event) {
         const modelLabel = result.model || 'model';
         const latencyLabel = latency !== null ? ` in ${latency} ms` : '';
 
-        Toast.success(`API key and ${modelLabel} are responding${latencyLabel}.`);
+        const answer = (result.sampleResponse || '').trim();
+        const answerPreview = answer ? ` Answer: "${answer.slice(0, 80)}${answer.length > 80 ? '…' : ''}"` : '';
+
+        Toast.success(`API key and ${modelLabel} are responding${latencyLabel}.${answerPreview}`);
     } catch (error) {
         console.error('Error testing API key:', error);
         Toast.error(error.message || 'Failed to test API key');

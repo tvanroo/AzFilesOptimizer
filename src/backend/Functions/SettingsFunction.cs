@@ -15,6 +15,10 @@ public class SettingsFunction
     private readonly ApiKeyStorageService _apiKeyStorage;
     private readonly KeyVaultService _keyVaultService;
 
+    // Reused test prompt so we can both send it to the model and echo it back
+    // in the TestApiKey response.
+    private const string TestApiKeyUserPrompt = "In one short sentence, confirm that you can respond to requests for storage analysis and optimization recommendations.";
+
     public SettingsFunction(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<SettingsFunction>();
@@ -246,6 +250,7 @@ public class SettingsFunction
                 provider,
                 model = modelToUse,
                 latencyMs = stopwatch.Elapsed.TotalMilliseconds,
+                prompt = TestApiKeyUserPrompt,
                 sampleResponse = truncatedSample
             });
             return success;
@@ -512,7 +517,7 @@ public class SettingsFunction
         var messages = new[]
         {
             new { role = "system", content = "You are AzFilesOptimizer's AI assistant. Answer clearly and concisely." },
-            new { role = "user", content = "In one short sentence, confirm that you can respond to requests for storage analysis and optimization recommendations." }
+            new { role = "user", content = TestApiKeyUserPrompt }
         };
 
         object requestPayload;
@@ -580,13 +585,41 @@ public class SettingsFunction
         }
 
         var json = JsonDocument.Parse(responseBody);
-        var contentText = json.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString();
+        var root = json.RootElement;
+        var messageEl = root.GetProperty("choices")[0].GetProperty("message");
+        var contentEl = messageEl.GetProperty("content");
 
-        return contentText ?? string.Empty;
+        string contentText = string.Empty;
+        if (contentEl.ValueKind == JsonValueKind.String)
+        {
+            contentText = contentEl.GetString() ?? string.Empty;
+        }
+        else if (contentEl.ValueKind == JsonValueKind.Array)
+        {
+            // Newer models may return an array of content parts; concatenate any text fields.
+            var sb = new System.Text.StringBuilder();
+            foreach (var part in contentEl.EnumerateArray())
+            {
+                if (part.ValueKind == JsonValueKind.String)
+                {
+                    sb.Append(part.GetString());
+                }
+                else if (part.ValueKind == JsonValueKind.Object && part.TryGetProperty("text", out var textEl))
+                {
+                    sb.Append(textEl.GetString());
+                }
+            }
+            contentText = sb.ToString();
+        }
+
+        // As a last resort, if we couldn't extract any text, return a generic message
+        // instead of an empty string so the caller knows the model responded.
+        if (string.IsNullOrWhiteSpace(contentText))
+        {
+            return "(Model responded but no plain-text content could be extracted.)";
+        }
+
+        return contentText;
     }
 
     private static bool ModelRequiresMaxCompletionTokens(string modelName)
