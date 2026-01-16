@@ -213,11 +213,11 @@ public class SettingsFunction
             }
 
             var stopwatch = Stopwatch.StartNew();
-            string sampleResponse;
+            string rawResponse;
 
             try
             {
-                sampleResponse = await CallAiForTestAsync(apiKey, provider, endpoint, modelToUse);
+                rawResponse = await CallAiForTestAsync(apiKey, provider, endpoint, modelToUse);
             }
             catch (Exception ex)
             {
@@ -237,11 +237,13 @@ public class SettingsFunction
 
             stopwatch.Stop();
 
-            // Truncate the sample response to keep the payload small while still
-            // giving the user a hint that the model is responding correctly.
-            var truncatedSample = string.IsNullOrEmpty(sampleResponse)
-                ? string.Empty
-                : (sampleResponse.Length > 200 ? sampleResponse.Substring(0, 200) + "..." : sampleResponse);
+            // Extract assistant content from the raw response JSON. If parsing fails for any reason,
+            // fall back to a generic message so callers still see that the model responded.
+            var assistantText = ExtractAssistantContentFromRawResponse(rawResponse);
+
+            var truncatedSample = string.IsNullOrEmpty(assistantText)
+                ? "(Model responded but content could not be parsed.)"
+                : (assistantText.Length > 200 ? assistantText.Substring(0, 200) + "..." : assistantText);
 
             var success = req.CreateResponse(HttpStatusCode.OK);
             await success.WriteAsJsonAsync(new
@@ -584,11 +586,73 @@ public class SettingsFunction
             throw new InvalidOperationException($"AI API call failed: {(int)response.StatusCode} {response.ReasonPhrase}. Body: {truncated}");
         }
 
-        // For TestApiKey we don't need to fully parse the model's structured response; we
-        // just want to confirm that a successful 2xx response was returned. To make this
-        // endpoint robust to future schema changes, return the raw response body and let
-        // callers truncate or inspect it as needed.
+        // For TestApiKey we want the raw response so that we can both parse out assistant
+        // content and, if needed, inspect the JSON structure when debugging.
         return responseBody;
+    }
+
+    private static string ExtractAssistantContentFromRawResponse(string rawResponse)
+    {
+        if (string.IsNullOrWhiteSpace(rawResponse))
+            return string.Empty;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(rawResponse);
+            var root = doc.RootElement;
+
+            // Standard chat.completions format: choices[0].message.content
+            if (root.TryGetProperty("choices", out var choicesEl) &&
+                choicesEl.ValueKind == JsonValueKind.Array &&
+                choicesEl.GetArrayLength() > 0)
+            {
+                var messageEl = choicesEl[0].GetProperty("message");
+
+                if (messageEl.TryGetProperty("content", out var contentEl))
+                {
+                    if (contentEl.ValueKind == JsonValueKind.String)
+                    {
+                        return contentEl.GetString() ?? string.Empty;
+                    }
+
+                    if (contentEl.ValueKind == JsonValueKind.Array)
+                    {
+                        var sb = new System.Text.StringBuilder();
+                        foreach (var part in contentEl.EnumerateArray())
+                        {
+                            if (part.ValueKind == JsonValueKind.String)
+                            {
+                                sb.Append(part.GetString());
+                            }
+                            else if (part.ValueKind == JsonValueKind.Object)
+                            {
+                                // Some schemas nest text under a "text" or "value" property.
+                                if (part.TryGetProperty("text", out var textEl))
+                                {
+                                    if (textEl.ValueKind == JsonValueKind.String)
+                                    {
+                                        sb.Append(textEl.GetString());
+                                    }
+                                    else if (textEl.ValueKind == JsonValueKind.Object &&
+                                             textEl.TryGetProperty("value", out var valueEl))
+                                    {
+                                        sb.Append(valueEl.GetString());
+                                    }
+                                }
+                            }
+                        }
+
+                        return sb.ToString();
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Swallow and fall through to empty string; caller will show a generic message.
+        }
+
+        return string.Empty;
     }
 
     private static bool ModelRequiresMaxCompletionTokens(string modelName)
