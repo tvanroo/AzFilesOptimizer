@@ -2,6 +2,12 @@ let allCosts = [];
 let filteredCosts = [];
 let jobId = null;
 
+function navigateTo(target) {
+    const base = target === 'forecast' ? 'cost-forecast.html' : 'cost-summary.html';
+    const url = `${base}?jobId=${encodeURIComponent(jobId)}`;
+    window.location.href = url;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     jobId = urlParams.get('jobId');
@@ -9,6 +15,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!jobId) {
         showError('No job ID provided');
         return;
+    }
+
+    try {
+        await authManager.initialize();
+        const isAuthenticated = await authManager.requireAuth();
+        if (!isAuthenticated) return;
+    } catch (e) {
+        console.error('Error initializing auth for cost analysis page:', e);
     }
     
     await loadCosts();
