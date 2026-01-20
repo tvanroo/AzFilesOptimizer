@@ -279,14 +279,18 @@ public class CostAnalysisFunction
             {
                 try
                 {
+                    var quotaBytes = share.ShareQuotaGiB.HasValue
+                        ? share.ShareQuotaGiB.Value * 1024L * 1024L * 1024L
+                        : 0L;
+
                     var cost = await _costCollection.GetAzureFilesCostAsync(
                         share.ResourceId,
                         share.ShareName,
                         share.Location,
-                        share.ShareQuotaGiB?.Value * 1024 * 1024 * 1024 ?? 0,
+                        quotaBytes,
                         share.ShareUsageBytes ?? 0,
                         100, // Estimate transactions per day
-                        share.ShareUsageBytes ?? 0 / 10, // Estimate egress
+                        (share.ShareUsageBytes ?? 0) / 10.0, // Rough egress estimate
                         share.SnapshotCount ?? 0,
                         share.TotalSnapshotSizeBytes ?? 0,
                         share.BackupPolicyConfigured ?? false,
@@ -368,11 +372,11 @@ public class CostAnalysisFunction
             await _resourceStorage.SaveCostForecastsAsync(parsedMessage.JobId, forecasts);
 
             logger.LogInformation("Cost analysis completed for job {JobId}: {Count} volumes analyzed", 
-                message.JobId, costAnalyses.Count);
+                parsedMessage.JobId, costAnalyses.Count);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error processing cost analysis for job {JobId}", message.JobId);
+            logger.LogError(ex, "Error processing cost analysis for job {JobId}", parsedMessage.JobId);
         }
     }
 
