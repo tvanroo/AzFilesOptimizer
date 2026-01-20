@@ -388,21 +388,16 @@ public class CostCollectionService
             // Build Cost Management query using official Azure.ResourceManager.CostManagement SDK
             var scope = new Azure.Core.ResourceIdentifier($"/subscriptions/{subscriptionId}");
 
-            var dataset = new QueryDataset
-            {
-                Granularity = GranularityType.None
-            };
+            var dataset = new QueryDataset();
 
             // Aggregate total cost over the period
             dataset.Aggregation.Add("totalCost", new QueryAggregation("Cost", FunctionType.Sum));
 
             // Filter to the specific resource ID
-            var comparison = new QueryComparisonExpression
-            {
-                Name = "ResourceId",
-                Operator = QueryOperatorType.In,
-            };
-            comparison.Values.Add(resourceId);
+            var comparison = new QueryComparisonExpression(
+                "ResourceId",
+                QueryOperatorType.In,
+                new[] { resourceId });
 
             var filter = new QueryFilter
             {
