@@ -1,3 +1,4 @@
+using System;
 using Azure.Data.Tables;
 using AzFilesOptimizer.Backend.Models;
 using System.Text.Json;
@@ -86,7 +87,7 @@ public partial class DiscoveredResourceStorageService
                 };
 
                 await CostAnalysesTableClient.UpsertEntityAsync(entity);
-            }\r
+            }
             catch (Exception ex)
             {
                 // Log error but continue with other costs
