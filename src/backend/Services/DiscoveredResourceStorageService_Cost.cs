@@ -51,9 +51,16 @@ public partial class DiscoveredResourceStorageService
         {
             try
             {
-                var entity = new TableEntity(jobId, cost.VolumeId)
+                // Ensure we have a stable volume identifier separate from the row key
+                var volumeId = string.IsNullOrEmpty(cost.VolumeId)
+                    ? (string.IsNullOrEmpty(cost.ResourceId) ? Guid.NewGuid().ToString() : cost.ResourceId)
+                    : cost.VolumeId;
+
+                // Use AnalysisId as the row key so multiple volumes per job don't overwrite each other
+                var entity = new TableEntity(jobId, cost.AnalysisId)
                 {
                     { "AnalysisId", cost.AnalysisId },
+                    { "VolumeId", volumeId },
                     { "VolumeName", cost.VolumeName },
                     { "ResourceType", cost.ResourceType },
                     { "ResourceId", cost.ResourceId },
@@ -79,7 +86,7 @@ public partial class DiscoveredResourceStorageService
                 };
 
                 await CostAnalysesTableClient.UpsertEntityAsync(entity);
-            }
+            }\r
             catch (Exception ex)
             {
                 // Log error but continue with other costs
@@ -101,8 +108,8 @@ public partial class DiscoveredResourceStorageService
             {
                 var cost = new VolumeCostAnalysis
                 {
-                    AnalysisId = entity.GetString("AnalysisId") ?? "",
-                    VolumeId = entity.RowKey,
+                    AnalysisId = entity.GetString("AnalysisId") ?? entity.RowKey,
+                    VolumeId = entity.GetString("VolumeId") ?? entity.RowKey,
                     VolumeName = entity.GetString("VolumeName") ?? "",
                     ResourceType = entity.GetString("ResourceType") ?? "",
                     ResourceId = entity.GetString("ResourceId") ?? "",
