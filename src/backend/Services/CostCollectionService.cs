@@ -1,5 +1,9 @@
 using Azure.Core;
+using Azure.ResourceManager;
+using Azure.ResourceManager.CostManagement;
+using Azure.ResourceManager.CostManagement.Models;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -381,87 +385,71 @@ public class CostCollectionService
                 return null;
             }
 
-            using var httpClient = new HttpClient();
-            var token = await _credential.GetTokenAsync(
-                new TokenRequestContext(new[] { "https://management.azure.com/.default" }), default);
-            httpClient.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", token.Token);
+            // Build Cost Management query using official Azure.ResourceManager.CostManagement SDK
+            var scope = new Azure.Core.ResourceIdentifier($"/subscriptions/{subscriptionId}");
 
-            var url = $"https://management.azure.com/subscriptions/{subscriptionId}/providers/Microsoft.CostManagement/query?api-version=2023-03-01";
-
-            var requestBody = new
+            var dataset = new QueryDataset
             {
-                type = "ActualCost",
-                timeframe = "Custom",
-                timePeriod = new
-                {
-                    from = periodStart,
-                    to = periodEnd
-                },
-                dataset = new
-                {
-                    granularity = "None",
-                    filter = new
-                    {
-                        dimensions = new
-                        {
-                            name = "ResourceId",
-                            // "operator" is a reserved word in C#, so use @operator
-                            @operator = "In",
-                            values = new[] { resourceId }
-                        }
-                    },
-                    aggregation = new
-                    {
-                        totalCost = new
-                        {
-                            name = "Cost",
-                            function = "Sum"
-                        }
-                    }
-                }
+                Granularity = GranularityType.None
             };
 
-            var json = JsonSerializer.Serialize(requestBody, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = false
-            });
+            // Aggregate total cost over the period
+            dataset.Aggregation.Add("totalCost", new QueryAggregation("Cost", FunctionType.Sum));
 
-            using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = await httpClient.PostAsync(url, content);
-            if (!response.IsSuccessStatusCode)
+            // Filter to the specific resource ID
+            var comparison = new QueryComparisonExpression
             {
-                _logger.LogDebug("Cost Management API returned {Status} for {ResourceId}", (int)response.StatusCode, resourceId);
-                return null;
-            }
+                Name = "ResourceId",
+                Operator = QueryOperatorType.In,
+            };
+            comparison.Values.Add(resourceId);
 
-            var respJson = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(respJson);
-            if (!doc.RootElement.TryGetProperty("properties", out var props))
+            var filter = new QueryFilter
             {
-                return null;
-            }
+                Dimensions = comparison
+            };
+            dataset.Filter = filter;
 
-            if (!props.TryGetProperty("rows", out var rows) || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() == 0)
+            var timePeriod = new QueryTimePeriod(periodStart, periodEnd);
+
+            var queryDefinition = new QueryDefinition(ExportType.ActualCost, TimeframeType.Custom, dataset)
             {
-                return null;
-            }
+                TimePeriod = timePeriod
+            };
 
-            var firstRow = rows[0];
-            if (firstRow.ValueKind != JsonValueKind.Array || firstRow.GetArrayLength() == 0)
-            {
-                return null;
-            }
+            var armClient = new ArmClient(_credential);
+            var response = await armClient.UsageQueryAsync(scope, queryDefinition);
+            var result = response.Value;
 
-            var costValueElement = firstRow[0];
-            if (costValueElement.ValueKind != JsonValueKind.Number)
+            if (result?.Rows == null || result.Rows.Count == 0)
             {
                 return null;
             }
 
-            var cost = costValueElement.GetDouble();
-            return cost;
+            var firstRow = result.Rows[0];
+            if (firstRow == null || firstRow.Count == 0)
+            {
+                return null;
+            }
+
+            var costData = firstRow[0];
+            if (costData == null)
+            {
+                return null;
+            }
+
+            var costString = costData.ToString();
+            if (string.IsNullOrWhiteSpace(costString))
+            {
+                return null;
+            }
+
+            if (double.TryParse(costString, NumberStyles.Any, CultureInfo.InvariantCulture, out var cost))
+            {
+                return cost;
+            }
+
+            return null;
         }
         catch (Exception ex)
         {

@@ -400,6 +400,16 @@ function exportCostDebug() {
         return;
     }
 
+    // Derive a simple source indicator for the cost data
+    let source = 'Unknown';
+    if (currentDetailCost.costComponents.length > 0) {
+        const anyEstimated = currentDetailCost.costComponents.some(c => {
+            const flag = (typeof c.IsEstimated === 'boolean') ? c.IsEstimated : c.isEstimated;
+            return flag === true;
+        });
+        source = anyEstimated ? 'RetailEstimate' : 'ActualCost';
+    }
+
     const payload = {
         jobId,
         volumeId: currentDetailCost.volumeId,
@@ -410,6 +420,7 @@ function exportCostDebug() {
         periodEnd: currentDetailCost.periodEnd,
         totalCostForPeriod: currentDetailCost.totalCostForPeriod,
         totalCostPerDay: currentDetailCost.totalCostPerDay,
+        source,
         costComponents: currentDetailCost.costComponents,
     };
 
