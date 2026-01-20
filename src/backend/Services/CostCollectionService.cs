@@ -1,5 +1,8 @@
 using Azure.Core;
 using Microsoft.Extensions.Logging;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using AzFilesOptimizer.Backend.Models;
 
@@ -134,8 +137,11 @@ public class CostCollectionService
                 analysis.AddCostComponent(backupCost);
             }
 
-            _logger.LogInformation("Calculated Azure Files costs for {Share}: ${Cost} over {Days} days", 
-                shareName, analysis.TotalCostForPeriod, days);
+            // Try to replace retail estimate with actual billed cost if available
+            await TryApplyActualCostAsync(analysis, periodStart, periodEnd);
+
+            _logger.LogInformation("Calculated Azure Files costs for {Share}: ${Cost} over {Days} days (Source: {Source})", 
+                shareName, analysis.TotalCostForPeriod, analysis.CostComponents.All(c => !c.IsEstimated) ? "Actual" : "RetailEstimate");
             
             return analysis;
         }
@@ -220,8 +226,14 @@ public class CostCollectionService
                 analysis.AddCostComponent(backupCost);
             }
 
-            _logger.LogInformation("Calculated ANF costs for {Volume}: ${Cost} over {Days} days",
-                volumeName, analysis.TotalCostForPeriod, (periodEnd - periodStart).Days);
+            // Try to replace retail estimate with actual billed cost if available
+            await TryApplyActualCostAsync(analysis, periodStart, periodEnd);
+
+            _logger.LogInformation("Calculated ANF costs for {Volume}: ${Cost} over {Days} days (Source: {Source})",
+                volumeName,
+                analysis.TotalCostForPeriod,
+                (periodEnd - periodStart).Days,
+                analysis.CostComponents.All(c => !c.IsEstimated) ? "Actual" : "RetailEstimate");
             
             return analysis;
         }
@@ -289,8 +301,14 @@ public class CostCollectionService
                 analysis.AddCostComponent(snapshotCost);
             }
 
-            _logger.LogInformation("Calculated Managed Disk costs for {Disk}: ${Cost} over {Days} days",
-                diskName, analysis.TotalCostForPeriod, days);
+            // Try to replace retail estimate with actual billed cost if available
+            await TryApplyActualCostAsync(analysis, periodStart, periodEnd);
+
+            _logger.LogInformation("Calculated Managed Disk costs for {Disk}: ${Cost} over {Days} days (Source: {Source})",
+                diskName,
+                analysis.TotalCostForPeriod,
+                days,
+                analysis.CostComponents.All(c => !c.IsEstimated) ? "Actual" : "RetailEstimate");
             
             return analysis;
         }
@@ -299,6 +317,172 @@ public class CostCollectionService
             _logger.LogError(ex, "Error calculating Managed Disk costs for {Disk}", diskName);
             throw;
         }
+    }
+
+    private async Task TryApplyActualCostAsync(VolumeCostAnalysis analysis, DateTime periodStart, DateTime periodEnd)
+    {
+        try
+        {
+            var actual = await TryGetActualCostAsync(analysis.ResourceId, periodStart, periodEnd);
+            if (!actual.HasValue || actual.Value <= 0)
+            {
+                return; // keep retail estimate
+            }
+
+            var estimatedTotal = analysis.TotalCostForPeriod;
+            if (estimatedTotal <= 0)
+            {
+                // No breakdown to scale; create a single actual cost component
+                analysis.CostComponents.Clear();
+                analysis.CostComponents.Add(new StorageCostComponent
+                {
+                    ComponentType = "actual-billed",
+                    Region = analysis.Region,
+                    UnitPrice = actual.Value,
+                    Unit = "total",
+                    Quantity = 1,
+                    CostForPeriod = actual.Value,
+                    Currency = "USD",
+                    ResourceId = analysis.ResourceId,
+                    PeriodStart = periodStart,
+                    PeriodEnd = periodEnd,
+                    IsEstimated = false,
+                    Notes = "Actual billed cost from Cost Management API"
+                });
+                analysis.RecalculateTotals();
+                return;
+            }
+
+            // Scale each component so the sum matches actual billed cost
+            var factor = actual.Value / estimatedTotal;
+            foreach (var component in analysis.CostComponents)
+            {
+                component.CostForPeriod *= factor;
+                component.IsEstimated = false;
+            }
+
+            analysis.RecalculateTotals();
+            analysis.Notes = (analysis.Notes ?? string.Empty) +
+                " | Actual billed total from Cost Management applied; retail components scaled to match.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to apply actual billed cost for {ResourceId}", analysis.ResourceId);
+        }
+    }
+
+    private async Task<double?> TryGetActualCostAsync(string resourceId, DateTime periodStart, DateTime periodEnd)
+    {
+        try
+        {
+            var subscriptionId = ExtractSubscriptionId(resourceId);
+            if (string.IsNullOrEmpty(subscriptionId))
+            {
+                return null;
+            }
+
+            using var httpClient = new HttpClient();
+            var token = await _credential.GetTokenAsync(
+                new TokenRequestContext(new[] { "https://management.azure.com/.default" }), default);
+            httpClient.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", token.Token);
+
+            var url = $"https://management.azure.com/subscriptions/{subscriptionId}/providers/Microsoft.CostManagement/query?api-version=2023-03-01";
+
+            var requestBody = new
+            {
+                type = "ActualCost",
+                timeframe = "Custom",
+                timePeriod = new
+                {
+                    from = periodStart,
+                    to = periodEnd
+                },
+                dataset = new
+                {
+                    granularity = "None",
+                    filter = new
+                    {
+                        dimensions = new
+                        {
+                            name = "ResourceId",
+                            // "operator" is a reserved word in C#, so use @operator
+                            @operator = "In",
+                            values = new[] { resourceId }
+                        }
+                    },
+                    aggregation = new
+                    {
+                        totalCost = new
+                        {
+                            name = "Cost",
+                            function = "Sum"
+                        }
+                    }
+                }
+            };
+
+            var json = JsonSerializer.Serialize(requestBody, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = false
+            });
+
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await httpClient.PostAsync(url, content);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("Cost Management API returned {Status} for {ResourceId}", (int)response.StatusCode, resourceId);
+                return null;
+            }
+
+            var respJson = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(respJson);
+            if (!doc.RootElement.TryGetProperty("properties", out var props))
+            {
+                return null;
+            }
+
+            if (!props.TryGetProperty("rows", out var rows) || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            var firstRow = rows[0];
+            if (firstRow.ValueKind != JsonValueKind.Array || firstRow.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            var costValueElement = firstRow[0];
+            if (costValueElement.ValueKind != JsonValueKind.Number)
+            {
+                return null;
+            }
+
+            var cost = costValueElement.GetDouble();
+            return cost;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error querying Cost Management API for {ResourceId}", resourceId);
+            return null;
+        }
+    }
+
+    private string? ExtractSubscriptionId(string resourceId)
+    {
+        if (string.IsNullOrWhiteSpace(resourceId)) return null;
+
+        const string subPrefix = "/subscriptions/";
+        var subIndex = resourceId.IndexOf(subPrefix, StringComparison.OrdinalIgnoreCase);
+        if (subIndex < 0) return null;
+
+        subIndex += subPrefix.Length;
+        var slashIndex = resourceId.IndexOf('/', subIndex);
+        if (slashIndex < 0) return null;
+
+        return resourceId.Substring(subIndex, slashIndex - subIndex);
     }
 
     /// <summary>
