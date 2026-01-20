@@ -33,22 +33,40 @@ async function loadCosts() {
 }
 
 function updateSummary(summary) {
-    if (!summary) return;
-    
-    document.getElementById('total-cost').textContent = `$${summary.totalCost.toFixed(2)}`;
-    document.getElementById('avg-daily-cost').textContent = `$${(summary.totalCost / 30).toFixed(2)}`;
-    document.getElementById('volumes-count').textContent = allCosts.length;
-    
+    const totalEl = document.getElementById('total-cost');
+    const avgEl = document.getElementById('avg-daily-cost');
+    const countEl = document.getElementById('volumes-count');
+    const trendEl = document.getElementById('overall-trend');
+
+    // Fallback: derive totals from cost list if backend summary is missing or malformed
+    let total = 0;
+    if (summary && typeof summary.totalCost === 'number' && !Number.isNaN(summary.totalCost)) {
+        total = summary.totalCost;
+    } else {
+        total = allCosts.reduce((sum, c) => sum + (c.totalCostForPeriod || 0), 0);
+    }
+
+    let avgDaily = 0;
+    if (summary && typeof summary.averageDailyCost === 'number' && !Number.isNaN(summary.averageDailyCost)) {
+        avgDaily = summary.averageDailyCost;
+    } else {
+        avgDaily = total / 30;
+    }
+
+    totalEl.textContent = `$${(total || 0).toFixed(2)}`;
+    avgEl.textContent = `$${(avgDaily || 0).toFixed(2)}`;
+    countEl.textContent = allCosts.length;
+
     // Determine overall trend
     const increasingCount = allCosts.filter(c => c.forecast?.trend === 'Increasing').length;
     const decreasingCount = allCosts.filter(c => c.forecast?.trend === 'Decreasing').length;
-    
+
     if (increasingCount > decreasingCount) {
-        document.getElementById('overall-trend').textContent = '📈 Rising';
+        trendEl.textContent = '📈 Rising';
     } else if (decreasingCount > increasingCount) {
-        document.getElementById('overall-trend').textContent = '📉 Falling';
+        trendEl.textContent = '📉 Falling';
     } else {
-        document.getElementById('overall-trend').textContent = '➡️ Stable';
+        trendEl.textContent = '➡️ Stable';
     }
 }
 
@@ -323,13 +341,13 @@ async function runCostAnalysis() {
         });
         
         if (response.ok) {
-            showToast('Cost analysis queued', 'success');
+            Toast.success('Cost analysis queued');
             setTimeout(() => loadCosts(), 2000);
         } else {
-            showToast('Failed to start cost analysis', 'error');
+            Toast.error('Failed to start cost analysis');
         }
     } catch (error) {
-        showToast(`Error: ${error.message}`, 'error');
+        Toast.error(`Error: ${error.message}`);
     }
 }
 
@@ -351,9 +369,9 @@ async function exportCosts(format) {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
         
-        showToast('Export successful', 'success');
+        Toast.success('Export successful');
     } catch (error) {
-        showToast(`Export failed: ${error.message}`, 'error');
+        Toast.error(`Export failed: ${error.message}`);
     }
 }
 
