@@ -14,6 +14,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadCosts();
 });
 
+function normalizeCost(raw) {
+    if (!raw || typeof raw !== 'object') return {};
+    return {
+        // IDs and identity
+        volumeId: raw.VolumeId || '',
+        volumeName: raw.VolumeName || '',
+        resourceType: raw.ResourceType || '',
+        region: raw.Region || '',
+
+        // Aggregates
+        totalCostPerDay: typeof raw.TotalCostPerDay === 'number' ? raw.TotalCostPerDay : 0,
+        totalCostForPeriod: typeof raw.TotalCostForPeriod === 'number' ? raw.TotalCostForPeriod : 0,
+
+        // Breakdown and components
+        costComponents: Array.isArray(raw.CostComponents) ? raw.CostComponents : [],
+        costBreakdown: raw.CostBreakdown || {},
+
+        // Period
+        periodStart: raw.PeriodStart ? new Date(raw.PeriodStart) : null,
+        periodEnd: raw.PeriodEnd ? new Date(raw.PeriodEnd) : null,
+        periodDays: typeof raw.PeriodDays === 'number' ? raw.PeriodDays : 0,
+
+        // Capacity / usage
+        capacityGigabytes: typeof raw.CapacityGigabytes === 'number' ? raw.CapacityGigabytes : 0,
+        usedGigabytes: typeof raw.UsedGigabytes === 'number' ? raw.UsedGigabytes : 0,
+        snapshotCount: typeof raw.SnapshotCount === 'number' ? raw.SnapshotCount : 0,
+        totalSnapshotSizeGb: typeof raw.TotalSnapshotSizeGb === 'number' ? raw.TotalSnapshotSizeGb : 0,
+        backupConfigured: !!raw.BackupConfigured,
+
+        // Forecast and warnings
+        forecast: raw.Forecast || null,
+        warnings: Array.isArray(raw.Warnings) ? raw.Warnings : [],
+    };
+}
+
 async function loadCosts() {
     try {
         const response = await fetch(`${API_BASE_URL}/discovery/${jobId}/costs`);
@@ -22,7 +57,8 @@ async function loadCosts() {
         }
         
         const data = await response.json();
-        allCosts = data.costs || [];
+        const rawCosts = data.costs || [];
+        allCosts = rawCosts.map(normalizeCost);
         filteredCosts = [...allCosts];
         
         updateSummary(data.summary);
@@ -58,8 +94,8 @@ function updateSummary(summary) {
     countEl.textContent = allCosts.length;
 
     // Determine overall trend
-    const increasingCount = allCosts.filter(c => c.forecast?.trend === 'Increasing').length;
-    const decreasingCount = allCosts.filter(c => c.forecast?.trend === 'Decreasing').length;
+    const increasingCount = allCosts.filter(c => c.forecast?.Trend === 'Increasing').length;
+    const decreasingCount = allCosts.filter(c => c.forecast?.Trend === 'Decreasing').length;
 
     if (increasingCount > decreasingCount) {
         trendEl.textContent = '📈 Rising';
@@ -79,7 +115,7 @@ function renderCosts() {
     }
     
     // Sort by cost descending
-    const sorted = [...filteredCosts].sort((a, b) => b.totalCostForPeriod - a.totalCostForPeriod);
+    const sorted = [...filteredCosts].sort((a, b) => (b.totalCostForPeriod || 0) - (a.totalCostForPeriod || 0));
     
     container.innerHTML = sorted.map(cost => createCostCard(cost)).join('');
     
@@ -93,8 +129,8 @@ function renderCosts() {
 }
 
 function createCostCard(cost) {
-    const trendIcon = getTrendIcon(cost.forecast?.trend);
-    const costRange = getCostRangeClass(cost.totalCostForPeriod);
+    const trendIcon = getTrendIcon(cost.forecast?.Trend);
+    const costRange = getCostRangeClass(cost.totalCostForPeriod || 0);
     
     return `
         <div class="cost-card" data-volume-id="${cost.volumeId}" style="cursor: pointer;">
@@ -108,14 +144,14 @@ function createCostCard(cost) {
                 </span>
             </div>
             
-            <div class="cost-value">$${cost.totalCostForPeriod.toFixed(2)}</div>
+            <div class="cost-value">$${(cost.totalCostForPeriod || 0).toFixed(2)}</div>
             <small style="color: var(--text-secondary);">30-day total</small>
             
             <div class="cost-breakdown">
                 <div style="margin-bottom: 0.75rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <strong style="font-size: 0.875rem;">Cost Breakdown</strong>
-                        <span style="font-size: 0.75rem; color: var(--text-secondary);">Daily: $${(cost.totalCostPerDay).toFixed(2)}</span>
+                        <span style="font-size: 0.75rem; color: var(--text-secondary);">Daily: $${(cost.totalCostPerDay || 0).toFixed(2)}</span>
                     </div>
                 </div>
                 ${renderBreakdownItems(cost.costBreakdown)}
@@ -154,8 +190,8 @@ function renderBreakdownItems(breakdown) {
     }
     
     const items = Object.entries(breakdown)
-        .filter(([_, value]) => value > 0)
-        .sort(([_, a], [__, b]) => b - a);
+        .filter(([_, value]) => (value || 0) > 0)
+        .sort(([_, a], [__, b]) => (b || 0) - (a || 0));
     
     if (items.length === 0) {
         return '<small style="color: var(--text-secondary);">No breakdown data</small>';
@@ -181,7 +217,7 @@ function applyFilters() {
         
         // Cost range filter
         if (costFilter) {
-            const c = cost.totalCostForPeriod;
+            const c = cost.totalCostForPeriod || 0;
             switch (costFilter) {
                 case 'low': if (c > 50) return false; break;
                 case 'medium': if (c <= 50 || c > 200) return false; break;
@@ -191,7 +227,7 @@ function applyFilters() {
         }
         
         // Trend filter
-        if (trendFilter && cost.forecast?.trend !== trendFilter) return false;
+        if (trendFilter && cost.forecast?.Trend !== trendFilter) return false;
         
         // Search filter
         if (searchFilter && !cost.volumeName.toLowerCase().includes(searchFilter)) return false;
@@ -214,24 +250,24 @@ function showDetailPanel(cost) {
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
             <div style="padding: 1rem; background: var(--surface); border-radius: 4px;">
                 <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Forecasted Cost</div>
-                <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary-color);">$${cost.forecast.forecastedCostFor30Days.toFixed(2)}</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary-color);">$${(cost.forecast.ForecastedCostFor30Days || 0).toFixed(2)}</div>
             </div>
             <div style="padding: 1rem; background: var(--surface); border-radius: 4px;">
                 <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Confidence Level</div>
-                <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary-color);">${cost.forecast.confidencePercentage.toFixed(0)}%</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary-color);">${(cost.forecast.ConfidencePercentage || 0).toFixed(0)}%</div>
             </div>
             <div style="padding: 1rem; background: var(--surface); border-radius: 4px;">
                 <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Trend</div>
-                <div style="font-size: 1.25rem; font-weight: bold;">${getTrendIcon(cost.forecast.trend)} ${escapeHtml(cost.forecast.trend)}</div>
+                <div style="font-size: 1.25rem; font-weight: bold;">${getTrendIcon(cost.forecast.Trend)} ${escapeHtml(cost.forecast.Trend)}</div>
             </div>
         </div>
         
         <h5>Range Estimate</h5>
         <div style="margin-bottom: 1.5rem;">
             <div style="font-size: 0.875rem; margin-bottom: 0.5rem;">
-                Low: $${cost.forecast.lowEstimate30Days.toFixed(2)} | 
-                Mid: $${cost.forecast.midEstimate30Days.toFixed(2)} | 
-                High: $${cost.forecast.highEstimate30Days.toFixed(2)}
+                Low: $${(cost.forecast.LowEstimate30Days || 0).toFixed(2)} | 
+                Mid: $${(cost.forecast.MidEstimate30Days || 0).toFixed(2)} | 
+                High: $${(cost.forecast.HighEstimate30Days || 0).toFixed(2)}
             </div>
             <div style="width: 100%; height: 30px; background: var(--border); border-radius: 4px; position: relative; overflow: hidden;">
                 <div style="position: absolute; left: 0; top: 0; height: 100%; width: 33.33%; background: rgba(76, 175, 80, 0.3);"></div>
@@ -240,24 +276,24 @@ function showDetailPanel(cost) {
             </div>
         </div>
         
-        ${cost.forecast.recentChanges && cost.forecast.recentChanges.length > 0 ? `
+        ${cost.forecast.RecentChanges && cost.forecast.RecentChanges.length > 0 ? `
         <h5>Recent Changes</h5>
         <ul style="margin-bottom: 1.5rem;">
-            ${cost.forecast.recentChanges.map(change => `<li>${escapeHtml(change)}</li>`).join('')}
+            ${cost.forecast.RecentChanges.map(change => `<li>${escapeHtml(change)}</li>`).join('')}
         </ul>
         ` : ''}
         
-        ${cost.forecast.riskFactors && cost.forecast.riskFactors.length > 0 ? `
+        ${cost.forecast.RiskFactors && cost.forecast.RiskFactors.length > 0 ? `
         <h5 style="color: #f44336;">Risk Factors</h5>
         <ul style="margin-bottom: 1.5rem; color: #f44336;">
-            ${cost.forecast.riskFactors.map(risk => `<li>${escapeHtml(risk)}</li>`).join('')}
+            ${cost.forecast.RiskFactors.map(risk => `<li>${escapeHtml(risk)}</li>`).join('')}
         </ul>
         ` : ''}
         
-        ${cost.forecast.recommendations && cost.forecast.recommendations.length > 0 ? `
+        ${cost.forecast.Recommendations && cost.forecast.Recommendations.length > 0 ? `
         <h5 style="color: #4caf50;">Recommendations</h5>
         <ul style="margin-bottom: 1.5rem; color: #4caf50;">
-            ${cost.forecast.recommendations.map(rec => `<li>${escapeHtml(rec)}</li>`).join('')}
+            ${cost.forecast.Recommendations.map(rec => `<li>${escapeHtml(rec)}</li>`).join('')}
         </ul>
         ` : ''}
     ` : '';
@@ -266,11 +302,11 @@ function showDetailPanel(cost) {
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
             <div style="padding: 1rem; background: var(--surface); border-radius: 4px;">
                 <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">30-Day Cost</div>
-                <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary-color);">$${cost.totalCostForPeriod.toFixed(2)}</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary-color);">$${(cost.totalCostForPeriod || 0).toFixed(2)}</div>
             </div>
             <div style="padding: 1rem; background: var(--surface); border-radius: 4px;">
                 <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Daily Average</div>
-                <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary-color);">$${cost.totalCostPerDay.toFixed(2)}</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary-color);">$${(cost.totalCostPerDay || 0).toFixed(2)}</div>
             </div>
             <div style="padding: 1rem; background: var(--surface); border-radius: 4px;">
                 <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Resource Type</div>
@@ -285,7 +321,7 @@ function showDetailPanel(cost) {
         <h4>Cost Details</h4>
         <div style="margin-bottom: 1.5rem;">
             <div style="margin-bottom: 0.75rem;">
-                <strong>Capacity:</strong> ${cost.usedGigabytes.toFixed(2)} GB used / ${cost.capacityGigabytes.toFixed(2)} GB total
+                <strong>Capacity:</strong> ${(cost.usedGigabytes || 0).toFixed(2)} GB used / ${(cost.capacityGigabytes || 0).toFixed(2)} GB total
             </div>
             ${cost.snapshotCount > 0 ? `<div style="margin-bottom: 0.75rem;"><strong>Snapshots:</strong> ${cost.snapshotCount} (${(cost.totalSnapshotSizeGb || 0).toFixed(2)} GB)</div>` : ''}
             <div style="margin-bottom: 0.75rem;"><strong>Backup:</strong> ${cost.backupConfigured ? 'Enabled' : 'Disabled'}</div>
@@ -313,7 +349,7 @@ function renderDetailBreakdown(breakdown) {
         .filter(([_, value]) => value > 0)
         .sort(([_, a], [__, b]) => b - a)
         .map(([type, cost]) => {
-            const percentage = total > 0 ? (cost / total) * 100 : 0;
+            const percentage = total > 0 ? ((cost || 0) / total) * 100 : 0;
             return `
                 <div style="margin-bottom: 1rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
