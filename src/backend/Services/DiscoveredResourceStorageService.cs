@@ -6,14 +6,16 @@ using System.Web;
 
 namespace AzFilesOptimizer.Backend.Services;
 
-public class DiscoveredResourceStorageService
+public partial class DiscoveredResourceStorageService
 {
     private readonly TableClient _sharesTableClient;
     private readonly TableClient _volumesTableClient;
     private readonly TableClient _disksTableClient;
+    private string _storageConnectionString;
 
-    public DiscoveredResourceStorageService(string storageConnectionString)
+public DiscoveredResourceStorageService(string storageConnectionString)
     {
+        _storageConnectionString = storageConnectionString;
         var tableServiceClient = new TableServiceClient(storageConnectionString);
 
         _sharesTableClient = tableServiceClient.GetTableClient("discoveredshares");
