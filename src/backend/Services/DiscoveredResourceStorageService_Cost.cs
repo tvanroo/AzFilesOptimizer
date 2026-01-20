@@ -160,7 +160,14 @@ public partial class DiscoveredResourceStorageService
             System.Diagnostics.Debug.WriteLine($"Failed to retrieve costs for job {jobId}: {ex.Message}");
         }
 
-        return costs;
+        // If multiple analyses exist for the same volume within a job (e.g., after reruns),
+        // return only the latest analysis per VolumeId to avoid duplicate cards in the UI.
+        var deduped = costs
+            .GroupBy(c => c.VolumeId)
+            .Select(g => g.OrderByDescending(c => c.AnalysisTimestamp).First())
+            .ToList();
+
+        return deduped;
     }
 
     /// <summary>

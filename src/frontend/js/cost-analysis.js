@@ -138,7 +138,10 @@ function renderCosts() {
     sorted.forEach(cost => {
         const elem = document.querySelector(`[data-volume-id="${cost.volumeId}"]`);
         if (elem) {
-            elem.addEventListener('click', () => showDetailPanel(cost));
+            elem.addEventListener('click', (event) => {
+                event.stopPropagation();
+                showDetailPanel(cost, elem);
+            });
         }
     });
 }
@@ -253,11 +256,11 @@ function applyFilters() {
     renderCosts();
 }
 
-function showDetailPanel(cost) {
+function showDetailPanel(cost, sourceElement) {
     const panel = document.getElementById('detail-panel');
     const title = document.getElementById('detail-title');
     const content = document.getElementById('detail-content');
-    
+
     title.textContent = cost.volumeName;
     
     const forecastHtml = cost.forecast ? `
@@ -355,6 +358,18 @@ function showDetailPanel(cost) {
     `;
     
     currentDetailCost = cost;
+
+    // Move the detail panel directly under the clicked card so the expansion
+    // appears inline instead of pinned at the bottom of the page.
+    if (sourceElement && sourceElement.parentNode) {
+        const parent = sourceElement.parentNode;
+        if (panel.parentNode !== parent) {
+            parent.insertBefore(panel, sourceElement.nextSibling);
+        } else if (panel.previousSibling !== sourceElement) {
+            parent.insertBefore(panel, sourceElement.nextSibling);
+        }
+    }
+
     panel.style.display = 'block';
 }
 
