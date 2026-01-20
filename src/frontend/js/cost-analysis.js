@@ -1,6 +1,7 @@
 let allCosts = [];
 let filteredCosts = [];
 let jobId = null;
+let currentDetailCost = null;
 
 function navigateTo(target) {
     const base = target === 'forecast' ? 'cost-forecast.html' : 'cost-summary.html';
@@ -345,10 +346,15 @@ function showDetailPanel(cost) {
         <div style="margin-bottom: 1.5rem;">
             ${renderDetailBreakdown(cost.costBreakdown)}
         </div>
+
+        <div style="margin-top: 0.75rem;">
+            <button class="btn" type="button" onclick="exportCostDebug()">Export debug JSON</button>
+        </div>
         
         ${forecastHtml}
     `;
     
+    currentDetailCost = cost;
     panel.style.display = 'block';
 }
 
@@ -380,7 +386,42 @@ function renderDetailBreakdown(breakdown) {
 }
 
 function closeDetailPanel() {
+    currentDetailCost = null;
     document.getElementById('detail-panel').style.display = 'none';
+}
+
+function exportCostDebug() {
+    if (!currentDetailCost || !Array.isArray(currentDetailCost.costComponents)) {
+        if (typeof Toast !== 'undefined' && Toast.error) {
+            Toast.error('No debug cost data available for this volume');
+        } else {
+            alert('No debug cost data available for this volume');
+        }
+        return;
+    }
+
+    const payload = {
+        jobId,
+        volumeId: currentDetailCost.volumeId,
+        volumeName: currentDetailCost.volumeName,
+        resourceType: currentDetailCost.resourceType,
+        region: currentDetailCost.region,
+        periodStart: currentDetailCost.periodStart,
+        periodEnd: currentDetailCost.periodEnd,
+        totalCostForPeriod: currentDetailCost.totalCostForPeriod,
+        totalCostPerDay: currentDetailCost.totalCostPerDay,
+        costComponents: currentDetailCost.costComponents,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cost-debug-${currentDetailCost.volumeId || 'volume'}.json`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
 }
 
 async function runCostAnalysis() {
