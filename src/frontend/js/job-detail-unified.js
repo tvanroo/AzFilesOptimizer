@@ -172,6 +172,11 @@ const jobDetail = {
             Toast.error('Failed to re-run job: ' + error.message);
         }
     },
+
+    viewCostAnalysis() {
+        const url = `cost-analysis.html?jobId=${encodeURIComponent(this.jobId)}`;
+        window.location.href = url;
+    },
     
     renderOverview() {
         const container = document.getElementById('job-details-container');

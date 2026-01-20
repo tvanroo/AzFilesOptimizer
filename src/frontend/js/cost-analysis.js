@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadCosts() {
     try {
-        const response = await fetch(`/api/discovery/${jobId}/costs`);
+        const response = await fetch(`${API_BASE_URL}/discovery/${jobId}/costs`);
         if (!response.ok) {
             throw new Error(`Failed to load costs: ${response.statusText}`);
         }
@@ -317,7 +317,7 @@ function closeDetailPanel() {
 
 async function runCostAnalysis() {
     try {
-        const response = await fetch(`/api/discovery/${jobId}/cost-analysis`, {
+        const response = await fetch(`${API_BASE_URL}/discovery/${jobId}/cost-analysis`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -335,7 +335,7 @@ async function runCostAnalysis() {
 
 async function exportCosts(format) {
     try {
-        const response = await fetch(`/api/discovery/${jobId}/costs/export?format=${format}`);
+        const response = await fetch(`${API_BASE_URL}/discovery/${jobId}/costs/export?format=${format}`);
         
         if (!response.ok) {
             throw new Error('Export failed');
