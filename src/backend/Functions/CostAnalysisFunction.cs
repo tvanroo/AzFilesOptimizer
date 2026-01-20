@@ -35,10 +35,10 @@ public class CostAnalysisFunction
     /// Trigger cost analysis for all discovered volumes in a job
     /// </summary>
     [Function("TriggerCostAnalysis")]
-    public async Task<HttpResponseData> TriggerCostAnalysis(
+    [QueueOutput("cost-analysis-queue", Connection = "AzureWebJobsStorage")]
+    public async Task<string> TriggerCostAnalysis(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "discovery/{jobId}/cost-analysis")] HttpRequestData req,
-        string jobId,
-        [QueueOutput("cost-analysis-queue")] IAsyncCollector<string> costAnalysisQueue)
+        string jobId)
     {
         _logger.LogInformation("Triggering cost analysis for job: {JobId}", jobId);
 
@@ -47,28 +47,17 @@ public class CostAnalysisFunction
             var job = await _jobStorage.GetDiscoveryJobAsync(jobId);
             if (job == null)
             {
-                var notFoundResponse = req.CreateResponse(HttpStatusCode.NotFound);
-                await notFoundResponse.WriteAsJsonAsync(new { error = "Job not found" });
-                return notFoundResponse;
+                _logger.LogError("Job not found: {JobId}", jobId);
+                return string.Empty;
             }
 
-            // Queue cost analysis job
-            await costAnalysisQueue.AddAsync(JsonSerializer.Serialize(new CostAnalysisMessage { JobId = jobId }));
-
-            var response = req.CreateResponse(HttpStatusCode.Accepted);
-            await response.WriteAsJsonAsync(new
-            {
-                message = "Cost analysis job queued",
-                jobId = jobId
-            });
-            return response;
+            // Return job ID as queue message
+            return JsonSerializer.Serialize(new CostAnalysisMessage { JobId = jobId });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error triggering cost analysis for job {JobId}", jobId);
-            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
-            await errorResponse.WriteAsJsonAsync(new { error = "Failed to trigger cost analysis", details = ex.Message });
-            return errorResponse;
+            return string.Empty;
         }
     }
 
