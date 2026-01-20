@@ -98,7 +98,7 @@ public class CostAnalysisFunction
                 summary = new
                 {
                     totalCost = costs.Sum(c => c.TotalCostForPeriod),
-                    averageDailyCost = costs.Average(c => c.TotalCostPerDay),
+                    averageDailyCost = costs.Count > 0 ? costs.Average(c => c.TotalCostPerDay) : 0,
                     costByType = costs.GroupBy(c => c.ResourceType)
                         .ToDictionary(g => g.Key, g => g.Sum(c => c.TotalCostForPeriod))
                 }
@@ -145,7 +145,7 @@ public class CostAnalysisFunction
                 summary = new
                 {
                     totalForecastedCost = forecasts.Sum(f => f.ForecastedCostFor30Days),
-                    averageConfidence = forecasts.Average(f => f.ConfidencePercentage),
+                    averageConfidence = forecasts.Count > 0 ? forecasts.Average(f => f.ConfidencePercentage) : 0,
                     trendBreakdown = forecasts.GroupBy(f => f.Trend)
                         .ToDictionary(g => g.Key, g => g.Count()),
                     riskFactorCount = forecasts.Sum(f => f.RiskFactors.Count)
