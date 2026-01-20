@@ -61,8 +61,9 @@ public class CostCollectionService
             var days = periodEnd.Subtract(periodStart).Days;
             if (days == 0) days = 1;
 
-            // Determine tier based on capacity
-            var isPremium = capacityBytes > (100 * 1024 * 1024 * 1024); // > 100 GB = premium
+            // Determine tier based on capacity (use 100 GiB threshold, be careful to avoid compile-time overflow)
+            var premiumThresholdBytes = 100L * 1024L * 1024L * 1024L;
+            var isPremium = capacityBytes > premiumThresholdBytes; // > 100 GB = premium
             var tierName = isPremium ? "Premium" : "Standard";
             var storagePrice = isPremium ? pricing.PremiumStoragePricePerGb : pricing.StandardStoragePricePerGb;
 

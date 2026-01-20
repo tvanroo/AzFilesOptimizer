@@ -84,6 +84,17 @@ public class CostForecastingService
             // Identify risk factors
             IdentifyRiskFactors(forecast, historicalAnalysis, trendAnalysis);
 
+            // Derive forecast component percentages from historical breakdown if available
+            if (historicalAnalysis.TotalCostForPeriod > 0)
+            {
+                var breakdown = historicalAnalysis.CostBreakdown;
+                var backupCost = breakdown.GetValueOrDefault("backup", 0);
+                var egressCost = breakdown.GetValueOrDefault("egress", 0);
+                var total = historicalAnalysis.TotalCostForPeriod;
+                forecast.BackupCostPercentage = total > 0 ? (backupCost / total) * 100 : 0;
+                forecast.EgressCostPercentage = total > 0 ? (egressCost / total) * 100 : 0;
+            }
+
             // Generate recommendations
             GenerateRecommendations(forecast, historicalAnalysis);
 

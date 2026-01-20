@@ -109,6 +109,16 @@ public class CostForecastResult
     /// Cost breakdown forecast by component type
     /// </summary>
     public Dictionary<string, double> ForecastByComponent { get; set; } = new();
+
+    /// <summary>
+    /// Percentage of forecasted cost that is backup
+    /// </summary>
+    public double BackupCostPercentage { get; set; }
+
+    /// <summary>
+    /// Percentage of forecasted cost that is egress
+    /// </summary>
+    public double EgressCostPercentage { get; set; }
     
     /// <summary>
     /// Timestamp when forecast was generated

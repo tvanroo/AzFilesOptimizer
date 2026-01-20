@@ -215,7 +215,8 @@ public class CostAnalysisFunction
 
         try
         {
-            var body = await req.ReadAsJsonAsync<CostAssumptionsRequest>();
+            var content = await req.ReadAsStringAsync();
+            var body = JsonSerializer.Deserialize<CostAssumptionsRequest>(content);
             if (body == null || string.IsNullOrEmpty(body.VolumeId))
             {
                 var badResponse = req.CreateResponse(HttpStatusCode.BadRequest);
@@ -295,8 +296,8 @@ public class CostAnalysisFunction
             cost.JobId = parsedMessage.JobId;
             costAnalyses.Add(cost);
 
-                    // Generate forecast
-                    var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>());
+            // Generate forecast
+            var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>(), null);
                     forecasts.Add(forecast);
                 }
                 catch (Exception ex)
@@ -353,7 +354,7 @@ public class CostAnalysisFunction
             cost.JobId = parsedMessage.JobId;
             costAnalyses.Add(cost);
 
-                    var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>());
+            var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>(), null);
                     forecasts.Add(forecast);
                 }
                 catch (Exception ex)
