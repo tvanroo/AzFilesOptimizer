@@ -38,7 +38,7 @@ public class CostAnalysisFunction
     public async Task<HttpResponseData> TriggerCostAnalysis(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "discovery/{jobId}/cost-analysis")] HttpRequestData req,
         string jobId,
-        [Queue("cost-analysis-queue")] IAsyncCollector<CostAnalysisMessage> costAnalysisQueue)
+        [QueueOutput("cost-analysis-queue")] IAsyncCollector<string> costAnalysisQueue)
     {
         _logger.LogInformation("Triggering cost analysis for job: {JobId}", jobId);
 
@@ -53,7 +53,7 @@ public class CostAnalysisFunction
             }
 
             // Queue cost analysis job
-            await costAnalysisQueue.AddAsync(new CostAnalysisMessage { JobId = jobId });
+            await costAnalysisQueue.AddAsync(JsonSerializer.Serialize(new CostAnalysisMessage { JobId = jobId }));
 
             var response = req.CreateResponse(HttpStatusCode.Accepted);
             await response.WriteAsJsonAsync(new
@@ -255,25 +255,31 @@ public class CostAnalysisFunction
     /// </summary>
     [Function("ProcessCostAnalysis")]
     public async Task ProcessCostAnalysis(
-        [QueueTrigger("cost-analysis-queue")] CostAnalysisMessage message,
+        [QueueTrigger("cost-analysis-queue")] string message,
         FunctionContext context)
     {
         var logger = context.GetLogger("ProcessCostAnalysis");
-        logger.LogInformation("Processing cost analysis for job: {JobId}", message.JobId);
+        var parsedMessage = JsonSerializer.Deserialize<CostAnalysisMessage>(message);
+        if (parsedMessage == null)
+        {
+            logger.LogWarning("Failed to parse cost analysis message");
+            return;
+        }
+        logger.LogInformation("Processing cost analysis for job: {JobId}", parsedMessage.JobId);
 
         try
         {
-            var job = await _jobStorage.GetDiscoveryJobAsync(message.JobId);
+            var job = await _jobStorage.GetDiscoveryJobAsync(parsedMessage.JobId);
             if (job == null)
             {
-                logger.LogWarning("Job not found: {JobId}", message.JobId);
+                logger.LogWarning("Job not found: {JobId}", parsedMessage.JobId);
                 return;
             }
 
             // Get all discovered resources
-            var shares = await _resourceStorage.GetSharesByJobIdAsync(message.JobId);
-            var volumes = await _resourceStorage.GetVolumesByJobIdAsync(message.JobId);
-            var disks = await _resourceStorage.GetDisksByJobIdAsync(message.JobId);
+            var shares = await _resourceStorage.GetSharesByJobIdAsync(parsedMessage.JobId);
+            var volumes = await _resourceStorage.GetVolumesByJobIdAsync(parsedMessage.JobId);
+            var disks = await _resourceStorage.GetDisksByJobIdAsync(parsedMessage.JobId);
 
             var costAnalyses = new List<VolumeCostAnalysis>();
             var forecasts = new List<CostForecastResult>();
@@ -297,8 +303,8 @@ public class CostAnalysisFunction
                         DateTime.UtcNow.AddDays(-30),
                         DateTime.UtcNow);
                     
-                    cost.JobId = message.JobId;
-                    costAnalyses.Add(cost);
+            cost.JobId = parsedMessage.JobId;
+            costAnalyses.Add(cost);
 
                     // Generate forecast
                     var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>());
@@ -328,8 +334,8 @@ public class CostAnalysisFunction
                         DateTime.UtcNow.AddDays(-30),
                         DateTime.UtcNow);
                     
-                    cost.JobId = message.JobId;
-                    costAnalyses.Add(cost);
+            cost.JobId = parsedMessage.JobId;
+            costAnalyses.Add(cost);
 
                     var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>());
                     forecasts.Add(forecast);
@@ -355,8 +361,8 @@ public class CostAnalysisFunction
                         DateTime.UtcNow.AddDays(-30),
                         DateTime.UtcNow);
                     
-                    cost.JobId = message.JobId;
-                    costAnalyses.Add(cost);
+            cost.JobId = parsedMessage.JobId;
+            costAnalyses.Add(cost);
 
                     var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>());
                     forecasts.Add(forecast);
@@ -368,8 +374,8 @@ public class CostAnalysisFunction
             }
 
             // Persist results
-            await _resourceStorage.SaveVolumeCostAnalysesAsync(message.JobId, costAnalyses);
-            await _resourceStorage.SaveCostForecastsAsync(message.JobId, forecasts);
+            await _resourceStorage.SaveVolumeCostAnalysesAsync(parsedMessage.JobId, costAnalyses);
+            await _resourceStorage.SaveCostForecastsAsync(parsedMessage.JobId, forecasts);
 
             logger.LogInformation("Cost analysis completed for job {JobId}: {Count} volumes analyzed", 
                 message.JobId, costAnalyses.Count);
@@ -414,7 +420,7 @@ public class CostAnalysisFunction
     /// <summary>
     /// Request model for cost analysis
     /// </summary>
-    private class CostAnalysisMessage
+    public class CostAnalysisMessage
     {
         public string JobId { get; set; } = "";
     }
@@ -422,7 +428,7 @@ public class CostAnalysisFunction
     /// <summary>
     /// Request model for cost assumptions update
     /// </summary>
-    private class CostAssumptionsRequest
+    public class CostAssumptionsRequest
     {
         public string VolumeId { get; set; } = "";
         public Dictionary<string, object> Assumptions { get; set; } = new();

@@ -1,6 +1,7 @@
 using Azure.Core;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using AzFilesOptimizer.Backend.Models;
 
 namespace AzFilesOptimizer.Backend.Services;
 

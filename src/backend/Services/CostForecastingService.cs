@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Linq;
+using AzFilesOptimizer.Backend.Models;
 
 namespace AzFilesOptimizer.Backend.Services;
 
@@ -19,7 +20,7 @@ public class CostForecastingService
     public CostForecastResult ForecastCosts(
         VolumeCostAnalysis historicalAnalysis,
         List<CostMetrics> historicalMetrics,
-        List<string> recentChanges = null)
+        List<string>? recentChanges = null)
     {
         try
         {
