@@ -54,7 +54,19 @@ public class CostCollectionService
                 AverageEgressPerDayGb = 0, // Will be replaced by actuals
                 SnapshotCount = share.SnapshotCount,
                 TotalSnapshotSizeGb = (share.TotalSnapshotSizeBytes ?? 0) / (1024.0 * 1024.0 * 1024.0),
-                BackupConfigured = share.BackupPolicyConfigured ?? false
+                BackupConfigured = share.BackupPolicyConfigured ?? false,
+                CostCalculationInputs = new Dictionary<string, object>
+                {
+                    { "AccessTier", share.AccessTier ?? "null" },
+                    { "IsProvisioned", share.IsProvisioned },
+                    { "ProvisionedTier", share.ProvisionedTier ?? "null" },
+                    { "RedundancyType", share.RedundancyType ?? "null" },
+                    { "ShareQuotaGiB", share.ShareQuotaGiB ?? 0 },
+                    { "ShareUsageBytes", share.ShareUsageBytes ?? 0 },
+                    { "ProvisionedIops", share.ProvisionedIops ?? 0 },
+                    { "ProvisionedBandwidthMiBps", share.ProvisionedBandwidthMiBps ?? 0 },
+                    { "SnapshotCount", share.SnapshotCount ?? 0 }
+                }
             };
 
             // Parse enums with null checks and defaults
@@ -96,8 +108,23 @@ public class CostCollectionService
             if (pricing == null)
             {
                 _logger.LogWarning("Could not retrieve pricing for Azure File Share {ShareName}", share.ShareName);
+                analysis.Warnings.Add("Failed to retrieve retail pricing data");
                 return analysis;
             }
+            
+            // Store pricing data for debugging
+            analysis.RetailPricingData = new Dictionary<string, object>
+            {
+                { "AccessTier", accessTier?.ToString() ?? "null" },
+                { "ProvisionedTier", provisionedTier?.ToString() ?? "null" },
+                { "Redundancy", redundancy.ToString() },
+                { "StoragePricePerGbMonth", pricing.StoragePricePerGbMonth },
+                { "ProvisionedV1StoragePricePerGibMonth", pricing.ProvisionedV1StoragePricePerGibMonth },
+                { "ProvisionedStoragePricePerGibHour", pricing.ProvisionedStoragePricePerGibHour },
+                { "ProvisionedIOPSPricePerHour", pricing.ProvisionedIOPSPricePerHour },
+                { "ProvisionedThroughputPricePerMiBPerSecPerHour", pricing.ProvisionedThroughputPricePerMiBPerSecPerHour },
+                { "SnapshotPricePerGbMonth", pricing.SnapshotPricePerGbMonth }
+            };
             
             var days = periodEnd.Subtract(periodStart).Days;
             if (days == 0) days = 1;
@@ -231,7 +258,14 @@ public class CostCollectionService
                 UsedGigabytes = 0, // ANF doesn't expose used bytes, billed on provisioned
                 SnapshotCount = volume.SnapshotCount ?? 0,
                 TotalSnapshotSizeGb = (volume.TotalSnapshotSizeBytes ?? 0) / (1024.0 * 1024.0 * 1024.0),
-                BackupConfigured = volume.BackupPolicyConfigured ?? false
+                BackupConfigured = volume.BackupPolicyConfigured ?? false,
+                CostCalculationInputs = new Dictionary<string, object>
+                {
+                    { "CapacityPoolServiceLevel", volume.CapacityPoolServiceLevel ?? "null" },
+                    { "ProvisionedSizeBytes", volume.ProvisionedSizeBytes },
+                    { "SnapshotCount", volume.SnapshotCount ?? 0 },
+                    { "BackupConfigured", volume.BackupPolicyConfigured ?? false }
+                }
             };
 
             // Parse service level with null check
@@ -254,8 +288,17 @@ public class CostCollectionService
             if (pricing == null)
             {
                 _logger.LogWarning("Could not retrieve pricing for ANF volume {VolumeName}", volume.VolumeName);
+                analysis.Warnings.Add("Failed to retrieve retail pricing data");
                 return analysis;
             }
+            
+            // Store pricing data for debugging
+            analysis.RetailPricingData = new Dictionary<string, object>
+            {
+                { "ServiceLevel", serviceLevel.ToString() },
+                { "CapacityPricePerGibHour", pricing.CapacityPricePerGibHour },
+                { "SnapshotPricePerGibHour", pricing.SnapshotPricePerGibHour }
+            };
             
             var days = periodEnd.Subtract(periodStart).Days;
             if (days == 0) days = 1;
@@ -369,8 +412,19 @@ public class CostCollectionService
             if (pricing == null)
             {
                 _logger.LogWarning("Could not retrieve pricing for Managed Disk {DiskName}", disk.DiskName);
+                analysis.Warnings.Add("Failed to retrieve retail pricing data");
                 return analysis;
             }
+            
+            // Store pricing data for debugging
+            analysis.RetailPricingData = new Dictionary<string, object>
+            {
+                { "DiskType", diskType.ToString() },
+                { "SKU", pricing.SKU },
+                { "Redundancy", redundancy.ToString() },
+                { "PricePerMonth", pricing.PricePerMonth },
+                { "SnapshotPricePerGibMonth", pricing.SnapshotPricePerGibMonth }
+            };
             
             var days = (periodEnd - periodStart).Days;
             if (days == 0) days = 1;
@@ -424,6 +478,9 @@ public class CostCollectionService
                     analysis.ResourceType,
                     analysis.VolumeName,
                     analysis.ResourceId);
+                analysis.ActualCostsApplied = false;
+                analysis.ActualCostsNotAppliedReason = "No meter data returned from Cost Management API";
+                analysis.ActualCostMeterCount = 0;
                 return;
             }
 
@@ -473,6 +530,8 @@ public class CostCollectionService
 
             analysis.RecalculateTotals();
             analysis.Notes = (analysis.Notes ?? string.Empty) + " | Enriched with actual meter-level costs from Cost Management API.";
+            analysis.ActualCostsApplied = true;
+            analysis.ActualCostMeterCount = detailedCosts.Count;
             
             _logger.LogInformation(
                 "Enriched cost analysis for {ResourceId} with {MeterCount} meters, total: ${Total}",
@@ -483,6 +542,8 @@ public class CostCollectionService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to enrich with detailed costs for {ResourceId}, keeping retail estimates", analysis.ResourceId);
+            analysis.ActualCostsApplied = false;
+            analysis.ActualCostsNotAppliedReason = $"Exception: {ex.Message}";
         }
     }
 
@@ -493,6 +554,9 @@ public class CostCollectionService
             var actual = await TryGetActualCostAsync(analysis.ResourceId, periodStart, periodEnd);
             if (!actual.HasValue || actual.Value <= 0)
             {
+                analysis.ActualCostsApplied = false;
+                analysis.ActualCostsNotAppliedReason = "No actual cost data found in Cost Management API";
+                analysis.ActualCostMeterCount = 0;
                 return; // keep retail estimate
             }
 
@@ -531,10 +595,14 @@ public class CostCollectionService
             analysis.RecalculateTotals();
             analysis.Notes = (analysis.Notes ?? string.Empty) +
                 " | Actual billed total from Cost Management applied; retail components scaled to match.";
+            analysis.ActualCostsApplied = true;
+            analysis.ActualCostMeterCount = 1; // Simple total
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to apply actual billed cost for {ResourceId}", analysis.ResourceId);
+            analysis.ActualCostsApplied = false;
+            analysis.ActualCostsNotAppliedReason = $"Exception: {ex.Message}";
         }
     }
 

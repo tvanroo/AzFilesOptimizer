@@ -193,6 +193,31 @@ public class VolumeCostAnalysis
     public List<string> Warnings { get; set; } = new();
     
     /// <summary>
+    /// Debug: Inputs used for cost calculation
+    /// </summary>
+    public Dictionary<string, object>? CostCalculationInputs { get; set; }
+    
+    /// <summary>
+    /// Debug: Pricing data retrieved from Retail Prices API
+    /// </summary>
+    public Dictionary<string, object>? RetailPricingData { get; set; }
+    
+    /// <summary>
+    /// Debug: Whether actual costs from Cost Management API were applied
+    /// </summary>
+    public bool ActualCostsApplied { get; set; }
+    
+    /// <summary>
+    /// Debug: Reason why actual costs were not applied (if applicable)
+    /// </summary>
+    public string? ActualCostsNotAppliedReason { get; set; }
+    
+    /// <summary>
+    /// Debug: Number of meters found in Cost Management API
+    /// </summary>
+    public int? ActualCostMeterCount { get; set; }
+    
+    /// <summary>
     /// Recalculate totals based on cost components
     /// </summary>
     public void RecalculateTotals()
