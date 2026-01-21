@@ -464,9 +464,9 @@ public class CostCollectionService
             dataset.Aggregation.Add("totalCostUSD", new QueryAggregation("CostUSD", FunctionType.Sum));
 
             // Add grouping by ResourceId, MeterSubcategory, and Meter (matching PowerShell script)
-            dataset.Grouping.Add(new QueryGrouping("ResourceId", QueryColumnType.Dimension));
-            dataset.Grouping.Add(new QueryGrouping("MeterSubcategory", QueryColumnType.Dimension));
-            dataset.Grouping.Add(new QueryGrouping("Meter", QueryColumnType.Dimension));
+            dataset.Grouping.Add(new QueryGrouping("ResourceId", "Dimension"));
+            dataset.Grouping.Add(new QueryGrouping("MeterSubcategory", "Dimension"));
+            dataset.Grouping.Add(new QueryGrouping("Meter", "Dimension"));
 
             // Filter to the specific resource ID
             var comparison = new QueryComparisonExpression(
@@ -1050,7 +1050,6 @@ public class CostCollectionService
     /// </summary>
     private void ExtractAnfMetadata(List<MeterCostEntry> meters, VolumeMetadataFromBilling metadata, int days)
     {
-        double totalProtocolOps = 0;
         var detectedProtocols = new List<string>();
 
         foreach (var meter in meters)
