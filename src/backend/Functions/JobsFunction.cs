@@ -508,7 +508,12 @@ public class JobsFunction
                 job.TenantId);
             
             await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Discovery complete");
-            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Persisting discovered resources...");
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Persisting discovered resources (clearing previous results for this job)...");
+
+            // Clear any previously persisted resources for this job so the latest discovery run fully refreshes state
+            await _resourceStorage.DeleteSharesByJobIdAsync(jobId);
+            await _resourceStorage.DeleteVolumesByJobIdAsync(jobId);
+            await _resourceStorage.DeleteDisksByJobIdAsync(jobId);
 
             // Persist discovered resources to Table Storage
             await _resourceStorage.SaveSharesAsync(jobId, result.AzureFileShares);
@@ -516,7 +521,6 @@ public class JobsFunction
             await _resourceStorage.SaveDisksAsync(jobId, result.ManagedDisks);
 
             await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Saved {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes, and {result.ManagedDisks.Count} disks to storage");
-
             // Update job with discovery results (but keep status Running until cost analysis finishes)
             job.AzureFilesSharesFound = result.AzureFileShares.Count;
             job.AnfVolumesFound = result.AnfVolumes.Count;

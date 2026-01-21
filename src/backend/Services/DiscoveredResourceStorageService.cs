@@ -224,6 +224,19 @@ public DiscoveredResourceStorageService(string storageConnectionString)
         await Task.WhenAll(tasks);
     }
 
+    public async Task DeleteDisksByJobIdAsync(string jobId)
+    {
+        var entities = new List<TableEntity>();
+
+        await foreach (var entity in _disksTableClient.QueryAsync<TableEntity>(filter: $"PartitionKey eq '{jobId}'"))
+        {
+            entities.Add(entity);
+        }
+
+        var tasks = entities.Select(entity => _disksTableClient.DeleteEntityAsync(entity.PartitionKey, entity.RowKey));
+        await Task.WhenAll(tasks);
+    }
+
     private static string EncodeResourceId(string resourceId)
     {
         // Azure Table Storage RowKey doesn't allow /, \, #, ?

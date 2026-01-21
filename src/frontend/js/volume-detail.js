@@ -291,24 +291,59 @@ const volumeDetailPage = {
             return 0;
         }
         const labels = {
+            // Azure Files / generic storage metrics
             'Transactions': 'Transactions (count/hour)',
             'Ingress': 'Ingress (bytes/hour)',
             'Egress': 'Egress (bytes/hour)',
             'SuccessServerLatency': 'Server Latency (ms)',
             'SuccessE2ELatency': 'E2E Latency (ms)',
             'Availability': 'Availability (%)',
+
+            // ANF capacity metrics
             'VolumeLogicalSize': 'Logical Size (bytes)',
+            'VolumeAllocatedSize': 'Allocated Size (bytes)',
+            'VolumeConsumedSizePercentage': 'Consumed Capacity (%)',
+            'VolumeSnapshotSize': 'Snapshot Size (bytes)',
+            'VolumeBackupBytes': 'Backup Size (bytes)',
+
+            // ANF IOPS metrics (handle casing variants)
+            'ReadIOPS': 'Read IOPS',
+            'WriteIOPS': 'Write IOPS',
             'ReadIops': 'Read IOPS',
             'WriteIops': 'Write IOPS',
+            'OtherIOPS': 'Other IOPS',
+            'OtherIops': 'Other IOPS',
+            'OtherOps': 'Other IOPS',
+
+            // ANF throughput metrics
+            'ReadThroughput': 'Read Throughput (MiB/s)',
+            'WriteThroughput': 'Write Throughput (MiB/s)',
+            'OtherThroughput': 'Other Throughput (MiB/s)',
+            'TotalThroughput': 'Total Throughput (MiB/s)',
             'VolumeThroughputReadBytes': 'Read Throughput (bytes/s)',
             'VolumeThroughputWriteBytes': 'Write Throughput (bytes/s)',
-            'VolumeConsumedSizePercentage': 'Consumed %',
+
+            // ANF QoS / latency / replication / inode metrics
+            'QosLatencyDelta': 'QoS Latency Delta (ms)',
+            'QoS latency delta': 'QoS Latency Delta (ms)',
+            'VolumeReplicationProgress': 'Replication Progress (%)',
+            'VolumeReplicationLagTime': 'Replication Lag Time (s)',
+            'VolumeReplicationStatusHealthy': 'Replication Status Healthy',
+            'IsVolumeReplicationSuspended': 'Replication Suspended',
+            'Is Volume Backup suspended': 'Backup Suspended',
+            'Is volume replication status healthy': 'Replication Status Healthy',
+            'Is volume replication transferring': 'Replication Transferring',
+            'VolumeInodesUsed': 'Inodes Used',
+            'VolumeInodesTotal': 'Inodes Total',
+            'VolumeInodesPercentage': 'Inodes Used (%)',
+
             // Managed disk composite metrics
             'Composite Disk Read Bytes/sec': 'Disk Read (bytes/sec)',
             'Composite Disk Write Bytes/sec': 'Disk Write (bytes/sec)',
             'Composite Disk Read Operations/Sec': 'Disk Read IOPS',
             'Composite Disk Write Operations/Sec': 'Disk Write IOPS',
             'DiskPaidBurstIOPS': 'Burst IOPS (paid)',
+
             // VM data disk metrics (per LUN)
             'Data Disk Bandwidth Consumed Percentage': 'Data Disk Bandwidth Used (%)',
             'Data Disk IOPS Consumed Percentage': 'Data Disk IOPS Used (%)',
@@ -325,6 +360,7 @@ const volumeDetailPage = {
             'Data Disk Used Burst BPS Credits Percentage': 'Data Disk Burst BPS Credits Used (%)',
             'Premium Data Disk Cache Read Hit': 'Premium Disk Cache Read Hit',
             'Premium Data Disk Cache Read Miss': 'Premium Disk Cache Read Miss',
+
             // VM overall disk metrics
             'Disk Read Bytes': 'VM Disk Read Bytes',
             'Disk Write Bytes': 'VM Disk Write Bytes',
