@@ -21,6 +21,11 @@ public class DiscoveredAzureFileShare
     public bool? AllowBlobPublicAccess { get; set; }
     public bool? AllowSharedKeyAccess { get; set; }
     
+    // Pricing metadata
+    public string? RedundancyType { get; set; } // "LRS", "ZRS", "GRS", "GZRS" - extracted from SKU
+    public bool IsProvisioned { get; set; } // True if using Provisioned v1/v2 billing
+    public string? ProvisionedTier { get; set; } // "ProvisionedV1", "ProvisionedV2SSD", "ProvisionedV2HDD"
+    
     // File Share properties
     public string AccessTier { get; set; } = string.Empty; // "Hot", "Cool", "TransactionOptimized", "Premium"
     public DateTime? AccessTierChangeTime { get; set; }
@@ -89,8 +94,12 @@ public class DiscoveredAnfVolume
     public string ResourceGroup { get; set; } = string.Empty;
     public string SubscriptionId { get; set; } = string.Empty;
     public string Location { get; set; } = string.Empty;
-    public string ServiceLevel { get; set; } = string.Empty; // "Standard", "Premium", "Ultra"
+    public string ServiceLevel { get; set; } = string.Empty; // "Standard", "Premium", "Ultra", "Flexible"
     public string? PoolQosType { get; set; } // "Auto" or "Manual"
+    
+    // Pricing metadata (parsed from ServiceLevel and pool properties)
+    public string? CapacityPoolServiceLevel { get; set; } // Service level from parent pool
+    public bool IsFlexibleServiceLevel { get; set; } // True if Flexible service level
     public long ProvisionedSizeBytes { get; set; }
     public double? ThroughputMibps { get; set; }
     public double? ActualThroughputMibps { get; set; }
@@ -158,14 +167,19 @@ public class DiscoveredManagedDisk
     public string Location { get; set; } = string.Empty;
 
     // Disk properties
-    public string DiskSku { get; set; } = string.Empty;
-    public string DiskTier { get; set; } = string.Empty;
+    public string DiskSku { get; set; } = string.Empty; // e.g., "Premium_LRS", "StandardSSD_LRS"
+    public string DiskTier { get; set; } = string.Empty; // e.g., "P30", "E20", "S10"
     public long DiskSizeGB { get; set; }
     public string DiskState { get; set; } = string.Empty;
     public string ProvisioningState { get; set; } = string.Empty;
     public long? DiskSizeBytes { get; set; }
-    public string? DiskType { get; set; }
+    public string? DiskType { get; set; } // "Premium_LRS", "StandardSSD_LRS", "Standard_LRS", "UltraSSD_LRS", "PremiumV2_LRS"
     public bool? BurstingEnabled { get; set; }
+    
+    // Pricing metadata (derived from SKU and size)
+    public string? PricingTier { get; set; } // SKU tier: "P30", "P40", "E20", etc. - mapped from size
+    public string? RedundancyType { get; set; } // "LRS", "ZRS" - extracted from DiskSku
+    public string? ManagedDiskType { get; set; } // "PremiumSSD", "StandardSSD", "StandardHDD", "PremiumSSDv2", "UltraDisk"
 
     // Performance estimation
     public int? EstimatedIops { get; set; }

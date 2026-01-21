@@ -64,12 +64,13 @@ public partial class DiscoveryService
             await LogProgressAsync($"✓ Found {result.AnfVolumes.Count} ANF volumes");
 
             // Discover managed disks
-            await LogProgressAsync("Step 3/3: Discovering managed disks (excluding OS disks)...");
-            result.ManagedDisks = await DiscoverManagedDisksAsync(
-                subscription.Value, resourceGroupNames, tenantId);
-            await LogProgressAsync($"✓ Found {result.ManagedDisks.Count} managed disks");
+            // TODO: Re-implement managed disk discovery with new pricing model
+            // await LogProgressAsync("Step 3/3: Discovering managed disks (excluding OS disks)...");
+            // result.ManagedDisks = await DiscoverManagedDisksAsync(
+            //     subscription.Value, resourceGroupNames, tenantId);
+            // await LogProgressAsync($"✓ Found {result.ManagedDisks.Count} managed disks");
 
-            await LogProgressAsync($"Discovery completed successfully. Total: {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes, {result.ManagedDisks.Count} disks");
+            await LogProgressAsync($"Discovery completed successfully. Total: {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes");
 
             return result;
         }
@@ -211,6 +212,11 @@ public partial class DiscoveryService
                             MinimumTlsVersion = storageAccount.Data.MinimumTlsVersion?.ToString(),
                             AllowBlobPublicAccess = storageAccount.Data.AllowBlobPublicAccess,
                             AllowSharedKeyAccess = storageAccount.Data.AllowSharedKeyAccess,
+                            
+                            // Pricing metadata
+                            RedundancyType = ExtractRedundancyFromSku(storageAccount.Data.Sku?.Name.ToString()),
+                            IsProvisioned = (storageAccount.Data.Kind?.ToString() ?? "").Equals("FileStorage", StringComparison.OrdinalIgnoreCase),
+                            ProvisionedTier = GetProvisionedTier(storageAccount.Data.Sku?.Name.ToString()),
                             
                             // File Share properties
                             AccessTier = share.Data.AccessTier?.ToString() ?? "Unknown",
@@ -614,6 +620,10 @@ public partial class DiscoveryService
                                 Location = netAppAccount.Data.Location.Name,
                                 ServiceLevel = capacityPool.Data.ServiceLevel.ToString(),
                                 PoolQosType = poolQosType,
+                                
+                                // Pricing metadata
+                                CapacityPoolServiceLevel = capacityPool.Data.ServiceLevel.ToString(),
+                                IsFlexibleServiceLevel = (capacityPool.Data.ServiceLevel.ToString() ?? "").Equals("Flexible", StringComparison.OrdinalIgnoreCase),
                                 ProvisionedSizeBytes = volume.Data.UsageThreshold,
                                 ThroughputMibps = volume.Data.ThroughputMibps,
                                 ActualThroughputMibps = volume.Data.ActualThroughputMibps,

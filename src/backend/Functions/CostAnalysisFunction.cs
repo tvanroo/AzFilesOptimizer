@@ -4,6 +4,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using Azure.Identity;
+using Azure.Data.Tables;
 using AzFilesOptimizer.Backend.Models;
 using AzFilesOptimizer.Backend.Services;
 
@@ -26,7 +27,10 @@ public class CostAnalysisFunction
         var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
         var credential = new DefaultAzureCredential();
         
-        _costCollection = new CostCollectionService(_logger, credential);
+        var tableServiceClient = new TableServiceClient(connectionString);
+        var httpClient = new HttpClient();
+        var pricingService = new RetailPricingService(_logger, tableServiceClient, httpClient);
+        _costCollection = new CostCollectionService(_logger, credential, pricingService);
         _costForecasting = new CostForecastingService(_logger);
         _resourceStorage = new DiscoveredResourceStorageService(connectionString);
         _jobStorage = new JobStorageService(connectionString);
@@ -375,6 +379,13 @@ public class CostAnalysisFunction
             var costAnalyses = new List<VolumeCostAnalysis>();
             var forecasts = new List<CostForecastResult>();
 
+            // Cost Management API has 1-2 day lag, so query up to 2 days ago
+            var costPeriodEnd = DateTime.UtcNow.AddDays(-2);
+            var costPeriodStart = costPeriodEnd.AddDays(-30);
+
+            await _jobLogService.AddLogAsync(job.JobId,
+                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Cost analysis period: {costPeriodStart:yyyy-MM-dd} to {costPeriodEnd:yyyy-MM-dd} (accounting for Cost Management API lag)");
+
             // Process Azure Files
             if (shares.Count > 0)
             {
@@ -386,28 +397,15 @@ public class CostAnalysisFunction
             {
                 try
                 {
-                    var quotaBytes = share.ShareQuotaGiB.HasValue
-                        ? share.ShareQuotaGiB.Value * 1024L * 1024L * 1024L
-                        : 0L;
-
                     var cost = await _costCollection.GetAzureFilesCostAsync(
-                        share.ResourceId,
-                        share.ShareName,
-                        share.Location,
-                        quotaBytes,
-                        share.ShareUsageBytes ?? 0,
-                        100, // Estimate transactions per day
-                        (share.ShareUsageBytes ?? 0) / 10.0, // Rough egress estimate
-                        share.SnapshotCount ?? 0,
-                        share.TotalSnapshotSizeBytes ?? 0,
-                        share.BackupPolicyConfigured ?? false,
-                        DateTime.UtcNow.AddDays(-30),
-                        DateTime.UtcNow);
+                        share,
+                        costPeriodStart,
+                        costPeriodEnd);
                     
                     cost.JobId = job.JobId;
                     
                     // Enrich with detailed actual costs from Cost Management API
-                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, costPeriodStart, costPeriodEnd);
                     
                     costAnalyses.Add(cost);
 
@@ -445,22 +443,14 @@ public class CostAnalysisFunction
                 try
                 {
                     var cost = await _costCollection.GetAnfVolumeCostAsync(
-                        volume.ResourceId,
-                        volume.VolumeName,
-                        volume.CapacityPoolName,
-                        volume.Location,
-                        volume.ProvisionedSizeBytes,
-                        (long)(volume.ProvisionedSizeBytes * 0.7), // Estimate used as 70% of provisioned
-                        volume.SnapshotCount ?? 0,
-                        volume.TotalSnapshotSizeBytes ?? 0,
-                        volume.BackupPolicyConfigured ?? false,
-                        DateTime.UtcNow.AddDays(-30),
-                        DateTime.UtcNow);
+                        volume,
+                        costPeriodStart,
+                        costPeriodEnd);
                     
                     cost.JobId = job.JobId;
                     
                     // Enrich with detailed actual costs from Cost Management API
-                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, costPeriodStart, costPeriodEnd);
                     
                     costAnalyses.Add(cost);
 
@@ -497,19 +487,14 @@ public class CostAnalysisFunction
                 try
                 {
                     var cost = await _costCollection.GetManagedDiskCostAsync(
-                        disk.ResourceId,
-                        disk.DiskName,
-                        disk.Location,
-                        disk.DiskSizeBytes ?? 0,
-                        0, // Snapshots
-                        0,
-                        DateTime.UtcNow.AddDays(-30),
-                        DateTime.UtcNow);
+                        disk,
+                        costPeriodStart,
+                        costPeriodEnd);
                     
                     cost.JobId = job.JobId;
                     
                     // Enrich with detailed actual costs from Cost Management API
-                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, costPeriodStart, costPeriodEnd);
                     
                     costAnalyses.Add(cost);
 

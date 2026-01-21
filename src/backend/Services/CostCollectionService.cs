@@ -16,31 +16,24 @@ public class CostCollectionService
 {
     private readonly ILogger _logger;
     private readonly TokenCredential _credential;
+    private readonly RetailPricingService _pricingService;
     private readonly Dictionary<string, RegionalPricing> _pricingCache = new();
     
     private const string CostManagementApiVersion = "2021-10-01";
     private const string PricingApiVersion = "2021-10-01";
 
-    public CostCollectionService(ILogger logger, TokenCredential credential)
+    public CostCollectionService(ILogger logger, TokenCredential credential, RetailPricingService pricingService)
     {
         _logger = logger;
         _credential = credential;
+        _pricingService = pricingService;
     }
 
     /// <summary>
     /// Collect Azure Files storage costs for a specific storage account
     /// </summary>
     public async Task<VolumeCostAnalysis> GetAzureFilesCostAsync(
-        string resourceId,
-        string shareName,
-        string region,
-        long capacityBytes,
-        long usedBytes,
-        double avgTransactionsPerDay,
-        double avgEgressPerDayBytes,
-        int snapshotCount,
-        long totalSnapshotBytes,
-        bool backupConfigured,
+        DiscoveredAzureFileShare share,
         DateTime periodStart,
         DateTime periodEnd)
     {
@@ -48,97 +41,123 @@ public class CostCollectionService
         {
             var analysis = new VolumeCostAnalysis
             {
-                ResourceId = resourceId,
-                VolumeName = shareName,
+                ResourceId = share.ResourceId,
+                VolumeName = share.ShareName,
                 ResourceType = "AzureFile",
-                Region = region,
+                Region = share.Location,
                 JobId = "",
                 PeriodStart = periodStart,
                 PeriodEnd = periodEnd,
-                CapacityGigabytes = capacityBytes / (1024.0 * 1024.0 * 1024.0),
-                UsedGigabytes = usedBytes / (1024.0 * 1024.0 * 1024.0),
-                AverageTransactionsPerDay = avgTransactionsPerDay,
-                AverageEgressPerDayGb = avgEgressPerDayBytes / (1024.0 * 1024.0 * 1024.0),
-                SnapshotCount = snapshotCount,
-                TotalSnapshotSizeGb = totalSnapshotBytes / (1024.0 * 1024.0 * 1024.0),
-                BackupConfigured = backupConfigured
+                CapacityGigabytes = (share.ShareQuotaGiB ?? 0) * 1024.0,
+                UsedGigabytes = (share.ShareUsageBytes ?? 0) / (1024.0 * 1024.0 * 1024.0),
+                AverageTransactionsPerDay = 0, // Will be replaced by actuals
+                AverageEgressPerDayGb = 0, // Will be replaced by actuals
+                SnapshotCount = share.SnapshotCount,
+                TotalSnapshotSizeGb = (share.TotalSnapshotSizeBytes ?? 0) / (1024.0 * 1024.0 * 1024.0),
+                BackupConfigured = share.BackupPolicyConfigured ?? false
             };
 
-            var pricing = await GetRegionalPricingAsync(region);
+            var pricing = await _pricingService.GetAzureFilesPricingAsync(
+                share.Location,
+                (AzureFilesAccessTier)Enum.Parse(typeof(AzureFilesAccessTier), share.AccessTier, true),
+                share.IsProvisioned ? (AzureFilesProvisionedTier)Enum.Parse(typeof(AzureFilesProvisionedTier), share.ProvisionedTier) : null,
+                (StorageRedundancy)Enum.Parse(typeof(StorageRedundancy), share.RedundancyType, true)
+            );
+
+            if (pricing == null)
+            {
+                _logger.LogWarning("Could not retrieve pricing for Azure File Share {ShareName}", share.ShareName);
+                return analysis;
+            }
+            
             var days = periodEnd.Subtract(periodStart).Days;
             if (days == 0) days = 1;
 
-            // Determine tier based on capacity (use 100 GiB threshold, be careful to avoid compile-time overflow)
-            var premiumThresholdBytes = 100L * 1024L * 1024L * 1024L;
-            var isPremium = capacityBytes > premiumThresholdBytes; // > 100 GB = premium
-            var tierName = isPremium ? "Premium" : "Standard";
-            var storagePrice = isPremium ? pricing.PremiumStoragePricePerGb : pricing.StandardStoragePricePerGb;
-
-            // Storage cost (based on used capacity for billing)
-            var storageCost = StorageCostComponent.ForCapacity(
-                resourceId,
-                region,
-                analysis.UsedGigabytes,
-                storagePrice,
-                periodStart,
-                periodEnd,
-                tierName);
-            analysis.AddCostComponent(storageCost);
-
-            // Transaction costs
-            var totalTransactions = avgTransactionsPerDay * days;
-            var transactionsIn10k = totalTransactions / 10000;
-            if (transactionsIn10k > 0)
+            if (share.IsProvisioned)
             {
-                var transactionPrice = isPremium ? pricing.TransactionPricePer10kPremium : pricing.TransactionPricePer10kStandard;
-                var transactionCost = StorageCostComponent.ForTransactions(
-                    resourceId,
-                    region,
-                    transactionsIn10k,
-                    transactionPrice,
+                // Provisioned cost calculation
+                var provisionedCost = new StorageCostComponent();
+                if (share.ProvisionedTier == "ProvisionedV1")
+                {
+                    provisionedCost = StorageCostComponent.ForCapacity(
+                        share.ResourceId,
+                        share.Location,
+                        analysis.CapacityGigabytes,
+                        pricing.ProvisionedV1StoragePricePerGibMonth,
+                        periodStart,
+                        periodEnd,
+                        share.ProvisionedTier
+                    );
+                } else {
+                    provisionedCost = StorageCostComponent.ForCapacity(
+                        share.ResourceId,
+                        share.Location,
+                        analysis.CapacityGigabytes,
+                        pricing.ProvisionedStoragePricePerGibHour * 24 * days,
+                        periodStart,
+                        periodEnd,
+                        share.ProvisionedTier
+                    );
+                }
+                analysis.AddCostComponent(provisionedCost);
+
+                if(share.ProvisionedIops > 0)
+                {
+                    var iopsCost = new StorageCostComponent
+                    {
+                        ComponentType = "IOPS",
+                        ResourceId = share.ResourceId,
+                        Region = share.Location,
+                        Quantity = share.ProvisionedIops.Value,
+                        UnitPrice = pricing.ProvisionedIOPSPricePerHour,
+                        CostForPeriod = share.ProvisionedIops.Value * pricing.ProvisionedIOPSPricePerHour * 24 * days,
+                        PeriodStart = periodStart,
+                        PeriodEnd = periodEnd
+                    };
+                    analysis.AddCostComponent(iopsCost);
+                }
+
+                if(share.ProvisionedBandwidthMiBps > 0)
+                {
+                    var throughputCost = new StorageCostComponent
+                    {
+                        ComponentType = "Throughput",
+                        ResourceId = share.ResourceId,
+                        Region = share.Location,
+                        Quantity = share.ProvisionedBandwidthMiBps.Value,
+                        UnitPrice = pricing.ProvisionedThroughputPricePerMiBPerSecPerHour,
+                        CostForPeriod = share.ProvisionedBandwidthMiBps.Value * pricing.ProvisionedThroughputPricePerMiBPerSecPerHour * 24 * days,
+                        PeriodStart = periodStart,
+                        PeriodEnd = periodEnd
+                    };
+                    analysis.AddCostComponent(throughputCost);
+                }
+
+            } else {
+                // Pay-as-you-go cost calculation
+                var storageCost = StorageCostComponent.ForCapacity(
+                    share.ResourceId,
+                    share.Location,
+                    analysis.UsedGigabytes,
+                    pricing.StoragePricePerGbMonth,
                     periodStart,
-                    periodEnd);
-                analysis.AddCostComponent(transactionCost);
+                    periodEnd,
+                    share.AccessTier
+                );
+                analysis.AddCostComponent(storageCost);
             }
 
-            // Egress costs
-            var totalEgressGb = (avgEgressPerDayBytes / (1024.0 * 1024.0 * 1024.0)) * days;
-            if (totalEgressGb > 0)
-            {
-                var egressCost = StorageCostComponent.ForEgress(
-                    resourceId,
-                    region,
-                    totalEgressGb,
-                    pricing.InternetEgressPricePerGb,
-                    periodStart,
-                    periodEnd);
-                analysis.AddCostComponent(egressCost);
-            }
-
-            // Snapshot costs
-            if (analysis.TotalSnapshotSizeGb > 0)
+            if(share.SnapshotCount > 0)
             {
                 var snapshotCost = StorageCostComponent.ForSnapshots(
-                    resourceId,
-                    region,
+                    share.ResourceId,
+                    share.Location,
                     analysis.TotalSnapshotSizeGb.Value,
-                    pricing.SnapshotPricePerGb,
+                    pricing.SnapshotPricePerGbMonth,
                     periodStart,
-                    periodEnd);
+                    periodEnd
+                );
                 analysis.AddCostComponent(snapshotCost);
-            }
-
-            // Backup costs (if configured)
-            if (backupConfigured && analysis.UsedGigabytes > 0)
-            {
-                var backupCost = StorageCostComponent.ForBackup(
-                    resourceId,
-                    region,
-                    analysis.UsedGigabytes * 0.1, // Assume 10% overhead for backup
-                    pricing.BackupPricePerGb,
-                    periodStart,
-                    periodEnd);
-                analysis.AddCostComponent(backupCost);
             }
 
             // Try to replace retail estimate with actual billed cost if available
@@ -146,7 +165,7 @@ public class CostCollectionService
 
             _logger.LogInformation(
                 "Calculated Azure Files costs for {Share}: ${Cost} over {Days} days (Source: {Source})",
-                shareName,
+                share.ShareName,
                 analysis.TotalCostForPeriod,
                 days,
                 analysis.CostComponents.All(c => !c.IsEstimated) ? "Actual" : "RetailEstimate");
@@ -155,7 +174,7 @@ public class CostCollectionService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calculating Azure Files costs for {Share}", shareName);
+            _logger.LogError(ex, "Error calculating Azure Files costs for {Share}", share.ShareName);
             throw;
         }
     }
@@ -164,15 +183,7 @@ public class CostCollectionService
     /// Collect Azure NetApp Files costs for a volume
     /// </summary>
     public async Task<VolumeCostAnalysis> GetAnfVolumeCostAsync(
-        string resourceId,
-        string volumeName,
-        string poolName,
-        string region,
-        long provisionedBytes,
-        long usedBytes,
-        int snapshotCount,
-        long totalSnapshotBytes,
-        bool backupConfigured,
+        DiscoveredAnfVolume volume,
         DateTime periodStart,
         DateTime periodEnd)
     {
@@ -180,57 +191,71 @@ public class CostCollectionService
         {
             var analysis = new VolumeCostAnalysis
             {
-                ResourceId = resourceId,
-                VolumeName = volumeName,
+                ResourceId = volume.ResourceId,
+                VolumeName = volume.VolumeName,
                 ResourceType = "ANF",
-                Region = region,
-                StorageAccountOrPoolName = poolName,
+                Region = volume.Location,
+                StorageAccountOrPoolName = volume.CapacityPoolName,
                 PeriodStart = periodStart,
                 PeriodEnd = periodEnd,
-                CapacityGigabytes = provisionedBytes / (1024.0 * 1024.0 * 1024.0),
-                UsedGigabytes = usedBytes / (1024.0 * 1024.0 * 1024.0),
-                SnapshotCount = snapshotCount,
-                TotalSnapshotSizeGb = totalSnapshotBytes / (1024.0 * 1024.0 * 1024.0),
-                BackupConfigured = backupConfigured
+                CapacityGigabytes = volume.ProvisionedSizeBytes / (1024.0 * 1024.0 * 1024.0),
+                UsedGigabytes = 0, // ANF doesn't expose used bytes, billed on provisioned
+                SnapshotCount = volume.SnapshotCount ?? 0,
+                TotalSnapshotSizeGb = (volume.TotalSnapshotSizeBytes ?? 0) / (1024.0 * 1024.0 * 1024.0),
+                BackupConfigured = volume.BackupPolicyConfigured ?? false
             };
 
-            var pricing = await GetRegionalPricingAsync(region);
+            var pricing = await _pricingService.GetAnfPricingAsync(
+                volume.Location,
+                (AnfServiceLevel)Enum.Parse(typeof(AnfServiceLevel), volume.CapacityPoolServiceLevel, true)
+            );
+
+            if (pricing == null)
+            {
+                _logger.LogWarning("Could not retrieve pricing for ANF volume {VolumeName}", volume.VolumeName);
+                return analysis;
+            }
             
-            // ANF is billed by provisioned capacity (minimum per pool)
-            var provisionedTib = analysis.CapacityGigabytes / 1024.0;
+            var days = periodEnd.Subtract(periodStart).Days;
+            if (days == 0) days = 1;
+
+            // ANF is billed by provisioned capacity
             var storageCost = StorageCostComponent.ForCapacity(
-                resourceId,
-                region,
+                volume.ResourceId,
+                volume.Location,
                 analysis.CapacityGigabytes,
-                pricing.UltraStoragePricePerGb,
+                pricing.CapacityPricePerGibHour * 730, // Convert hourly to monthly
                 periodStart,
                 periodEnd,
-                "ANF-Provisioned");
+                $"ANF-{volume.CapacityPoolServiceLevel}"
+            );
             analysis.AddCostComponent(storageCost);
 
             // Snapshot costs (billed by used capacity)
             if (analysis.TotalSnapshotSizeGb > 0)
             {
                 var snapshotCost = StorageCostComponent.ForSnapshots(
-                    resourceId,
-                    region,
+                    volume.ResourceId,
+                    volume.Location,
                     analysis.TotalSnapshotSizeGb.Value,
-                    pricing.SnapshotPricePerGb,
+                    pricing.SnapshotPricePerGibHour * 730, // Convert hourly to monthly
                     periodStart,
-                    periodEnd);
+                    periodEnd
+                );
                 analysis.AddCostComponent(snapshotCost);
             }
 
-            // Backup costs (if configured)
-            if (backupConfigured && analysis.UsedGigabytes > 0)
+            // Backup costs (if configured, typically included in volume cost for ANF)
+            if (analysis.BackupConfigured && analysis.CapacityGigabytes > 0)
             {
                 var backupCost = StorageCostComponent.ForBackup(
-                    resourceId,
-                    region,
-                    analysis.UsedGigabytes * 0.15, // Assume 15% overhead for ANF backup
-                    pricing.BackupPricePerGb,
+                    volume.ResourceId,
+                    volume.Location,
+                    analysis.CapacityGigabytes * 0.15,
+                    0.05, // Default backup price
                     periodStart,
-                    periodEnd);
+                    periodEnd
+                );
                 analysis.AddCostComponent(backupCost);
             }
 
@@ -238,82 +263,7 @@ public class CostCollectionService
             await TryApplyActualCostAsync(analysis, periodStart, periodEnd);
 
             _logger.LogInformation("Calculated ANF costs for {Volume}: ${Cost} over {Days} days (Source: {Source})",
-                volumeName,
-                analysis.TotalCostForPeriod,
-                (periodEnd - periodStart).Days,
-                analysis.CostComponents.All(c => !c.IsEstimated) ? "Actual" : "RetailEstimate");
-            
-            return analysis;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error calculating ANF costs for {Volume}", volumeName);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Collect Managed Disk costs
-    /// </summary>
-    public async Task<VolumeCostAnalysis> GetManagedDiskCostAsync(
-        string resourceId,
-        string diskName,
-        string region,
-        long diskSizeBytes,
-        int snapshotCount,
-        long totalSnapshotBytes,
-        DateTime periodStart,
-        DateTime periodEnd)
-    {
-        try
-        {
-            var analysis = new VolumeCostAnalysis
-            {
-                ResourceId = resourceId,
-                VolumeName = diskName,
-                ResourceType = "ManagedDisk",
-                Region = region,
-                PeriodStart = periodStart,
-                PeriodEnd = periodEnd,
-                CapacityGigabytes = diskSizeBytes / (1024.0 * 1024.0 * 1024.0),
-                UsedGigabytes = diskSizeBytes / (1024.0 * 1024.0 * 1024.0),
-                SnapshotCount = snapshotCount,
-                TotalSnapshotSizeGb = totalSnapshotBytes / (1024.0 * 1024.0 * 1024.0)
-            };
-
-            var pricing = await GetRegionalPricingAsync(region);
-            var days = (periodEnd - periodStart).Days;
-            if (days == 0) days = 1;
-
-            // Managed disk storage cost (monthly billing)
-            var diskCost = StorageCostComponent.ForCapacity(
-                resourceId,
-                region,
-                analysis.CapacityGigabytes,
-                pricing.PremiumStoragePricePerGb,
-                periodStart,
-                periodEnd,
-                "Managed-Disk");
-            analysis.AddCostComponent(diskCost);
-
-            // Snapshot costs
-            if (analysis.TotalSnapshotSizeGb > 0)
-            {
-                var snapshotCost = StorageCostComponent.ForSnapshots(
-                    resourceId,
-                    region,
-                    analysis.TotalSnapshotSizeGb.Value,
-                    pricing.SnapshotPricePerGb,
-                    periodStart,
-                    periodEnd);
-                analysis.AddCostComponent(snapshotCost);
-            }
-
-            // Try to replace retail estimate with actual billed cost if available
-            await TryApplyActualCostAsync(analysis, periodStart, periodEnd);
-
-            _logger.LogInformation("Calculated Managed Disk costs for {Disk}: ${Cost} over {Days} days (Source: {Source})",
-                diskName,
+                volume.VolumeName,
                 analysis.TotalCostForPeriod,
                 days,
                 analysis.CostComponents.All(c => !c.IsEstimated) ? "Actual" : "RetailEstimate");
@@ -322,7 +272,78 @@ public class CostCollectionService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calculating Managed Disk costs for {Disk}", diskName);
+            _logger.LogError(ex, "Error calculating ANF costs for {Volume}", volume.VolumeName);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Collect Managed Disk costs
+    /// </summary>
+    public async Task<VolumeCostAnalysis> GetManagedDiskCostAsync(
+        DiscoveredManagedDisk disk,
+        DateTime periodStart,
+        DateTime periodEnd)
+    {
+        try
+        {
+            var analysis = new VolumeCostAnalysis
+            {
+                ResourceId = disk.ResourceId,
+                VolumeName = disk.DiskName,
+                ResourceType = "ManagedDisk",
+                Region = disk.Location,
+                PeriodStart = periodStart,
+                PeriodEnd = periodEnd,
+                CapacityGigabytes = disk.DiskSizeGB,
+                UsedGigabytes = disk.DiskSizeGB,
+                SnapshotCount = 0, // Snapshot count not tracked for managed disks in discovery
+                TotalSnapshotSizeGb = 0
+            };
+
+            var pricing = await _pricingService.GetManagedDiskPricingAsync(
+                disk.Location,
+                (ManagedDiskType)Enum.Parse(typeof(ManagedDiskType), disk.ManagedDiskType, true),
+                disk.PricingTier,
+                (StorageRedundancy)Enum.Parse(typeof(StorageRedundancy), disk.RedundancyType, true)
+            );
+
+            if (pricing == null)
+            {
+                _logger.LogWarning("Could not retrieve pricing for Managed Disk {DiskName}", disk.DiskName);
+                return analysis;
+            }
+            
+            var days = (periodEnd - periodStart).Days;
+            if (days == 0) days = 1;
+
+            // Managed disk storage cost (monthly billing)
+            var diskCost = StorageCostComponent.ForCapacity(
+                disk.ResourceId,
+                disk.Location,
+                analysis.CapacityGigabytes,
+                pricing.PricePerMonth,
+                periodStart,
+                periodEnd,
+                $"{disk.ManagedDiskType}-{disk.PricingTier}"
+            );
+            analysis.AddCostComponent(diskCost);
+
+
+            // Try to replace retail estimate with actual billed cost if available
+            await TryApplyActualCostAsync(analysis, periodStart, periodEnd);
+
+            _logger.LogInformation("Calculated Managed Disk costs for {Disk}: ${Cost} over {Days} days (Source: {Source})",
+                disk.DiskName,
+                analysis.TotalCostForPeriod,
+                days,
+                analysis.CostComponents.All(c => !c.IsEstimated) ? "Actual" : "RetailEstimate");
+            
+            return analysis;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calculating Managed Disk costs for {Disk}", disk.DiskName);
             throw;
         }
     }
