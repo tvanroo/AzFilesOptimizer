@@ -397,6 +397,9 @@ public class CostAnalysisFunction
             {
                 try
                 {
+                    await _jobLogService.AddLogAsync(job.JobId,
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Processing share '{share.ShareName}' | ResourceId: {share.ResourceId}");
+                    
                     var cost = await _costCollection.GetAzureFilesCostAsync(
                         share,
                         costPeriodStart,
@@ -404,8 +407,23 @@ public class CostAnalysisFunction
                     
                     cost.JobId = job.JobId;
                     
+                    await _jobLogService.AddLogAsync(job.JobId,
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Querying Cost Management API for actual costs...");
+                    
                     // Enrich with detailed actual costs from Cost Management API
                     await _costCollection.EnrichWithDetailedActualCostsAsync(cost, costPeriodStart, costPeriodEnd);
+                    
+                    // Log the result
+                    if (cost.ActualCostsApplied)
+                    {
+                        await _jobLogService.AddLogAsync(job.JobId,
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ✓ Actual costs applied: ${cost.TotalCostForPeriod:F2} ({cost.ActualCostMeterCount} meters)");
+                    }
+                    else
+                    {
+                        await _jobLogService.AddLogAsync(job.JobId,
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚠ Using retail estimates: ${cost.TotalCostForPeriod:F2} | Reason: {cost.ActualCostsNotAppliedReason}");
+                    }
                     
                     costAnalyses.Add(cost);
 
@@ -442,6 +460,9 @@ public class CostAnalysisFunction
             {
                 try
                 {
+                    await _jobLogService.AddLogAsync(job.JobId,
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Processing ANF volume '{volume.VolumeName}' | ResourceId: {volume.ResourceId}");
+                    
                     var cost = await _costCollection.GetAnfVolumeCostAsync(
                         volume,
                         costPeriodStart,
@@ -449,8 +470,23 @@ public class CostAnalysisFunction
                     
                     cost.JobId = job.JobId;
                     
+                    await _jobLogService.AddLogAsync(job.JobId,
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Querying Cost Management API for actual costs...");
+                    
                     // Enrich with detailed actual costs from Cost Management API
                     await _costCollection.EnrichWithDetailedActualCostsAsync(cost, costPeriodStart, costPeriodEnd);
+                    
+                    // Log the result
+                    if (cost.ActualCostsApplied)
+                    {
+                        await _jobLogService.AddLogAsync(job.JobId,
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ✓ Actual costs applied: ${cost.TotalCostForPeriod:F2} ({cost.ActualCostMeterCount} meters)");
+                    }
+                    else
+                    {
+                        await _jobLogService.AddLogAsync(job.JobId,
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚠ Using retail estimates: ${cost.TotalCostForPeriod:F2} | Reason: {cost.ActualCostsNotAppliedReason}");
+                    }
                     
                     costAnalyses.Add(cost);
 
