@@ -350,24 +350,38 @@ public class CostCollectionService
             analysis.BillingMetadata = ExtractMetadataFromMeters(detailedCosts, analysis.ResourceType, periodStart, periodEnd);
 
             // Replace cost components with actual meter-based breakdown
+            // Group by meter name and sum costs across all days in the period
             analysis.CostComponents.Clear();
             
-            foreach (var meterEntry in detailedCosts)
+            var aggregatedMeters = detailedCosts
+                .GroupBy(m => new { m.Meter, m.MeterSubcategory, m.ComponentType })
+                .Select(g => new
+                {
+                    g.Key.Meter,
+                    g.Key.MeterSubcategory,
+                    g.Key.ComponentType,
+                    TotalCost = g.Sum(m => m.CostUSD),
+                    Currency = g.First().Currency,
+                    DayCount = g.Count()
+                })
+                .ToList();
+            
+            foreach (var meter in aggregatedMeters)
             {
                 var component = new StorageCostComponent
                 {
-                    ComponentType = meterEntry.ComponentType,
+                    ComponentType = meter.ComponentType,
                     Region = analysis.Region,
-                    UnitPrice = meterEntry.CostUSD,
-                    Unit = meterEntry.Unit ?? "unknown",
-                    Quantity = meterEntry.Quantity ?? 1,
-                    CostForPeriod = meterEntry.CostUSD,
-                    Currency = meterEntry.Currency,
+                    UnitPrice = meter.TotalCost / meter.DayCount, // Average daily cost
+                    Unit = "day",
+                    Quantity = meter.DayCount,
+                    CostForPeriod = meter.TotalCost,
+                    Currency = meter.Currency,
                     ResourceId = analysis.ResourceId,
                     PeriodStart = periodStart,
                     PeriodEnd = periodEnd,
                     IsEstimated = false,
-                    Notes = $"Meter: {meterEntry.Meter}, Subcategory: {meterEntry.MeterSubcategory}"
+                    Notes = $"Meter: {meter.Meter}, Subcategory: {meter.MeterSubcategory} (aggregated over {meter.DayCount} days)"
                 };
                 analysis.CostComponents.Add(component);
             }
