@@ -467,6 +467,14 @@ public class CostCollectionService
     {
         try
         {
+            _logger.LogInformation(
+                "Attempting to retrieve actual costs for {ResourceType} '{VolumeName}' | ResourceId: {ResourceId} | Period: {Start} to {End}",
+                analysis.ResourceType,
+                analysis.VolumeName,
+                analysis.ResourceId,
+                periodStart.ToString("yyyy-MM-dd"),
+                periodEnd.ToString("yyyy-MM-dd"));
+            
             var detailedCosts = await GetDetailedActualCostsAsync(analysis.ResourceId, periodStart, periodEnd);
             
             if (detailedCosts == null || detailedCosts.Count == 0)
@@ -617,6 +625,7 @@ public class CostCollectionService
             var subscriptionId = ExtractSubscriptionId(resourceId);
             if (string.IsNullOrEmpty(subscriptionId))
             {
+                _logger.LogWarning("Could not extract subscription ID from ResourceId: {ResourceId}", resourceId);
                 return null;
             }
 
@@ -648,6 +657,13 @@ public class CostCollectionService
             {
                 TimePeriod = timePeriod
             };
+            
+            _logger.LogInformation(
+                "Cost Management API Query | Scope: /subscriptions/{SubscriptionId} | ResourceId Filter: {ResourceId} | Period: {Start} to {End} | Granularity: Daily | Grouping: ResourceId, MeterSubcategory, Meter",
+                subscriptionId,
+                resourceId,
+                periodStart.ToString("yyyy-MM-dd"),
+                periodEnd.ToString("yyyy-MM-dd"));
 
             var armClient = new ArmClient(_credential);
             var response = await armClient.UsageQueryAsync(scope, queryDefinition);
@@ -655,8 +671,17 @@ public class CostCollectionService
 
             if (result?.Rows == null || result.Rows.Count == 0)
             {
+                _logger.LogWarning(
+                    "Cost Management API returned no data | ResourceId: {ResourceId} | Query returned {RowCount} rows | This could mean: no usage in period, resource created after period, or incorrect resource ID format",
+                    resourceId,
+                    result?.Rows?.Count ?? 0);
                 return null;
             }
+            
+            _logger.LogInformation(
+                "Cost Management API returned {RowCount} rows for ResourceId: {ResourceId}",
+                result.Rows.Count,
+                resourceId);
 
             // Parse the result rows into MeterCostEntry objects
             var meterCosts = new List<MeterCostEntry>();
