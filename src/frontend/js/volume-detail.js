@@ -882,12 +882,86 @@ const volumeDetailPage = {
         const metadataGrid = document.querySelector('.metadata-grid');
         if (!metadataGrid) return;
 
-        const anfProps = [
+        const anfProps = [];
+
+        if (vol.MountPath) {
+            anfProps.push({ label: 'Mount Path', value: vol.MountPath });
+        }
+
+        anfProps.push(
             { label: 'Service Level', value: vol.ServiceLevel || '-' },
             { label: 'Capacity Pool', value: vol.CapacityPoolName || '-' },
-            { label: 'QoS Type', value: vol.PoolQosType || '-' },
-            { label: 'Cool Access', value: vol.CoolAccessEnabled ? 'Enabled' : 'Disabled' }
-        ];
+            { label: 'QoS Type', value: vol.PoolQosType || '-' }
+        );
+
+        if (vol.MaximumNumberOfFiles !== undefined && vol.MaximumNumberOfFiles !== null) {
+            anfProps.push({ label: 'Max Files', value: vol.MaximumNumberOfFiles.toString() });
+        }
+
+        if (vol.VirtualNetworkName || vol.SubnetName) {
+            const vnetSubnet = `${vol.VirtualNetworkName || ''}${vol.VirtualNetworkName && vol.SubnetName ? '/' : ''}${vol.SubnetName || ''}` || '-';
+            anfProps.push({ label: 'Virtual Network / Subnet', value: vnetSubnet });
+        }
+
+        if (vol.VolumeType) {
+            anfProps.push({ label: 'Volume Type', value: vol.VolumeType });
+        }
+
+        const coolAccessValue = vol.CoolAccessEnabled === true
+            ? 'Enabled'
+            : vol.CoolAccessEnabled === false
+                ? 'Disabled'
+                : 'Unknown';
+        anfProps.push({ label: 'Cool Access', value: coolAccessValue });
+
+        if (vol.CoolnessPeriodDays !== undefined && vol.CoolnessPeriodDays !== null) {
+            anfProps.push({ label: 'Coolness Period', value: `${vol.CoolnessPeriodDays} days` });
+        }
+
+        if (vol.NetworkFeatures) {
+            anfProps.push({ label: 'Network Features', value: vol.NetworkFeatures });
+        }
+
+        if (vol.SecurityStyle) {
+            anfProps.push({ label: 'Security Style', value: vol.SecurityStyle });
+        }
+
+        if (vol.IsKerberosEnabled !== undefined && vol.IsKerberosEnabled !== null) {
+            anfProps.push({
+                label: 'Kerberos',
+                value: vol.IsKerberosEnabled ? 'Enabled' : 'Disabled'
+            });
+        }
+
+        if (vol.EncryptionKeySource) {
+            anfProps.push({ label: 'Encryption Key Source', value: vol.EncryptionKeySource });
+        }
+
+        if (vol.IsLdapEnabled !== undefined && vol.IsLdapEnabled !== null) {
+            anfProps.push({
+                label: 'LDAP',
+                value: vol.IsLdapEnabled ? 'Enabled' : 'Disabled'
+            });
+        }
+
+        if (vol.UnixPermissions) {
+            anfProps.push({ label: 'Unix Permissions', value: vol.UnixPermissions });
+        }
+
+        if (vol.AvailabilityZone) {
+            anfProps.push({ label: 'Availability Zone', value: vol.AvailabilityZone });
+        }
+
+        if (vol.IsLargeVolume !== undefined && vol.IsLargeVolume !== null) {
+            anfProps.push({
+                label: 'Large Volume',
+                value: vol.IsLargeVolume ? 'Yes' : 'No'
+            });
+        }
+
+        if (vol.AvsDataStore) {
+            anfProps.push({ label: 'Azure VMware Solution', value: vol.AvsDataStore });
+        }
 
         // Add snapshot and backup info
         anfProps.push(

@@ -87,10 +87,35 @@ public class DiscoveredAnfVolume
     public long ProvisionedSizeBytes { get; set; }
     public double? ThroughputMibps { get; set; }
     public double? ActualThroughputMibps { get; set; }
+
+    // Cooling / tiering
     public bool? CoolAccessEnabled { get; set; }
     public string? CoolTieringPolicy { get; set; } // e.g., "Auto", "SnapshotOnly"
+    public int? CoolnessPeriodDays { get; set; }
+
+    // Capacity / file and mount info
+    public long? MaximumNumberOfFiles { get; set; }
+    public string? MountPath { get; set; }
+
+    // Network / security
+    public string? SubnetId { get; set; }
+    public string? VirtualNetworkName { get; set; }
+    public string? SubnetName { get; set; }
+    public string? NetworkFeatures { get; set; }
+    public string? SecurityStyle { get; set; }
+    public bool? IsKerberosEnabled { get; set; }
+    public string? EncryptionKeySource { get; set; }
+    public bool? IsLdapEnabled { get; set; }
+    public string? UnixPermissions { get; set; }
+    public string? AvailabilityZone { get; set; }
+    public bool? IsLargeVolume { get; set; }
+    public string? AvsDataStore { get; set; }
+    public string? VolumeType { get; set; }
+
+    // Performance estimates
     public int? EstimatedIops { get; set; }
     public double? EstimatedThroughputMiBps { get; set; }
+
     public string[]? ProtocolTypes { get; set; } // e.g., ["NFSv3", "NFSv4.1", "CIFS"]
     public Dictionary<string, string>? Tags { get; set; }
     public DateTime DiscoveredAt { get; set; } = DateTime.UtcNow;

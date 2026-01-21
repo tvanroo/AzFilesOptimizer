@@ -461,22 +461,145 @@ public partial class DiscoveryService
                             string? poolQosType = capacityPool.Data.QosType?.ToString();
                             bool? coolAccessEnabled = null;
                             string? coolTieringPolicy = null;
+                            int? coolnessPeriodDays = null;
+                            long? maxFiles = null;
+                            string? subnetId = null;
+                            string? vnetName = null;
+                            string? subnetName = null;
+                            string? networkFeatures = null;
+                            string? securityStyle = null;
+                            bool? isKerberosEnabled = null;
+                            string? encryptionKeySource = null;
+                            bool? isLdapEnabled = null;
+                            string? unixPermissions = null;
+                            string? availabilityZone = null;
+                            bool? isLargeVolume = null;
+                            string? avsDataStore = null;
+                            string? volumeType = null;
+                            string? mountPath = null;
                             try
                             {
                                 // Use reflection to avoid compile errors if properties are absent in current SDK
                                 var data = volume.Data;
                                 var t = data.GetType();
-                                var coolProp = t.GetProperty("CoolAccess") ?? t.GetProperty("CoolAccessEnabled");
+
+                                bool? GetBool(string name)
+                                {
+                                    var p = t.GetProperty(name);
+                                    if (p == null) return null;
+                                    var vObj = p.GetValue(data);
+                                    return vObj as bool? ?? (vObj != null ? (bool)vObj : (bool?)null);
+                                }
+
+                                long? GetLong(string name)
+                                {
+                                    var p = t.GetProperty(name);
+                                    if (p == null) return null;
+                                    var vObj = p.GetValue(data);
+                                    if (vObj is long l) return l;
+                                    if (vObj is int i) return i;
+                                    return null;
+                                }
+
+                                int? GetInt(string name)
+                                {
+                                    var p = t.GetProperty(name);
+                                    if (p == null) return null;
+                                    var vObj = p.GetValue(data);
+                                    if (vObj is int i) return i;
+                                    if (vObj is long l) return checked((int)l);
+                                    return null;
+                                }
+
+                                string? GetString(string name)
+                                {
+                                    var p = t.GetProperty(name);
+                                    if (p == null) return null;
+                                    return p.GetValue(data)?.ToString();
+                                }
+
+                                // Cool access and tiering
+                                var coolProp = t.GetProperty("IsCoolAccessEnabled")
+                                              ?? t.GetProperty("CoolAccessEnabled")
+                                              ?? t.GetProperty("CoolAccess");
                                 if (coolProp != null)
                                 {
                                     var val = coolProp.GetValue(data);
                                     coolAccessEnabled = val as bool? ?? (val != null ? (bool)val : (bool?)null);
                                 }
-                                var tieringProp = t.GetProperty("TieringPolicyName") ?? t.GetProperty("TieringPolicy");
+                                var tieringProp = t.GetProperty("CoolAccessTieringPolicy")
+                                                 ?? t.GetProperty("TieringPolicyName")
+                                                 ?? t.GetProperty("TieringPolicy");
                                 if (tieringProp != null)
                                 {
                                     coolTieringPolicy = tieringProp.GetValue(data)?.ToString();
                                 }
+                                coolnessPeriodDays = GetInt("CoolnessPeriod");
+
+                                // Capacity / files
+                                maxFiles = GetLong("MaximumNumberOfFiles");
+
+                                // Network / security
+                                subnetId = GetString("SubnetId");
+                                networkFeatures = GetString("NetworkFeatures");
+                                securityStyle = GetString("SecurityStyle");
+                                isKerberosEnabled = GetBool("IsKerberosEnabled");
+                                encryptionKeySource = GetString("EncryptionKeySource");
+                                isLdapEnabled = GetBool("IsLdapEnabled");
+                                unixPermissions = GetString("UnixPermissions");
+                                availabilityZone = GetString("ProvisionedAvailabilityZone") ?? GetString("AvailabilityZone");
+                                isLargeVolume = GetBool("IsLargeVolume");
+                                avsDataStore = GetString("AvsDataStore");
+                                volumeType = GetString("VolumeType");
+
+                                // Derive vnet/subnet names from subnetId
+                                if (!string.IsNullOrWhiteSpace(subnetId))
+                                {
+                                    var parts = subnetId.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                                    for (int i = 0; i < parts.Length - 1; i++)
+                                    {
+                                        if (parts[i].Equals("virtualNetworks", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            vnetName = parts[i + 1];
+                                        }
+                                        if (parts[i].Equals("subnets", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            subnetName = parts[i + 1];
+                                        }
+                                    }
+                                }
+
+                                // Mount path (first mount target IP + creation token)
+                                try
+                                {
+                                    var creationToken = GetString("CreationToken");
+                                    var mtProp = t.GetProperty("MountTargets");
+                                    string? ip = null;
+                                    if (mtProp != null)
+                                    {
+                                        var mtVal = mtProp.GetValue(data) as System.Collections.IEnumerable;
+                                        if (mtVal != null)
+                                        {
+                                            foreach (var mt in mtVal)
+                                            {
+                                                if (mt == null) continue;
+                                                var mtType = mt.GetType();
+                                                var ipProp = mtType.GetProperty("IpAddress") ?? mtType.GetProperty("IPAddress");
+                                                var ipVal = ipProp?.GetValue(mt)?.ToString();
+                                                if (!string.IsNullOrWhiteSpace(ipVal))
+                                                {
+                                                    ip = ipVal;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (!string.IsNullOrWhiteSpace(ip) && !string.IsNullOrWhiteSpace(creationToken))
+                                    {
+                                        mountPath = $"{ip}:/{creationToken}";
+                                    }
+                                }
+                                catch { /* ignore mount path failures */ }
                             }
                             catch { /* leave nulls if not available */ }
 
@@ -496,6 +619,22 @@ public partial class DiscoveryService
                                 ActualThroughputMibps = volume.Data.ActualThroughputMibps,
                                 CoolAccessEnabled = coolAccessEnabled,
                                 CoolTieringPolicy = coolTieringPolicy,
+                                CoolnessPeriodDays = coolnessPeriodDays,
+                                MaximumNumberOfFiles = maxFiles,
+                                SubnetId = subnetId,
+                                VirtualNetworkName = vnetName,
+                                SubnetName = subnetName,
+                                NetworkFeatures = networkFeatures,
+                                SecurityStyle = securityStyle,
+                                IsKerberosEnabled = isKerberosEnabled,
+                                EncryptionKeySource = encryptionKeySource,
+                                IsLdapEnabled = isLdapEnabled,
+                                UnixPermissions = unixPermissions,
+                                AvailabilityZone = availabilityZone,
+                                IsLargeVolume = isLargeVolume,
+                                AvsDataStore = avsDataStore,
+                                VolumeType = volumeType,
+                                MountPath = mountPath,
                                 ProtocolTypes = volume.Data.ProtocolTypes?.Select(p => p.ToString()).ToArray() ?? Array.Empty<string>(),
                                 Tags = netAppAccount.Data.Tags?.ToDictionary(t => t.Key, t => t.Value) ?? new()
                             };

@@ -7,6 +7,20 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
     ? 'http://localhost:7071/api'
     : 'https://azfo-dev-func-xy76b.azurewebsites.net/api';
 
+// Verbose client logging flag: when enabled, the api-client will write its own
+// request/response entries into the job log stream via /jobs/{jobId}/client-log.
+// By default this is disabled to avoid noisy log spam; enable by setting
+// localStorage['azfoVerboseClientLogs'] = 'true' in the browser console.
+const API_VERBOSE_CLIENT_LOGS = (function() {
+    try {
+        return typeof window !== 'undefined'
+            && window.localStorage
+            && window.localStorage.getItem('azfoVerboseClientLogs') === 'true';
+    } catch {
+        return false;
+    }
+})();
+
 class ApiClient {
     /**
      * Generic fetch wrapper with error handling
@@ -34,8 +48,8 @@ class ApiClient {
                 }
             }
 
-            // Log outbound API call as a client event when we can tie it to a job
-            if (shouldLogClientEvent && jobIdFromPath) {
+            // Log outbound API call as a client event when verbose logging is enabled
+            if (API_VERBOSE_CLIENT_LOGS && shouldLogClientEvent && jobIdFromPath) {
                 this.logClientJobEvent(jobIdFromPath, {
                     Message: `[API Request] ${method} ${endpoint}`,
                     Source: 'api-client'
@@ -47,7 +61,7 @@ class ApiClient {
                 headers: headers
             });
 
-            if (shouldLogClientEvent && jobIdFromPath) {
+            if (API_VERBOSE_CLIENT_LOGS && shouldLogClientEvent && jobIdFromPath) {
                 const ok = response.ok;
                 const status = response.status;
                 const statusText = response.statusText;
