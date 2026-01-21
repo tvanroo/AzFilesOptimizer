@@ -71,6 +71,13 @@ public class DiscoveredAzureFileShare
     public bool MonitoringEnabled { get; set; }
     public int? MonitoringDataAvailableDays { get; set; }
     public string? HistoricalMetricsSummary { get; set; }
+    
+    // Billing metadata (inferred from Cost Management API)
+    public string? BillingRedundancyType { get; set; }
+    public double? AverageReadOpsPerDay { get; set; }
+    public double? AverageWriteOpsPerDay { get; set; }
+    public double? AverageDataTransferGbPerDay { get; set; }
+    public string? BillingStorageTier { get; set; }
 }
 
 public class DiscoveredAnfVolume
@@ -131,6 +138,11 @@ public class DiscoveredAnfVolume
     public bool MonitoringEnabled { get; set; }
     public int? MonitoringDataAvailableDays { get; set; }
     public string? HistoricalMetricsSummary { get; set; }
+    
+    // Billing metadata (inferred from Cost Management API)
+    public string? BillingServiceLevel { get; set; }
+    public double? AverageProtocolOpsPerDay { get; set; }
+    public List<string>? BillingDetectedProtocols { get; set; }
 }
 
 public class DiscoveredManagedDisk
@@ -197,6 +209,10 @@ public class DiscoveredManagedDisk
     // VM-level overall disk metrics
     public string? VmOverallMetricsSummary { get; set; }
     public int? VmOverallMonitoringDataAvailableDays { get; set; }
+    
+    // Billing metadata (inferred from Cost Management API)
+    public string? BillingDiskType { get; set; }
+    public double? AverageDiskOpsPerDay { get; set; }
 }
 
 public class DiscoveryResult

@@ -17,6 +17,7 @@ public class CostAnalysisFunction
     private readonly DiscoveredResourceStorageService _resourceStorage;
     private readonly JobStorageService _jobStorage;
     private readonly JobLogService _jobLogService;
+    private readonly CostHistoryService _costHistory;
 
     public CostAnalysisFunction(ILoggerFactory loggerFactory)
     {
@@ -30,6 +31,7 @@ public class CostAnalysisFunction
         _resourceStorage = new DiscoveredResourceStorageService(connectionString);
         _jobStorage = new JobStorageService(connectionString);
         _jobLogService = new JobLogService(connectionString);
+        _costHistory = new CostHistoryService(connectionString, _logger);
     }
 
     /// <summary>
@@ -243,6 +245,87 @@ public class CostAnalysisFunction
     }
 
     /// <summary>
+    /// GET /api/discovery/{jobId}/costs/history
+    /// Get cost history for a specific volume
+    /// </summary>
+    [Function("GetCostHistory")]
+    public async Task<HttpResponseData> GetCostHistory(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "discovery/{jobId}/costs/history")] HttpRequestData req,
+        string jobId)
+    {
+        _logger.LogInformation("Getting cost history for job: {JobId}", jobId);
+
+        try
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            var volumeId = query.Get("volumeId");
+            var monthsBackStr = query.Get("monthsBack") ?? "3";
+            
+            if (string.IsNullOrEmpty(volumeId))
+            {
+                var badResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badResponse.WriteAsJsonAsync(new { error = "volumeId query parameter is required" });
+                return badResponse;
+            }
+
+            int monthsBack = int.TryParse(monthsBackStr, out var mb) ? mb : 3;
+            var history = await _costHistory.GetCostHistoryAsync(jobId, volumeId, monthsBack);
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new
+            {
+                volumeId = volumeId,
+                monthsBack = monthsBack,
+                snapshotCount = history.Count,
+                snapshots = history,
+                summary = history.Count > 0 ? new
+                {
+                    latestCost = history.First().TotalCost,
+                    oldestCost = history.Last().TotalCost,
+                    averageCost = history.Average(h => h.TotalCost),
+                    trend = history.Count > 1 && history.First().TotalCost > history.Last().TotalCost ? "Increasing" : "Decreasing"
+                } : null
+            });
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting cost history for job {JobId}", jobId);
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new { error = "Failed to retrieve cost history", details = ex.Message });
+            return errorResponse;
+        }
+    }
+
+    /// <summary>
+    /// GET /api/discovery/{jobId}/costs/trends
+    /// Get cost trends across all volumes in a job
+    /// </summary>
+    [Function("GetCostTrends")]
+    public async Task<HttpResponseData> GetCostTrends(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "discovery/{jobId}/costs/trends")] HttpRequestData req,
+        string jobId)
+    {
+        _logger.LogInformation("Getting cost trends for job: {JobId}", jobId);
+
+        try
+        {
+            var trends = await _costHistory.GetCostTrendsAsync(jobId);
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(trends);
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting cost trends for job {JobId}", jobId);
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new { error = "Failed to retrieve cost trends", details = ex.Message });
+            return errorResponse;
+        }
+    }
+
+    /// <summary>
     /// Queue-triggered function to process cost analysis jobs
     /// </summary>
     [Function("ProcessCostAnalysis")]
@@ -322,11 +405,25 @@ public class CostAnalysisFunction
                         DateTime.UtcNow);
                     
                     cost.JobId = job.JobId;
+                    
+                    // Enrich with detailed actual costs from Cost Management API
+                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+                    
                     costAnalyses.Add(cost);
 
                     // Generate forecast
                     var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>(), null);
                     forecasts.Add(forecast);
+                    
+                    // Save cost history snapshot
+                    try
+                    {
+                        await _costHistory.SaveCostSnapshotAsync(job.JobId, share.ResourceId, cost);
+                    }
+                    catch (Exception histEx)
+                    {
+                        _logger.LogWarning(histEx, "Failed to save cost history for share {Share}", share.ShareName);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -361,10 +458,24 @@ public class CostAnalysisFunction
                         DateTime.UtcNow);
                     
                     cost.JobId = job.JobId;
+                    
+                    // Enrich with detailed actual costs from Cost Management API
+                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+                    
                     costAnalyses.Add(cost);
 
                     var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>());
                     forecasts.Add(forecast);
+                    
+                    // Save cost history snapshot
+                    try
+                    {
+                        await _costHistory.SaveCostSnapshotAsync(job.JobId, volume.ResourceId, cost);
+                    }
+                    catch (Exception histEx)
+                    {
+                        _logger.LogWarning(histEx, "Failed to save cost history for ANF volume {Volume}", volume.VolumeName);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -396,10 +507,24 @@ public class CostAnalysisFunction
                         DateTime.UtcNow);
                     
                     cost.JobId = job.JobId;
+                    
+                    // Enrich with detailed actual costs from Cost Management API
+                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+                    
                     costAnalyses.Add(cost);
 
                     var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>(), null);
                     forecasts.Add(forecast);
+                    
+                    // Save cost history snapshot
+                    try
+                    {
+                        await _costHistory.SaveCostSnapshotAsync(job.JobId, disk.ResourceId, cost);
+                    }
+                    catch (Exception histEx)
+                    {
+                        _logger.LogWarning(histEx, "Failed to save cost history for managed disk {Disk}", disk.DiskName);
+                    }
                 }
                 catch (Exception ex)
                 {

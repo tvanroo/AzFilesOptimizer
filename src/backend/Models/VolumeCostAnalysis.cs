@@ -168,6 +168,21 @@ public class VolumeCostAnalysis
     public DateTime AnalysisTimestamp { get; set; } = DateTime.UtcNow;
     
     /// <summary>
+    /// Timestamp when actual cost data was last retrieved from Cost Management API
+    /// </summary>
+    public DateTime? LastActualCostUpdate { get; set; }
+    
+    /// <summary>
+    /// Detailed meter-level cost entries from billing data
+    /// </summary>
+    public List<MeterCostEntry>? DetailedMeterCosts { get; set; }
+    
+    /// <summary>
+    /// Volume metadata inferred from billing/meter data
+    /// </summary>
+    public VolumeMetadataFromBilling? BillingMetadata { get; set; }
+    
+    /// <summary>
     /// Any notes about this analysis
     /// </summary>
     public string? Notes { get; set; }
