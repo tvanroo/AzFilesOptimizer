@@ -107,13 +107,18 @@ public partial class DiscoveredResourceStorageService
         {
             await foreach (var entity in CostAnalysesTableClient.QueryAsync<TableEntity>(filter: $"PartitionKey eq '{jobId}'"))
             {
+                var storedResourceId = entity.GetString("ResourceId") ?? string.Empty;
+                var normalizedVolumeId = !string.IsNullOrEmpty(storedResourceId)
+                    ? ComputeVolumeIdFromResourceId(storedResourceId)
+                    : (entity.GetString("VolumeId") ?? entity.RowKey);
+
                 var cost = new VolumeCostAnalysis
                 {
                     AnalysisId = entity.GetString("AnalysisId") ?? entity.RowKey,
-                    VolumeId = entity.GetString("VolumeId") ?? entity.RowKey,
+                    VolumeId = normalizedVolumeId,
                     VolumeName = entity.GetString("VolumeName") ?? "",
                     ResourceType = entity.GetString("ResourceType") ?? "",
-                    ResourceId = entity.GetString("ResourceId") ?? "",
+                    ResourceId = storedResourceId,
                     Region = entity.GetString("Region") ?? "",
                     StorageAccountOrPoolName = entity.GetString("StorageAccountOrPoolName"),
                     TotalCostPerDay = entity.GetDouble("TotalCostPerDay") ?? 0,
@@ -168,6 +173,16 @@ public partial class DiscoveredResourceStorageService
             .ToList();
 
         return deduped;
+    }
+
+    private static string ComputeVolumeIdFromResourceId(string resourceId)
+    {
+        if (string.IsNullOrEmpty(resourceId))
+            return Guid.NewGuid().ToString();
+
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(resourceId));
+        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
     }
 
     /// <summary>

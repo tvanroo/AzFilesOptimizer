@@ -323,33 +323,29 @@ public class VolumeAnalysisFunction
                 AnnotationHistory = volume.AnnotationHistory
             };
 
-            // Attach latest cost summary for this specific volume, if available
-            var resourceId = GetVolumeResourceId(volume);
-            if (!string.IsNullOrWhiteSpace(resourceId))
-            {
-                var jobCosts = await _resourceStorage.GetVolumeCostsByJobIdAsync(jobId);
-                var cost = jobCosts
-                    .Where(c => string.Equals(c.ResourceId, resourceId, StringComparison.OrdinalIgnoreCase))
-                    .OrderByDescending(c => c.AnalysisTimestamp)
-                    .FirstOrDefault();
+            // Attach latest cost summary for this specific volume, if available (by normalized VolumeId)
+            var jobCosts = await _resourceStorage.GetVolumeCostsByJobIdAsync(jobId);
+            var cost = jobCosts
+                .Where(c => string.Equals(c.VolumeId, volume.VolumeId, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(c => c.AnalysisTimestamp)
+                .FirstOrDefault();
 
-                if (cost != null)
+            if (cost != null)
+            {
+                dto.CostSummary = new CostSummary
                 {
-                    dto.CostSummary = new CostSummary
-                    {
-                        TotalCost30Days = cost.TotalCostForPeriod,
-                        DailyAverage = cost.TotalCostPerDay,
-                        Currency = cost.CostComponents.FirstOrDefault()?.Currency ?? "USD",
-                        IsActual = cost.CostComponents.Count > 0 && cost.CostComponents.All(c => !c.IsEstimated),
-                        PeriodStart = cost.PeriodStart,
-                        PeriodEnd = cost.PeriodEnd
-                    };
-                    dto.CostStatus = "Completed";
-                }
-                else
-                {
-                    dto.CostStatus = "Pending";
-                }
+                    TotalCost30Days = cost.TotalCostForPeriod,
+                    DailyAverage = cost.TotalCostPerDay,
+                    Currency = cost.CostComponents.FirstOrDefault()?.Currency ?? "USD",
+                    IsActual = cost.CostComponents.Count > 0 && cost.CostComponents.All(c => !c.IsEstimated),
+                    PeriodStart = cost.PeriodStart,
+                    PeriodEnd = cost.PeriodEnd
+                };
+                dto.CostStatus = "Completed";
+            }
+            else
+            {
+                dto.CostStatus = "Pending";
             }
 
             var response = req.CreateResponse(HttpStatusCode.OK);
@@ -446,17 +442,6 @@ public class VolumeAnalysisFunction
             await response.WriteStringAsync($"Error: {ex.Message}");
             return response;
         }
-    }
-
-    private static string GetVolumeResourceId(DiscoveredVolumeWithAnalysis volume)
-    {
-        return volume.VolumeType switch
-        {
-            "AzureFiles" => (volume.VolumeData as DiscoveredAzureFileShare)?.ResourceId ?? string.Empty,
-            "ANF" => (volume.VolumeData as DiscoveredAnfVolume)?.ResourceId ?? string.Empty,
-            "ManagedDisk" => (volume.VolumeData as DiscoveredManagedDisk)?.ResourceId ?? string.Empty,
-            _ => string.Empty
-        };
     }
 
     [Function("ExportVolumes")]

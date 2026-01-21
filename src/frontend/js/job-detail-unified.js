@@ -196,11 +196,6 @@ const jobDetail = {
         }
     },
 
-    viewCostAnalysis() {
-        const url = `cost-analysis.html?jobId=${encodeURIComponent(this.jobId)}`;
-        window.location.href = url;
-    },
-    
     renderOverview() {
         const container = document.getElementById('job-details-container');
         const job = this.jobData;

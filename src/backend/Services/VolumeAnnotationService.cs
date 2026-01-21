@@ -87,13 +87,12 @@ public class VolumeAnnotationService
 
         // Preload latest cost analyses for this job so we can attach summaries per volume.
         var costAnalyses = await _resourceStorage.GetVolumeCostsByJobIdAsync(discoveryJobId);
-        var costByResourceId = costAnalyses
-            .Where(c => !string.IsNullOrWhiteSpace(c.ResourceId))
-            .GroupBy(c => c.ResourceId, StringComparer.OrdinalIgnoreCase)
+        var costByVolumeId = costAnalyses
+            .Where(c => !string.IsNullOrWhiteSpace(c.VolumeId))
+            .GroupBy(c => c.VolumeId)
             .ToDictionary(
                 g => g.Key,
-                g => g.OrderByDescending(c => c.AnalysisTimestamp).First(),
-                StringComparer.OrdinalIgnoreCase);
+                g => g.OrderByDescending(c => c.AnalysisTimestamp).First());
 
         var filtered = data.Volumes.AsEnumerable();
 
@@ -134,9 +133,8 @@ public class VolumeAnnotationService
                 AnnotationHistory = null
             };
 
-            // Attach cost summary if available
-            var resourceId = GetVolumeResourceId(v);
-            if (!string.IsNullOrWhiteSpace(resourceId) && costByResourceId.TryGetValue(resourceId, out var cost))
+            // Attach cost summary if available (matching by normalized VolumeId)
+            if (!string.IsNullOrWhiteSpace(v.VolumeId) && costByVolumeId.TryGetValue(v.VolumeId, out var cost))
             {
                 dto.CostSummary = new CostSummary
                 {

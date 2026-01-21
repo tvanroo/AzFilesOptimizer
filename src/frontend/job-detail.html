@@ -425,20 +425,19 @@
                 <div style="display: flex; gap: 0.5rem;">
                     <button class="btn" id="refresh-btn" onclick="jobDetail.loadJob()">🔄 Refresh</button>
                     <button class="btn" id="rerun-btn" onclick="jobDetail.rerunJob()" style="background-color: #4caf50; color: white;">▶ Re-run Discovery</button>
-                    <button class="btn" id="cost-analysis-btn" onclick="jobDetail.viewCostAnalysis()" style="background-color: #ff9800; color: white;">💰 Cost Analysis</button>
                     <button class="btn" id="delete-job-btn" onclick="jobDetail.deleteJob()" style="background-color: #f44336; color: white;">🗑 Delete</button>
                 </div>
             </div>
             
             <!-- Tab Navigation -->
             <div class="tabs-nav">
-                <button class="tab-btn active" onclick="jobDetail.switchTab('overview')">Overview</button>
-                <button class="tab-btn" onclick="jobDetail.switchTab('analysis')">Volume Analysis</button>
-                <button class="tab-btn" onclick="jobDetail.switchTab('chat')">AI Assistant</button>
+                <button class="tab-btn" onclick="jobDetail.switchTab('overview', this)">Overview</button>
+                <button class="tab-btn active" data-tab="analysis" onclick="jobDetail.switchTab('analysis', this)">Volume Analysis</button>
+                <button class="tab-btn" onclick="jobDetail.switchTab('chat', this)">AI Assistant</button>
             </div>
             
             <!-- Overview Tab -->
-            <div id="tab-overview" class="tab-content active">
+            <div id="tab-overview" class="tab-content">
                 <div id="job-details-container">
                     <div style="text-align: center; padding: 2rem;">
                         <div class="loading"></div>
@@ -465,7 +464,7 @@
             </div>
             
             <!-- Volume Analysis Tab -->
-            <div id="tab-analysis" class="tab-content">
+            <div id="tab-analysis" class="tab-content active">
                 <div class="analysis-toolbar">
                     <div>
                         <label>Workload Filter</label>
