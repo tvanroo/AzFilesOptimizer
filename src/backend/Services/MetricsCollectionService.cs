@@ -161,20 +161,26 @@ public class MetricsCollectionService
     public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectAnfVolumeMetricsAsync(
         string resourceId, string volumeName)
     {
-            return await CollectMetricsAsync(
-                resourceId,
-                "microsoft.netapp%2Fnetappaccounts%2Fcapacitypools%2Fvolumes",
-                volumeName,
-                new (string name, string aggregation)[]
-                {
-                    ("VolumeLogicalSize","Average,Total,Maximum,Minimum"),
-                    ("ReadIOPS","Average,Total,Maximum,Minimum"),
-                    ("WriteIOPS","Average,Total,Maximum,Minimum"),
-                    ("ReadThroughput","Average,Total,Maximum,Minimum"),
-                    ("WriteThroughput","Average,Total,Maximum,Minimum"),
-                    ("VolumeThroughputReadBytes","Average,Total,Maximum,Minimum"),
-                    ("VolumeThroughputWriteBytes","Average,Total,Maximum,Minimum")
-                });
+        // For ANF volumes, collect ALL metrics that Azure Monitor exposes for this resource.
+        // We query metricDefinitions to get the supported metric names, then request
+        // Average/Total/Maximum/Minimum aggregates for each. CollectMetricsAsync will
+        // further filter based on what the service actually supports.
+        var supportedNames = await GetSupportedMetricNamesAsync(resourceId);
+        if (supportedNames == null || supportedNames.Count == 0)
+        {
+            _logger.LogDebug("No supported ANF metrics found for {Volume}", volumeName);
+            return (false, null, null);
+        }
+
+        var preferred = supportedNames
+            .Select(name => (name, "Average,Total,Maximum,Minimum"))
+            .ToArray();
+
+        return await CollectMetricsAsync(
+            resourceId,
+            "microsoft.netapp%2Fnetappaccounts%2Fcapacitypools%2Fvolumes",
+            volumeName,
+            preferred);
     }
 
     public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectManagedDiskMetricsAsync(
