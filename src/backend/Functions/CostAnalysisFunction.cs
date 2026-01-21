@@ -16,6 +16,7 @@ public class CostAnalysisFunction
     private readonly CostForecastingService _costForecasting;
     private readonly DiscoveredResourceStorageService _resourceStorage;
     private readonly JobStorageService _jobStorage;
+    private readonly JobLogService _jobLogService;
 
     public CostAnalysisFunction(ILoggerFactory loggerFactory)
     {
@@ -28,6 +29,7 @@ public class CostAnalysisFunction
         _costForecasting = new CostForecastingService(_logger);
         _resourceStorage = new DiscoveredResourceStorageService(connectionString);
         _jobStorage = new JobStorageService(connectionString);
+        _jobLogService = new JobLogService(connectionString);
     }
 
     /// <summary>
@@ -266,15 +268,28 @@ public class CostAnalysisFunction
                 return;
             }
 
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+            await _jobLogService.AddLogAsync(job.JobId, $"[{timestamp}] Starting cost analysis phase for discovery job {job.JobId}");
+
             // Get all discovered resources
+            await _jobLogService.AddLogAsync(job.JobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Loading discovered resources for cost analysis...");
             var shares = await _resourceStorage.GetSharesByJobIdAsync(parsedMessage.JobId);
             var volumes = await _resourceStorage.GetVolumesByJobIdAsync(parsedMessage.JobId);
             var disks = await _resourceStorage.GetDisksByJobIdAsync(parsedMessage.JobId);
+
+            await _jobLogService.AddLogAsync(job.JobId,
+                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Cost analysis scope: {shares.Count} Azure Files shares, {volumes.Count} ANF volumes, {disks.Count} managed disks");
 
             var costAnalyses = new List<VolumeCostAnalysis>();
             var forecasts = new List<CostForecastResult>();
 
             // Process Azure Files
+            if (shares.Count > 0)
+            {
+                await _jobLogService.AddLogAsync(job.JobId,
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating costs for Azure Files shares...");
+            }
+
             foreach (var share in shares)
             {
                 try
@@ -297,20 +312,28 @@ public class CostAnalysisFunction
                         DateTime.UtcNow.AddDays(-30),
                         DateTime.UtcNow);
                     
-            cost.JobId = parsedMessage.JobId;
-            costAnalyses.Add(cost);
+                    cost.JobId = parsedMessage.JobId;
+                    costAnalyses.Add(cost);
 
-            // Generate forecast
-            var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>(), null);
+                    // Generate forecast
+                    var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>(), null);
                     forecasts.Add(forecast);
                 }
                 catch (Exception ex)
                 {
                     logger.LogWarning(ex, "Failed to calculate costs for share {Share}", share.ShareName);
+                    await _jobLogService.AddLogAsync(job.JobId,
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] WARNING: Failed to calculate costs for Azure Files share {share.ShareName}: {ex.Message}");
                 }
             }
 
             // Process ANF Volumes
+            if (volumes.Count > 0)
+            {
+                await _jobLogService.AddLogAsync(job.JobId,
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating costs for Azure NetApp Files volumes...");
+            }
+
             foreach (var volume in volumes)
             {
                 try
@@ -328,8 +351,8 @@ public class CostAnalysisFunction
                         DateTime.UtcNow.AddDays(-30),
                         DateTime.UtcNow);
                     
-            cost.JobId = parsedMessage.JobId;
-            costAnalyses.Add(cost);
+                    cost.JobId = parsedMessage.JobId;
+                    costAnalyses.Add(cost);
 
                     var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>());
                     forecasts.Add(forecast);
@@ -337,10 +360,18 @@ public class CostAnalysisFunction
                 catch (Exception ex)
                 {
                     logger.LogWarning(ex, "Failed to calculate costs for volume {Volume}", volume.VolumeName);
+                    await _jobLogService.AddLogAsync(job.JobId,
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] WARNING: Failed to calculate costs for ANF volume {volume.VolumeName}: {ex.Message}");
                 }
             }
 
             // Process Managed Disks
+            if (disks.Count > 0)
+            {
+                await _jobLogService.AddLogAsync(job.JobId,
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating costs for managed disks...");
+            }
+
             foreach (var disk in disks)
             {
                 try
@@ -355,28 +386,43 @@ public class CostAnalysisFunction
                         DateTime.UtcNow.AddDays(-30),
                         DateTime.UtcNow);
                     
-            cost.JobId = parsedMessage.JobId;
-            costAnalyses.Add(cost);
+                    cost.JobId = parsedMessage.JobId;
+                    costAnalyses.Add(cost);
 
-            var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>(), null);
+                    var forecast = _costForecasting.ForecastCosts(cost, new List<CostMetrics>(), null);
                     forecasts.Add(forecast);
                 }
                 catch (Exception ex)
                 {
                     logger.LogWarning(ex, "Failed to calculate costs for disk {Disk}", disk.DiskName);
+                    await _jobLogService.AddLogAsync(job.JobId,
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] WARNING: Failed to calculate costs for managed disk {disk.DiskName}: {ex.Message}");
                 }
             }
 
             // Persist results
+            await _jobLogService.AddLogAsync(job.JobId,
+                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Persisting cost analysis results ({costAnalyses.Count} resources)...");
             await _resourceStorage.SaveVolumeCostAnalysesAsync(parsedMessage.JobId, costAnalyses);
             await _resourceStorage.SaveCostForecastsAsync(parsedMessage.JobId, forecasts);
 
             logger.LogInformation("Cost analysis completed for job {JobId}: {Count} volumes analyzed", 
                 parsedMessage.JobId, costAnalyses.Count);
+            await _jobLogService.AddLogAsync(job.JobId,
+                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Cost analysis phase completed. Analyzed {costAnalyses.Count} resources.");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error processing cost analysis for job {JobId}", parsedMessage.JobId);
+            try
+            {
+                await _jobLogService.AddLogAsync(parsedMessage.JobId,
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] ERROR: Cost analysis phase failed: {ex.Message}");
+            }
+            catch
+            {
+                // Swallow logging failures to avoid poison queue loops.
+            }
         }
     }
 
