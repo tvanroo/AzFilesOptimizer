@@ -144,8 +144,12 @@ public class CostCollectionService
             // Try to replace retail estimate with actual billed cost if available
             await TryApplyActualCostAsync(analysis, periodStart, periodEnd);
 
-            _logger.LogInformation("Calculated Azure Files costs for {Share}: ${Cost} over {Days} days (Source: {Source})", 
-                shareName, analysis.TotalCostForPeriod, analysis.CostComponents.All(c => !c.IsEstimated) ? "Actual" : "RetailEstimate");
+            _logger.LogInformation(
+                "Calculated Azure Files costs for {Share}: ${Cost} over {Days} days (Source: {Source})",
+                shareName,
+                analysis.TotalCostForPeriod,
+                days,
+                analysis.CostComponents.All(c => !c.IsEstimated) ? "Actual" : "RetailEstimate");
             
             return analysis;
         }
