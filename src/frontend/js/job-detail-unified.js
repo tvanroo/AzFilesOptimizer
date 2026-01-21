@@ -31,18 +31,18 @@ const jobDetail = {
         { key: 'ResourceGroup', label: 'Resource Group', sortable: true },
         { key: 'SubscriptionId', label: 'Subscription', sortable: true },
         { key: 'Location', label: 'Location', sortable: true },
-        { key: 'CapacityGiB', label: 'Capacity (GiB)', sortable: true },
+        { key: 'CapacityGiB', label: 'Capacity', sortable: true },
         { key: 'UsedCapacity', label: 'Used Capacity', sortable: true },
-        { key: 'RequiredCapacityGiB', label: 'Req Capacity (GiB)', sortable: true },
+        { key: 'RequiredCapacityGiB', label: 'Req Capacity', sortable: true },
         { key: 'RequiredThroughputMiBps', label: 'Req Throughput (MiB/s)', sortable: true },
         { key: 'CurrentThroughputMiBps', label: 'Current Throughput (MiB/s)', sortable: true },
         { key: 'CurrentIops', label: 'Current IOPS', sortable: true },
         { key: 'AccessTier', label: 'Tier / SKU', sortable: true },
-        { key: 'Protocols', label: 'Protocols', sortable: false },
+        { key: 'Protocols', label: 'Protocols', sortable: true },
         { key: 'StorageAccountSku', label: 'SKU', sortable: true },
         { key: 'Cost30Days', label: '30-Day Cost', sortable: true },
         { key: 'CostPerDay', label: 'Daily Cost', sortable: true },
-        { key: 'CostSource', label: 'Cost Source', sortable: false },
+        { key: 'CostSource', label: 'Cost Source', sortable: true },
         { key: 'AiWorkload', label: 'AI Workload', sortable: true },
         { key: 'AiConfidence', label: 'AI Confidence', sortable: true },
         { key: 'AiLastAnalyzed', label: 'AI Last Analyzed', sortable: true },
@@ -58,6 +58,10 @@ const jobDetail = {
 
     // Chat state
     conversationHistory: [],
+
+    // Verbose log toggle state
+    showVerboseLogs: false,
+    verboseStorageKey: 'azfo-job-log-verbose',
     
     // Initialize
     async init() {
@@ -84,6 +88,14 @@ const jobDetail = {
         await this.loadJob();
         this.loadVolumeViewState();
         this.setupEventListeners();
+
+        // Initialize verbose log toggle from local storage
+        const verboseToggle = document.getElementById('job-log-verbose-toggle');
+        if (verboseToggle) {
+            const saved = localStorage.getItem(this.verboseStorageKey);
+            this.showVerboseLogs = saved === '1';
+            verboseToggle.checked = this.showVerboseLogs;
+        }
 
         // Apply initial tab selection
         const initialTab = this.currentTab || 'analysis';
@@ -329,10 +341,7 @@ const jobDetail = {
 
     async loadWorkloadProfiles() {
         try {
-            const response = await fetch(`${API_BASE_URL}/workload-profiles`);
-            if (!response.ok) return;
-            
-            const profiles = await response.json();
+            const profiles = await apiClient.fetchJson('/workload-profiles');
             const filterSelect = document.getElementById('workloadFilter');
             
             profiles.forEach(p => {
@@ -359,15 +368,12 @@ const jobDetail = {
         this.saveVolumeViewState();
         
         try {
-            let url = `${API_BASE_URL}/discovery/${this.jobId}/volumes?page=${this.currentPage}&pageSize=${this.pageSize}`;
+            let url = `/discovery/${this.jobId}/volumes?page=${this.currentPage}&pageSize=${this.pageSize}`;
             if (workloadFilter) url += `&workloadFilter=${encodeURIComponent(workloadFilter)}`;
             if (statusFilter) url += `&statusFilter=${encodeURIComponent(statusFilter)}`;
             if (confidenceMin > 0) url += `&confidenceMin=${confidenceMin}`;
             
-            const response = await fetch(url);
-            if (!response.ok) throw new Error('Failed to load volumes');
-            
-            const data = await response.json();
+            const data = await apiClient.fetchJson(url);
             this.volumes = data.Volumes || [];
             this.totalCount = data.TotalCount || 0;
             
@@ -443,8 +449,21 @@ const jobDetail = {
         const vData = v.VolumeData || {};
         
         switch (columnKey) {
-            case 'VolumeType':
-                return vType === 'ManagedDisk' ? '💾 Disk' : vType === 'ANF' ? '📁 ANF' : '📂 Files';
+            case 'VolumeType': {
+                let iconHtml = '';
+                let label = '';
+                if (vType === 'ManagedDisk') {
+                    iconHtml = '<img src="images/icon-managed-disk.png" class="vol-type-icon" alt="Managed Disk">';
+                    label = 'Disk';
+                } else if (vType === 'ANF') {
+                    iconHtml = '<img src="images/icon-anf.png" class="vol-type-icon" alt="ANF">';
+                    label = 'ANF';
+                } else {
+                    iconHtml = '<img src="images/icon-storage-account.png" class="vol-type-icon" alt="Azure Files">';
+                    label = 'Files';
+                }
+                return `<span class="vol-type">${iconHtml}<span>${label}</span></span>`;
+            }
             case 'VolumeName':
                 if (vType === 'ManagedDisk') return vData.DiskName || 'Unknown';
                 if (vType === 'ANF') return vData.VolumeName || 'Unknown';
@@ -459,19 +478,26 @@ const jobDetail = {
                 return vData.SubscriptionId || '-';
             case 'Location':
                 return vData.Location || '-';
-            case 'CapacityGiB':
-                if (vType === 'ManagedDisk') return vData.DiskSizeGB || 0;
-                if (vType === 'ANF') return Math.round((vData.ProvisionedSizeBytes || 0) / (1024**3));
-                return vData.ShareQuotaGiB ?? 0;
+            case 'CapacityGiB': {
+                let bytes = 0;
+                if (vType === 'ManagedDisk') {
+                    bytes = (vData.DiskSizeGB || 0) * 1024 ** 3;
+                } else if (vType === 'ANF') {
+                    bytes = vData.ProvisionedSizeBytes || 0;
+                } else {
+                    bytes = (vData.ShareQuotaGiB || 0) * 1024 ** 3;
+                }
+                return this.formatBytes(bytes);
+            }
             case 'UsedCapacity': {
-                if (vType === 'ManagedDisk') return 'N/A';
+                if (vType === 'ManagedDisk') {
+                    const usedBytes = vData.UsedBytes || 0;
+                    if (!usedBytes) return '0 B';
+                    return this.formatBytes(usedBytes);
+                }
                 const bytes = vData.ShareUsageBytes ?? 0;
                 if (!bytes) return '0 B';
-                const k = 1024;
-                const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                const val = parseFloat((bytes / Math.pow(k, i)).toFixed(2));
-                return `${val} ${sizes[i]}`;
+                return this.formatBytes(bytes);
             }
             case 'AccessTier':
                 if (vType === 'ManagedDisk') return vData.DiskTier || 'N/A';
@@ -487,7 +513,8 @@ const jobDetail = {
             case 'RequiredCapacityGiB': {
                 const val = typeof v.RequiredCapacityGiB === 'number' ? v.RequiredCapacityGiB : null;
                 if (val == null) return 'N/A';
-                return val.toFixed(0);
+                const bytes = val * 1024 ** 3;
+                return this.formatBytes(bytes);
             }
             case 'RequiredThroughputMiBps': {
                 const val = typeof v.RequiredThroughputMiBps === 'number' ? v.RequiredThroughputMiBps : null;
@@ -502,6 +529,7 @@ const jobDetail = {
             case 'CurrentIops': {
                 const val = typeof v.CurrentIops === 'number' ? v.CurrentIops : null;
                 if (val == null) return 'N/A';
+                if (val < 0) return 'Unmetered';
                 return val.toFixed(0);
             }
             case 'Cost30Days': {
@@ -635,6 +663,15 @@ const jobDetail = {
         }).join('');
     },
 
+    formatBytes(bytes) {
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+        if (!bytes || bytes <= 0) return '0 B';
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        const val = parseFloat((bytes / Math.pow(k, i)).toFixed(2));
+        return `${val} ${sizes[i]}`;
+    },
+
     renderVolumePagination() {
         const pagination = document.getElementById('pagination');
         if (!pagination) return;
@@ -751,39 +788,11 @@ const jobDetail = {
     
     // Analysis Functions
     async checkForAnalysisLogs() {
-        // Check if there's an analysis job for this discovery job
+        // Check if there's an analysis job for this discovery job so we can include its logs in the unified console
         try {
-            const response = await fetch(`${API_BASE_URL}/discovery/${this.jobId}/analysis-status`);
-            if (response.ok) {
-                const data = await response.json();
-                if (data.AnalysisJobId) {
-                    this.currentAnalysisJobId = data.AnalysisJobId;
-                    this.showAnalysisConsole();
-                    
-                    // Load all logs immediately
-                    await this.fetchAnalysisLogs();
-                    
-                    // If analysis is still running, start polling
-                    if (data.Status === 'Running' || data.Status === 'Pending') {
-                        this.startAnalysisLogPolling();
-                        this.pollAnalysisStatus(data.AnalysisJobId);
-                    } else {
-                        // Update final status indicator
-                        const indicator = document.getElementById('analysis-status-indicator');
-                        const statusText = document.getElementById('analysis-status-text');
-                        if (indicator) {
-                            indicator.className = 'log-status-indicator';
-                            if (data.Status === 'Completed') {
-                                indicator.classList.add('completed');
-                            } else if (data.Status === 'Failed') {
-                                indicator.classList.add('failed');
-                            }
-                        }
-                        if (statusText && data.TotalVolumes) {
-                            statusText.textContent = `Analysis ${data.Status} - ${data.ProcessedVolumes || 0}/${data.TotalVolumes} volumes`;
-                        }
-                    }
-                }
+            const data = await apiClient.fetchJson(`/discovery/${this.jobId}/analysis-status`);
+            if (data && data.AnalysisJobId) {
+                this.currentAnalysisJobId = data.AnalysisJobId;
             }
         } catch (error) {
             console.error('Error checking for analysis logs:', error);
@@ -793,148 +802,15 @@ const jobDetail = {
     async runAnalysis() {
         if (!confirm('Run AI analysis on all volumes in this job?')) return;
         
-        // Show the inline console immediately
-        this.showAnalysisConsole();
-        
         try {
-            const response = await fetch(`${API_BASE_URL}/discovery/${this.jobId}/analyze`, {
+            const result = await apiClient.fetchJson(`/discovery/${this.jobId}/analyze`, {
                 method: 'POST'
             });
-            
-            if (!response.ok) throw new Error('Failed to start analysis');
-            
-            const result = await response.json();
             this.currentAnalysisJobId = result.AnalysisJobId;
-            
-            // Begin status and log polling
-            this.startAnalysisLogPolling();
-            this.pollAnalysisStatus(result.AnalysisJobId);
+            Toast.success('Analysis started. Logs will appear in the Job Activity Log.');
         } catch (error) {
             Toast.error('Failed to start analysis: ' + error.message);
         }
-    },
-    
-    showAnalysisConsole() {
-        const console = document.getElementById('analysis-log-console');
-        if (console) {
-            console.style.display = 'block';
-        }
-    },
-    
-    startAnalysisLogPolling() {
-        this.stopAnalysisLogPolling();
-        this.analysisLogPollInterval = setInterval(() => this.fetchAnalysisLogs(), 2000);
-        this.fetchAnalysisLogs();
-    },
-    
-    stopAnalysisLogPolling() {
-        if (this.analysisLogPollInterval) {
-            clearInterval(this.analysisLogPollInterval);
-            this.analysisLogPollInterval = null;
-        }
-    },
-    
-    async fetchAnalysisLogs() {
-        if (!this.currentAnalysisJobId) return;
-        
-        try {
-            const response = await fetch(`${API_BASE_URL}/analysis/${this.currentAnalysisJobId}/logs`);
-            if (!response.ok) return;
-            
-            const logs = await response.json();
-            const logBody = document.getElementById('analysis-log-body');
-            if (!logBody) return;
-
-            if (!logs || logs.length === 0) {
-                if (!logBody.innerHTML || logBody.innerHTML.trim() === '') {
-                    logBody.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">Starting analysis...</div>';
-                }
-                return;
-            }
-            
-            logBody.innerHTML = logs.map(log => {
-                const timestamp = new Date(log.Timestamp).toLocaleTimeString();
-                let cssClass = 'discovery-log-entry';
-                
-                const message = log.Message || '';
-                if (message.includes('ERROR') || message.includes('✗') || message.includes('Failed')) {
-                    cssClass += ' error';
-                } else if (message.includes('WARNING') || message.includes('⚠')) {
-                    cssClass += ' warning';
-                } else if (message.includes('✓') || message.includes('complete') || message.includes('Analyzing')) {
-                    cssClass += ' success';
-                }
-                
-                return `<div class="${cssClass}"><span class="discovery-log-timestamp">${timestamp}</span>${this.escapeHtml(message)}</div>`;
-            }).join('');
-            
-            logBody.scrollTop = logBody.scrollHeight;
-        } catch (error) {
-            console.error('Error fetching analysis logs:', error);
-        }
-    },
-    
-    toggleAnalysisConsole() {
-        const logBody = document.getElementById('analysis-log-body');
-        const toggleBtn = event.target;
-        
-        if (this.isAnalysisConsoleCollapsed) {
-            logBody.style.display = 'block';
-            toggleBtn.textContent = 'Collapse';
-            this.isAnalysisConsoleCollapsed = false;
-        } else {
-            logBody.style.display = 'none';
-            toggleBtn.textContent = 'Expand';
-            this.isAnalysisConsoleCollapsed = true;
-        }
-    },
-    
-    async pollAnalysisStatus(analysisJobId) {
-        const checkStatus = async () => {
-            try {
-                const response = await fetch(`${API_BASE_URL}/analysis/${analysisJobId}/status`);
-                if (!response.ok) return;
-                
-                const status = await response.json();
-                const progress = status.ProgressPercentage || 0;
-                
-                // Update status indicator and text
-                const indicator = document.getElementById('analysis-status-indicator');
-                const statusText = document.getElementById('analysis-status-text');
-                
-                if (indicator) {
-                    indicator.className = 'log-status-indicator';
-                    if (status.Status === 'Running') {
-                        indicator.classList.add('running');
-                    } else if (status.Status === 'Completed') {
-                        indicator.classList.add('completed');
-                    } else if (status.Status === 'Failed') {
-                        indicator.classList.add('failed');
-                    }
-                }
-                
-                if (statusText) {
-                    statusText.textContent = `Analysis Progress - ${status.ProcessedVolumes}/${status.TotalVolumes} volumes (${Math.round(progress)}%)`;
-                }
-                
-                if (status.Status === 'Completed') {
-                    this.stopAnalysisLogPolling();
-                    setTimeout(() => {
-                        Toast.success('Analysis completed!');
-                        this.applyFilters();
-                    }, 2000);
-                } else if (status.Status === 'Failed') {
-                    this.stopAnalysisLogPolling();
-                    Toast.error('Analysis failed');
-                } else {
-                    setTimeout(checkStatus, 3000);
-                }
-            } catch (error) {
-                console.error('Error checking status:', error);
-            }
-        };
-        
-        setTimeout(checkStatus, 3000);
     },
     
     // Discovery Log Functions
@@ -953,14 +829,32 @@ const jobDetail = {
     
     async fetchDiscoveryLogs() {
         try {
-            const logs = await apiClient.getJobLogs(this.jobId);
+            const jobLogs = await apiClient.getJobLogs(this.jobId);
             
-            if (!logs || logs.length === 0) {
+            if (!jobLogs || jobLogs.length === 0) {
                 return;
             }
+
+            let combinedLogs = jobLogs.slice();
+
+            // When verbose mode is enabled, append analysis logs (if any) into the unified stream.
+            if (this.showVerboseLogs && this.currentAnalysisJobId) {
+                try {
+                    const analysisLogs = await apiClient.fetchJson(`/analysis/${this.currentAnalysisJobId}/logs`);
+                    const mapped = (analysisLogs || []).map(l => ({
+                        ...l,
+                        Message: `[ANALYSIS] ${l.Message || ''}`
+                    }));
+                    combinedLogs = combinedLogs.concat(mapped);
+                } catch (err) {
+                    console.error('Error fetching analysis logs for verbose mode:', err);
+                }
+            }
+
+            combinedLogs.sort((a, b) => new Date(a.Timestamp) - new Date(b.Timestamp));
             
-            // Show the log console if we have logs
-            const logConsole = document.getElementById('discovery-log-console');
+            // Show the unified job activity log if we have logs
+            const logConsole = document.getElementById('job-activity-log');
             if (logConsole && logConsole.style.display === 'none') {
                 logConsole.style.display = 'block';
             }
@@ -982,7 +876,7 @@ const jobDetail = {
             const logBody = document.getElementById('discovery-log-body');
             if (!logBody) return;
             
-            logBody.innerHTML = logs.map(log => {
+            logBody.innerHTML = combinedLogs.map(log => {
                 const timestamp = new Date(log.Timestamp).toLocaleTimeString();
                 let cssClass = 'discovery-log-entry';
                 
@@ -1019,6 +913,14 @@ const jobDetail = {
             toggleBtn.textContent = 'Expand';
             this.isLogConsoleCollapsed = true;
         }
+    },
+
+    onToggleVerbose(e) {
+        this.showVerboseLogs = !!e.target.checked;
+        try {
+            localStorage.setItem(this.verboseStorageKey, this.showVerboseLogs ? '1' : '0');
+        } catch {}
+        this.fetchDiscoveryLogs();
     },
 
     copyLogContent(elementId, btnElement) {

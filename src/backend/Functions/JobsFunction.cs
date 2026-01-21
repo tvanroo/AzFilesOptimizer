@@ -115,6 +115,64 @@ public class JobsFunction
             return errorResponse;
         }
     }
+
+    /// <summary>
+    /// Client-side job activity logging. Allows the frontend to record API calls and
+    /// other events into the same job log stream used for discovery/cost phases.
+    /// </summary>
+    [Function("LogJobClientEvent")]
+    public async Task<HttpResponseData> LogJobClientEvent(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "jobs/{jobId}/client-log")] HttpRequestData req,
+        string jobId)
+    {
+        try
+        {
+            using var reader = new StreamReader(req.Body);
+            var body = await reader.ReadToEndAsync();
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                var bad = req.CreateResponse(HttpStatusCode.BadRequest);
+                await bad.WriteAsJsonAsync(new { error = "Missing body" });
+                return bad;
+            }
+
+            var payload = System.Text.Json.JsonSerializer.Deserialize<ClientLogRequest>(body, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (payload == null || string.IsNullOrWhiteSpace(payload.Message))
+            {
+                var bad = req.CreateResponse(HttpStatusCode.BadRequest);
+                await bad.WriteAsJsonAsync(new { error = "Invalid client log payload" });
+                return bad;
+            }
+
+            var prefix = string.IsNullOrWhiteSpace(payload.Source)
+                ? "[CLIENT]"
+                : $"[CLIENT:{payload.Source}]";
+
+            await _jobLogService.AddLogAsync(jobId,
+                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {prefix} {payload.Message}");
+
+            var ok = req.CreateResponse(HttpStatusCode.OK);
+            await ok.WriteAsJsonAsync(new { status = "ok" });
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error logging client event for job {JobId}", jobId);
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new { error = "Failed to log client event", details = ex.Message });
+            return errorResponse;
+        }
+    }
+
+    public class ClientLogRequest
+    {
+        public string Message { get; set; } = string.Empty;
+        public string? Source { get; set; }
+    }
     
     [Function("GetJobShares")]
     public async Task<HttpResponseData> GetJobShares(

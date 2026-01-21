@@ -375,10 +375,20 @@
             border-radius: 4px;
             text-align: center;
         }
-        .stat-value {
+.stat-value {
             font-size: 24px;
             font-weight: 600;
             color: #2196f3;
+        }
+        .vol-type {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .vol-type-icon {
+            width: 16px;
+            height: 16px;
+            vertical-align: middle;
         }
         .example-chip {
             padding: 8px 12px;
@@ -444,23 +454,6 @@
                         <p style="margin-top: 1rem; color: var(--text-secondary);">Loading job details...</p>
                     </div>
                 </div>
-                
-                <!-- Discovery Log Console -->
-                <div id="discovery-log-console" class="discovery-log-console" style="display: none;">
-                    <div class="discovery-log-header">
-                        <div>
-                            <span class="log-status-indicator" id="log-status-indicator"></span>
-                            <span>Discovery Progress</span>
-                        </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button class="btn" onclick="jobDetail.copyLogContent('discovery-log-body', this)" style="background: rgba(255,255,255,0.15); padding: 6px 12px; font-size: 12px;" title="Copy log to clipboard">📋 Copy</button>
-                            <button class="btn" onclick="jobDetail.toggleLogConsole()" style="background: rgba(255,255,255,0.2); padding: 6px 12px; font-size: 12px;">Collapse</button>
-                        </div>
-                    </div>
-                    <div class="discovery-log-body" id="discovery-log-body">
-                        <div style="color: #888; text-align: center; padding: 20px;">Waiting for discovery logs...</div>
-                    </div>
-                </div>
             </div>
             
             <!-- Volume Analysis Tab -->
@@ -515,23 +508,6 @@
                 </div>
 
                 <div id="pagination" style="text-align: center; padding: 20px;"></div>
-                
-                <!-- Analysis Progress Console -->
-                <div id="analysis-log-console" class="discovery-log-console" style="margin-top: 1.5rem;">
-                    <div class="discovery-log-header">
-                        <div>
-                            <span class="log-status-indicator" id="analysis-status-indicator"></span>
-                            <span id="analysis-status-text">Analysis Progress</span>
-                        </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button class="btn" onclick="jobDetail.copyLogContent('analysis-log-body', this)" style="background: rgba(255,255,255,0.15); padding: 6px 12px; font-size: 12px;" title="Copy log to clipboard">📋 Copy</button>
-                            <button class="btn" onclick="jobDetail.toggleAnalysisConsole()" style="background: rgba(255,255,255,0.2); padding: 6px 12px; font-size: 12px;">Collapse</button>
-                        </div>
-                    </div>
-                    <div class="discovery-log-body" id="analysis-log-body">
-                        <div style="color: #888; text-align: center; padding: 20px;">Waiting for analysis logs...</div>
-                    </div>
-                </div>
             </div>
             
             <!-- AI Chat Tab -->
@@ -582,6 +558,27 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Unified Job Activity Log Console -->
+        <div id="job-activity-log" class="discovery-log-console" style="margin-top: 1.5rem;">
+            <div class="discovery-log-header">
+                <div>
+                    <span class="log-status-indicator" id="log-status-indicator"></span>
+                    <span>Job Activity Log</span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="job-log-verbose-toggle" onchange="jobDetail.onToggleVerbose(event)">
+                        Show verbose
+                    </label>
+                    <button class="btn" onclick="jobDetail.copyLogContent('discovery-log-body', this)" style="background: rgba(255,255,255,0.15); padding: 6px 12px; font-size: 12px;" title="Copy log to clipboard">📋 Copy</button>
+                    <button class="btn" onclick="jobDetail.toggleLogConsole()" style="background: rgba(255,255,255,0.2); padding: 6px 12px; font-size: 12px;">Collapse</button>
+                </div>
+            </div>
+            <div class="discovery-log-body" id="discovery-log-body">
+                <div style="color: #888; text-align: center; padding: 20px;">Waiting for job activity logs...</div>
             </div>
         </div>
     </main>

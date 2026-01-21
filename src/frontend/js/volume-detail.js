@@ -40,6 +40,9 @@ const volumeDetailPage = {
         await this.loadWorkloadProfiles();
         await this.loadVolume();
         this.initializeDecisionPanel();
+
+        // Load job activity logs for this volume's job
+        this.fetchJobLogs();
     },
 
     async loadVolume() {
@@ -492,6 +495,70 @@ const volumeDetailPage = {
         
         html += '</div>'; // End sizing-panel
         container.innerHTML = html;
+    },
+
+    async fetchJobLogs() {
+        try {
+            const logs = await apiClient.getJobLogs(this.jobId);
+            if (!logs || logs.length === 0) return;
+
+            const logBody = document.getElementById('volume-discovery-log-body');
+            if (!logBody) return;
+
+            logBody.innerHTML = logs.map(log => {
+                const timestamp = new Date(log.Timestamp).toLocaleTimeString();
+                let cssClass = 'discovery-log-entry';
+                const message = log.Message || '';
+                if (message.includes('ERROR') || message.includes('✗') || message.includes('Failed')) {
+                    cssClass += ' error';
+                } else if (message.includes('WARNING') || message.includes('⚠')) {
+                    cssClass += ' warning';
+                } else if (message.includes('✓') || message.includes('complete') || message.includes('Found')) {
+                    cssClass += ' success';
+                }
+                return `<div class="${cssClass}"><span class="discovery-log-timestamp">${timestamp}</span>${this.escapeHtml(message)}</div>`;
+            }).join('');
+
+            logBody.scrollTop = logBody.scrollHeight;
+        } catch (err) {
+            console.error('Error loading job logs for volume view:', err);
+        }
+    },
+
+    copyLogContent(elementId, btnElement) {
+        const logBody = document.getElementById(elementId);
+        if (!logBody) return;
+
+        const logText = logBody.innerText || '';
+        if (!logText) {
+            alert('No log content to copy');
+            return;
+        }
+
+        navigator.clipboard.writeText(logText).then(() => {
+            const originalText = btnElement.textContent;
+            btnElement.textContent = '✓ Copied!';
+            setTimeout(() => {
+                btnElement.textContent = originalText;
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy log:', err);
+            alert('Failed to copy log. Please select and copy manually.');
+        });
+    },
+
+    toggleLogConsole() {
+        const logBody = document.getElementById('volume-discovery-log-body');
+        const toggleBtn = event.target;
+        if (!logBody) return;
+
+        if (logBody.style.display === 'none') {
+            logBody.style.display = 'block';
+            toggleBtn.textContent = 'Collapse';
+        } else {
+            logBody.style.display = 'none';
+            toggleBtn.textContent = 'Expand';
+        }
     },
 
     renderHistoryTimeline(ai, user, history) {

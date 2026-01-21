@@ -161,16 +161,33 @@ public class VolumeAnnotationService
                 dto.RequiredThroughputMiBps = sizing.RecommendedThroughputMiBps;
             }
 
+            const double bufferFactor = 1.3; // 30% buffer above observed/estimated used capacity
+
             // Derive current throughput/IOPS and, when sizing is missing, approximate required values
             switch (v.VolumeType)
             {
                 case "AzureFiles":
                     if (v.VolumeData is DiscoveredAzureFileShare share)
                     {
-                        // Capacity: quota in GiB if we don't already have an AI recommendation
-                        dto.RequiredCapacityGiB ??= share.ShareQuotaGiB;
+                        // Capacity: prefer used+buffer, fall back to quota, unless AI sizing already set it
+                        double? usedGiB = null;
+                        if (share.ShareUsageBytes.HasValue && share.ShareUsageBytes.Value > 0)
+                        {
+                            usedGiB = share.ShareUsageBytes.Value / (1024.0 * 1024.0 * 1024.0);
+                        }
 
-                        // Current throughput from provisioned or estimated values
+                        if (usedGiB.HasValue)
+                        {
+                            var recommendedGiB = usedGiB.Value * bufferFactor;
+                            var currentGiB = (double)(share.ShareQuotaGiB ?? 0);
+                            dto.RequiredCapacityGiB ??= Math.Max(recommendedGiB, currentGiB);
+                        }
+                        else
+                        {
+                            dto.RequiredCapacityGiB ??= share.ShareQuotaGiB;
+                        }
+
+                        // Current throughput from provisioned or estimated values, with SKU-based fallback
                         double? currentThroughput = null;
                         if (share.ProvisionedBandwidthMiBps.HasValue)
                         {
@@ -180,9 +197,18 @@ public class VolumeAnnotationService
                         {
                             currentThroughput = share.EstimatedThroughputMiBps.Value;
                         }
+                        else if (!string.IsNullOrEmpty(share.StorageAccountSku))
+                        {
+                            // Very rough SKU-based heuristic when metrics are unavailable.
+                            var sku = share.StorageAccountSku.ToLowerInvariant();
+                            if (sku.Contains("premium"))
+                                currentThroughput = 100; // Premium file storage baseline
+                            else
+                                currentThroughput = 60;  // Standard storage baseline
+                        }
                         dto.CurrentThroughputMiBps = currentThroughput;
 
-                        // Current IOPS from provisioned or estimated values
+                        // Current IOPS from provisioned or estimated values; mark standard tiers as "unmetered"
                         double? currentIops = null;
                         if (share.ProvisionedIops.HasValue)
                         {
@@ -191,6 +217,11 @@ public class VolumeAnnotationService
                         else if (share.EstimatedIops.HasValue)
                         {
                             currentIops = share.EstimatedIops.Value;
+                        }
+                        else if (!string.Equals(share.AccessTier, "Premium", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Standard tiers don't have an explicit share-level IOPS cap.
+                            currentIops = -1; // Sentinel for "Unmetered" in the UI
                         }
                         dto.CurrentIops = currentIops;
 
@@ -202,11 +233,14 @@ public class VolumeAnnotationService
                 case "ANF":
                     if (v.VolumeData is DiscoveredAnfVolume anf)
                     {
-                        // Capacity from provisioned size (bytes -> GiB) when AI sizing is not present
+                        // Capacity: approximate used as 70% of provisioned, then apply buffer,
+                        // falling back to provisioned size when metrics are insufficient.
                         var provisionedGiB = anf.ProvisionedSizeBytes / (1024.0 * 1024.0 * 1024.0);
-                        dto.RequiredCapacityGiB ??= provisionedGiB;
+                        var estimatedUsedGiB = provisionedGiB * 0.7;
+                        var recommendedGiB = estimatedUsedGiB * bufferFactor;
+                        dto.RequiredCapacityGiB ??= Math.Max(recommendedGiB, provisionedGiB);
 
-                        // Current throughput: prefer provisioned, then actual, then estimated
+                        // Current throughput: prefer provisioned, then actual, then estimated, then service level heuristic
                         double? currentThroughput = null;
                         if (anf.ThroughputMibps.HasValue)
                         {
@@ -219,6 +253,16 @@ public class VolumeAnnotationService
                         else if (anf.EstimatedThroughputMiBps.HasValue)
                         {
                             currentThroughput = anf.EstimatedThroughputMiBps.Value;
+                        }
+                        else if (!string.IsNullOrEmpty(anf.ServiceLevel))
+                        {
+                            var level = anf.ServiceLevel.ToLowerInvariant();
+                            if (level.Contains("ultra"))
+                                currentThroughput = 128;
+                            else if (level.Contains("premium"))
+                                currentThroughput = 64;
+                            else
+                                currentThroughput = 16; // standard
                         }
                         dto.CurrentThroughputMiBps = currentThroughput;
 
@@ -235,13 +279,39 @@ public class VolumeAnnotationService
                 case "ManagedDisk":
                     if (v.VolumeData is DiscoveredManagedDisk disk)
                     {
-                        // Capacity: disk size in GiB when AI sizing is not present
-                        dto.RequiredCapacityGiB ??= disk.DiskSizeGB;
+                        // Capacity: prefer used+buffer, fall back to disk size when used is unknown,
+                        // unless AI sizing already set it.
+                        double? usedGiB = null;
+                        if (disk.UsedBytes.HasValue && disk.UsedBytes.Value > 0)
+                        {
+                            usedGiB = disk.UsedBytes.Value / (1024.0 * 1024.0 * 1024.0);
+                        }
 
-                        // Current throughput from estimated throughput
+                        if (usedGiB.HasValue)
+                        {
+                            var recommendedGiB = usedGiB.Value * bufferFactor;
+                            var currentGiB = (double)disk.DiskSizeGB;
+                            dto.RequiredCapacityGiB ??= Math.Max(recommendedGiB, currentGiB);
+                        }
+                        else
+                        {
+                            dto.RequiredCapacityGiB ??= disk.DiskSizeGB;
+                        }
+
+                        // Current throughput from estimated throughput, with SKU-based fallback
                         if (disk.EstimatedThroughputMiBps.HasValue)
                         {
                             dto.CurrentThroughputMiBps = disk.EstimatedThroughputMiBps.Value;
+                        }
+                        else if (!string.IsNullOrEmpty(disk.DiskSku))
+                        {
+                            var sku = disk.DiskSku.ToLowerInvariant();
+                            if (sku.Contains("premium"))
+                                dto.CurrentThroughputMiBps = 100;
+                            else if (sku.Contains("standardssd"))
+                                dto.CurrentThroughputMiBps = 60;
+                            else
+                                dto.CurrentThroughputMiBps = 30;
                         }
 
                         // Current IOPS from estimated disk IOPS

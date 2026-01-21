@@ -332,12 +332,31 @@ public class VolumeAnalysisFunction
                 dto.RequiredThroughputMiBps = sizing.RecommendedThroughputMiBps;
             }
 
+            const double bufferFactor = 1.3;
+
             switch (volume.VolumeType)
             {
                 case "AzureFiles":
                     if (volume.VolumeData is DiscoveredAzureFileShare share)
                     {
-                        dto.RequiredCapacityGiB ??= share.ShareQuotaGiB;
+                        // Capacity: prefer used+buffer, fall back to quota when used is unknown,
+                        // unless AI sizing already provided a recommendation.
+                        double? usedGiB = null;
+                        if (share.ShareUsageBytes.HasValue && share.ShareUsageBytes.Value > 0)
+                        {
+                            usedGiB = share.ShareUsageBytes.Value / (1024.0 * 1024.0 * 1024.0);
+                        }
+
+                        if (usedGiB.HasValue)
+                        {
+                            var recommendedGiB = usedGiB.Value * bufferFactor;
+                            var currentGiB = (double)(share.ShareQuotaGiB ?? 0);
+                            dto.RequiredCapacityGiB ??= Math.Max(recommendedGiB, currentGiB);
+                        }
+                        else
+                        {
+                            dto.RequiredCapacityGiB ??= share.ShareQuotaGiB;
+                        }
 
                         double? currentThroughput = null;
                         if (share.ProvisionedBandwidthMiBps.HasValue)
@@ -347,6 +366,14 @@ public class VolumeAnalysisFunction
                         else if (share.EstimatedThroughputMiBps.HasValue)
                         {
                             currentThroughput = share.EstimatedThroughputMiBps.Value;
+                        }
+                        else if (!string.IsNullOrEmpty(share.StorageAccountSku))
+                        {
+                            var sku = share.StorageAccountSku.ToLowerInvariant();
+                            if (sku.Contains("premium"))
+                                currentThroughput = 100;
+                            else
+                                currentThroughput = 60;
                         }
                         dto.CurrentThroughputMiBps = currentThroughput;
 
@@ -359,6 +386,10 @@ public class VolumeAnalysisFunction
                         {
                             currentIops = share.EstimatedIops.Value;
                         }
+                        else if (!string.Equals(share.AccessTier, "Premium", StringComparison.OrdinalIgnoreCase))
+                        {
+                            currentIops = -1; // Unmetered for standard tiers
+                        }
                         dto.CurrentIops = currentIops;
 
                         dto.RequiredThroughputMiBps ??= currentThroughput;
@@ -369,7 +400,9 @@ public class VolumeAnalysisFunction
                     if (volume.VolumeData is DiscoveredAnfVolume anf)
                     {
                         var provisionedGiB = anf.ProvisionedSizeBytes / (1024.0 * 1024.0 * 1024.0);
-                        dto.RequiredCapacityGiB ??= provisionedGiB;
+                        var estimatedUsedGiB = provisionedGiB * 0.7;
+                        var recommendedGiB = estimatedUsedGiB * bufferFactor;
+                        dto.RequiredCapacityGiB ??= Math.Max(recommendedGiB, provisionedGiB);
 
                         double? currentThroughput = null;
                         if (anf.ThroughputMibps.HasValue)
@@ -383,6 +416,16 @@ public class VolumeAnalysisFunction
                         else if (anf.EstimatedThroughputMiBps.HasValue)
                         {
                             currentThroughput = anf.EstimatedThroughputMiBps.Value;
+                        }
+                        else if (!string.IsNullOrEmpty(anf.ServiceLevel))
+                        {
+                            var level = anf.ServiceLevel.ToLowerInvariant();
+                            if (level.Contains("ultra"))
+                                currentThroughput = 128;
+                            else if (level.Contains("premium"))
+                                currentThroughput = 64;
+                            else
+                                currentThroughput = 16;
                         }
                         dto.CurrentThroughputMiBps = currentThroughput;
 
@@ -398,11 +441,36 @@ public class VolumeAnalysisFunction
                 case "ManagedDisk":
                     if (volume.VolumeData is DiscoveredManagedDisk disk)
                     {
-                        dto.RequiredCapacityGiB ??= disk.DiskSizeGB;
+                        double? usedGiB = null;
+                        if (disk.UsedBytes.HasValue && disk.UsedBytes.Value > 0)
+                        {
+                            usedGiB = disk.UsedBytes.Value / (1024.0 * 1024.0 * 1024.0);
+                        }
+
+                        if (usedGiB.HasValue)
+                        {
+                            var recommendedGiB = usedGiB.Value * bufferFactor;
+                            var currentGiB = (double)disk.DiskSizeGB;
+                            dto.RequiredCapacityGiB ??= Math.Max(recommendedGiB, currentGiB);
+                        }
+                        else
+                        {
+                            dto.RequiredCapacityGiB ??= disk.DiskSizeGB;
+                        }
 
                         if (disk.EstimatedThroughputMiBps.HasValue)
                         {
                             dto.CurrentThroughputMiBps = disk.EstimatedThroughputMiBps.Value;
+                        }
+                        else if (!string.IsNullOrEmpty(disk.DiskSku))
+                        {
+                            var sku = disk.DiskSku.ToLowerInvariant();
+                            if (sku.Contains("premium"))
+                                dto.CurrentThroughputMiBps = 100;
+                            else if (sku.Contains("standardssd"))
+                                dto.CurrentThroughputMiBps = 60;
+                            else
+                                dto.CurrentThroughputMiBps = 30;
                         }
 
                         if (disk.EstimatedIops.HasValue)

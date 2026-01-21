@@ -179,7 +179,21 @@ public DiscoveredResourceStorageService(string storageConnectionString)
             { "EstimatedThroughputMiBps", volume.EstimatedThroughputMiBps },
             { "ProtocolTypes", volume.ProtocolTypes != null ? string.Join(",", volume.ProtocolTypes) : null },
             { "Tags", volume.Tags != null ? System.Text.Json.JsonSerializer.Serialize(volume.Tags) : null },
-            { "DiscoveredAt", volume.DiscoveredAt }
+            { "DiscoveredAt", volume.DiscoveredAt },
+
+            // Snapshot / backup metadata
+            { "SnapshotCount", volume.SnapshotCount },
+            { "TotalSnapshotSizeBytes", volume.TotalSnapshotSizeBytes },
+            { "ChurnRateBytesPerDay", volume.ChurnRateBytesPerDay },
+            { "BackupPolicyConfigured", volume.BackupPolicyConfigured },
+
+            // Monitoring / metrics
+            { "MonitoringEnabled", volume.MonitoringEnabled },
+            { "MonitoringDataAvailableDays", volume.MonitoringDataAvailableDays },
+            { "HistoricalMetricsSummary", volume.HistoricalMetricsSummary },
+
+            // Security / TLS
+            { "MinimumTlsVersion", volume.MinimumTlsVersion }
         };
 
         await _volumesTableClient.UpsertEntityAsync(entity);
@@ -291,7 +305,21 @@ public DiscoveredResourceStorageService(string storageConnectionString)
             EstimatedThroughputMiBps = entity.GetDouble("EstimatedThroughputMiBps"),
             ProtocolTypes = entity.GetString("ProtocolTypes")?.Split(',', StringSplitOptions.RemoveEmptyEntries),
             Tags = DeserializeDictionary(entity.GetString("Tags")),
-            DiscoveredAt = entity.GetDateTime("DiscoveredAt") ?? DateTime.UtcNow
+            DiscoveredAt = entity.GetDateTime("DiscoveredAt") ?? DateTime.UtcNow,
+
+            // Snapshot / backup metadata
+            SnapshotCount = entity.GetInt32("SnapshotCount"),
+            TotalSnapshotSizeBytes = entity.GetInt64("TotalSnapshotSizeBytes"),
+            ChurnRateBytesPerDay = entity.GetDouble("ChurnRateBytesPerDay"),
+            BackupPolicyConfigured = entity.GetBoolean("BackupPolicyConfigured"),
+
+            // Monitoring / metrics
+            MonitoringEnabled = entity.GetBoolean("MonitoringEnabled") ?? false,
+            MonitoringDataAvailableDays = entity.GetInt32("MonitoringDataAvailableDays"),
+            HistoricalMetricsSummary = entity.GetString("HistoricalMetricsSummary"),
+
+            // Security / TLS
+            MinimumTlsVersion = entity.GetString("MinimumTlsVersion")
         };
     }
 

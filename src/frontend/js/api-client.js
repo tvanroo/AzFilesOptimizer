@@ -12,6 +12,11 @@ class ApiClient {
      * Generic fetch wrapper with error handling
      */
     async fetchJson(endpoint, options = {}) {
+        // Basic heuristic to avoid logging our own client-log calls and unrelated endpoints
+        const shouldLogClientEvent = !endpoint.startsWith('/jobs/') || !endpoint.includes('/client-log');
+        const method = (options.method || 'GET').toUpperCase();
+        const jobIdFromPath = this.tryExtractJobIdFromEndpoint(endpoint);
+
         try {
             // Get access token if user is signed in
             let headers = {
@@ -29,10 +34,31 @@ class ApiClient {
                 }
             }
 
+            // Log outbound API call as a client event when we can tie it to a job
+            if (shouldLogClientEvent && jobIdFromPath) {
+                this.logClientJobEvent(jobIdFromPath, {
+                    Message: `[API Request] ${method} ${endpoint}`,
+                    Source: 'api-client'
+                }).catch(() => { /* best-effort */ });
+            }
+
             const response = await fetch(`${API_BASE_URL}${endpoint}`, {
                 ...options,
                 headers: headers
             });
+
+            if (shouldLogClientEvent && jobIdFromPath) {
+                const ok = response.ok;
+                const status = response.status;
+                const statusText = response.statusText;
+                const msg = ok
+                    ? `[API Response] ${method} ${endpoint} -> ${status} ${statusText}`
+                    : `[API Error] ${method} ${endpoint} -> ${status} ${statusText}`;
+                this.logClientJobEvent(jobIdFromPath, {
+                    Message: msg,
+                    Source: 'api-client'
+                }).catch(() => { /* ignore logging failures */ });
+            }
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -42,6 +68,31 @@ class ApiClient {
         } catch (error) {
             console.error(`API Error [${endpoint}]:`, error);
             throw error;
+        }
+    }
+
+    tryExtractJobIdFromEndpoint(endpoint) {
+        // Handles patterns like /jobs/{jobId}/..., /discovery/{jobId}/...
+        if (!endpoint || typeof endpoint !== 'string') return null;
+        const parts = endpoint.split('?')[0].split('/').filter(p => p);
+        for (let i = 0; i < parts.length - 1; i++) {
+            const p = parts[i].toLowerCase();
+            if (p === 'jobs' || p === 'discovery') {
+                return parts[i + 1] || null;
+            }
+        }
+        return null;
+    }
+
+    async logClientJobEvent(jobId, payload) {
+        try {
+            await fetch(`${API_BASE_URL}/jobs/${encodeURIComponent(jobId)}/client-log`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch {
+            // Swallow logging errors - this should never break primary flows
         }
     }
 
