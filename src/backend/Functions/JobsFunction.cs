@@ -16,6 +16,7 @@ public class JobsFunction
     private readonly JobLogService _jobLogService;
     private readonly DiscoveredResourceStorageService _resourceStorage;
     private readonly Azure.Storage.Queues.QueueClient _costAnalysisQueue;
+    private readonly CostAnalysisFunction _costAnalysisFunction;
     private MetricsCollectionService? _metricsService;
 
     public JobsFunction(ILoggerFactory loggerFactory)
@@ -27,8 +28,14 @@ public class JobsFunction
         _jobStorage = new JobStorageService(connectionString);
         _jobLogService = new JobLogService(connectionString);
         _resourceStorage = new DiscoveredResourceStorageService(connectionString);
+
+        // Queue is still used for manual cost-analysis triggers, but the primary
+        // discovery pipeline now runs cost analysis inline as Step 4/4.
         _costAnalysisQueue = new Azure.Storage.Queues.QueueClient(connectionString, "cost-analysis-queue");
         _costAnalysisQueue.CreateIfNotExists();
+
+        // Reuse the same CostAnalysisFunction helper to run cost analysis inline.
+        _costAnalysisFunction = new CostAnalysisFunction(loggerFactory);
     }
 
     [Function("GetJobs")]
@@ -452,9 +459,7 @@ public class JobsFunction
 
             await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Saved {result.AzureFileShares.Count} shares, {result.AnfVolumes.Count} volumes, and {result.ManagedDisks.Count} disks to storage");
 
-            // Update job with results
-            job.Status = JobStatus.Completed;
-            job.CompletedAt = DateTime.UtcNow;
+            // Update job with discovery results (but keep status Running until cost analysis finishes)
             job.AzureFilesSharesFound = result.AzureFileShares.Count;
             job.AnfVolumesFound = result.AnfVolumes.Count;
             job.ManagedDisksFound = result.ManagedDisks.Count;
@@ -464,23 +469,20 @@ public class JobsFunction
 
             await _jobStorage.UpdateDiscoveryJobAsync(job);
             await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Found {result.AzureFileShares.Count} Azure Files shares, {result.AnfVolumes.Count} ANF volumes, and {result.ManagedDisks.Count} managed disks");
-            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Job completed successfully");
 
-            _logger.LogInformation("Discovery job completed: {JobId}. Found {SharesCount} shares, {VolumesCount} volumes, and {DisksCount} disks",
+            _logger.LogInformation("Discovery phase completed for job {JobId}. Found {SharesCount} shares, {VolumesCount} volumes, and {DisksCount} disks",
                 jobId, result.AzureFileShares.Count, result.AnfVolumes.Count, result.ManagedDisks.Count);
 
-            // Automatically trigger cost analysis for this discovery job in the background.
-            try
-            {
-                var costMessageJson = System.Text.Json.JsonSerializer.Serialize(new { JobId = jobId });
-                await _costAnalysisQueue.SendMessageAsync(costMessageJson);
-                await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Queued automatic cost analysis for job {jobId}");
-            }
-            catch (Exception costEx)
-            {
-                _logger.LogWarning(costEx, "Failed to enqueue automatic cost analysis for job {JobId}", jobId);
-                await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] WARNING: Failed to queue cost analysis automatically: {costEx.Message}");
-            }
+            // Run cost analysis inline as Step 4/4 of the discovery pipeline.
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Step 4/4: Running cost analysis for discovered resources...");
+            await _costAnalysisFunction.RunCostAnalysisForJobAsync(jobId);
+
+            // Now mark the overall discovery job as completed.
+            job.Status = JobStatus.Completed;
+            job.CompletedAt = DateTime.UtcNow;
+            await _jobStorage.UpdateDiscoveryJobAsync(job);
+
+            await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Job completed successfully");
         }
         catch (Exception ex)
         {
