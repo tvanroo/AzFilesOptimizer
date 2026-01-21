@@ -466,7 +466,11 @@ const jobDetail = {
             }
             case 'VolumeName':
                 if (vType === 'ManagedDisk') return vData.DiskName || 'Unknown';
-                if (vType === 'ANF') return vData.VolumeName || 'Unknown';
+                if (vType === 'ANF') {
+                    const full = vData.VolumeName || 'Unknown';
+                    const parts = full.split('/').filter(Boolean);
+                    return parts.length ? parts[parts.length - 1] : full;
+                }
                 return vData.ShareName || 'Unknown';
             case 'StorageAccountName':
                 if (vType === 'ManagedDisk') return vData.AttachedVmName || 'Unattached';

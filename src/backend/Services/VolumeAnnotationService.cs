@@ -45,6 +45,10 @@ public class VolumeAnnotationService
 
             if (data != null)
             {
+                // When loaded from Blob, VolumeData may be JsonElement. Rehydrate into strongly-typed
+                // models so downstream 'is DiscoveredAnfVolume' / 'is DiscoveredManagedDisk' checks work.
+                RehydrateVolumeData(data);
+
                 var needsSave = false;
                 foreach (var volume in data.Volumes)
                 {
@@ -526,12 +530,47 @@ public class VolumeAnnotationService
         return volume.VolumeType switch
         {
             "AzureFiles" => (volume.VolumeData as DiscoveredAzureFileShare)?.ShareName ?? "",
-            "ANF" => (volume.VolumeData as DiscoveredAnfVolume)?.VolumeName ?? "",
+            "ANF" => GetShortAnfVolumeName((volume.VolumeData as DiscoveredAnfVolume)?.VolumeName),
             "ManagedDisk" => (volume.VolumeData as DiscoveredManagedDisk)?.DiskName ?? "",
-            _ => ""
         };
     }
-    
+
+    private static string GetShortAnfVolumeName(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName)) return "";
+        var parts = fullName.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 0 ? parts[^1] : fullName;
+    }
+
+    private void RehydrateVolumeData(DiscoveryData discoveryData)
+    {
+        foreach (var volume in discoveryData.Volumes)
+        {
+            if (volume.VolumeData is JsonElement element)
+            {
+                try
+                {
+                    switch (volume.VolumeType)
+                    {
+                        case "AzureFiles":
+                            volume.VolumeData = element.Deserialize<DiscoveredAzureFileShare>() ?? new DiscoveredAzureFileShare();
+                            break;
+                        case "ANF":
+                            volume.VolumeData = element.Deserialize<DiscoveredAnfVolume>() ?? new DiscoveredAnfVolume();
+                            break;
+                        case "ManagedDisk":
+                            volume.VolumeData = element.Deserialize<DiscoveredManagedDisk>() ?? new DiscoveredManagedDisk();
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to rehydrate VolumeData for volume {VolumeId} of type {VolumeType}", volume.VolumeId, volume.VolumeType);
+                }
+            }
+        }
+    }
+
     private string GetCsvStorageAccount(DiscoveredVolumeWithAnalysis volume)
     {
         return volume.VolumeType switch
