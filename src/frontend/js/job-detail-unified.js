@@ -33,6 +33,10 @@ const jobDetail = {
         { key: 'Location', label: 'Location', sortable: true },
         { key: 'CapacityGiB', label: 'Capacity (GiB)', sortable: true },
         { key: 'UsedCapacity', label: 'Used Capacity', sortable: true },
+        { key: 'RequiredCapacityGiB', label: 'Req Capacity (GiB)', sortable: true },
+        { key: 'RequiredThroughputMiBps', label: 'Req Throughput (MiB/s)', sortable: true },
+        { key: 'CurrentThroughputMiBps', label: 'Current Throughput (MiB/s)', sortable: true },
+        { key: 'CurrentIops', label: 'Current IOPS', sortable: true },
         { key: 'AccessTier', label: 'Tier / SKU', sortable: true },
         { key: 'Protocols', label: 'Protocols', sortable: false },
         { key: 'StorageAccountSku', label: 'SKU', sortable: true },
@@ -47,7 +51,7 @@ const jobDetail = {
         { key: 'ReviewedBy', label: 'Reviewed By', sortable: true },
         { key: 'ReviewedAt', label: 'Reviewed At', sortable: true }
     ],
-    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','Cost30Days','AiWorkload','UserWorkload','AiConfidence','MigrationStatus'],
+    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','RequiredCapacityGiB','RequiredThroughputMiBps','Cost30Days','AiWorkload','UserWorkload','AiConfidence','MigrationStatus'],
     visibleVolumeColumns: null,
     volumeSortColumn: null,
     volumeSortDirection: 'asc',
@@ -480,6 +484,26 @@ const jobDetail = {
                 if (vType === 'ManagedDisk') return vData.DiskSku || 'N/A';
                 if (vType === 'ANF') return vData.ServiceLevel || 'N/A';
                 return vData.StorageAccountSku || 'N/A';
+            case 'RequiredCapacityGiB': {
+                const val = typeof v.RequiredCapacityGiB === 'number' ? v.RequiredCapacityGiB : null;
+                if (val == null) return 'N/A';
+                return val.toFixed(0);
+            }
+            case 'RequiredThroughputMiBps': {
+                const val = typeof v.RequiredThroughputMiBps === 'number' ? v.RequiredThroughputMiBps : null;
+                if (val == null) return 'N/A';
+                return val.toFixed(1);
+            }
+            case 'CurrentThroughputMiBps': {
+                const val = typeof v.CurrentThroughputMiBps === 'number' ? v.CurrentThroughputMiBps : null;
+                if (val == null) return 'N/A';
+                return val.toFixed(1);
+            }
+            case 'CurrentIops': {
+                const val = typeof v.CurrentIops === 'number' ? v.CurrentIops : null;
+                if (val == null) return 'N/A';
+                return val.toFixed(0);
+            }
             case 'Cost30Days': {
                 const cs = v.CostSummary;
                 if (!cs || typeof cs.TotalCost30Days !== 'number') return v.CostStatus === 'Pending' ? 'Pending' : '-';
@@ -558,6 +582,11 @@ const jobDetail = {
                 if (key === 'CapacityGiB') {
                     const av = a.VolumeData?.ShareQuotaGiB ?? 0;
                     const bv = b.VolumeData?.ShareQuotaGiB ?? 0;
+                    return (av - bv) * dir;
+                }
+                if (key === 'RequiredCapacityGiB' || key === 'RequiredThroughputMiBps' || key === 'CurrentThroughputMiBps' || key === 'CurrentIops') {
+                    const av = typeof a[key] === 'number' ? a[key] : 0;
+                    const bv = typeof b[key] === 'number' ? b[key] : 0;
                     return (av - bv) * dir;
                 }
                 if (key === 'AiConfidence') {

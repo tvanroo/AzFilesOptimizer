@@ -323,6 +323,98 @@ public class VolumeAnalysisFunction
                 AnnotationHistory = volume.AnnotationHistory
             };
 
+            // Populate sizing and performance summary for the detail view using the same
+            // conventions as the list view.
+            var sizing = volume.AiAnalysis?.CapacitySizing;
+            if (sizing != null && sizing.HasSufficientData)
+            {
+                dto.RequiredCapacityGiB = sizing.RecommendedCapacityGiB;
+                dto.RequiredThroughputMiBps = sizing.RecommendedThroughputMiBps;
+            }
+
+            switch (volume.VolumeType)
+            {
+                case "AzureFiles":
+                    if (volume.VolumeData is DiscoveredAzureFileShare share)
+                    {
+                        dto.RequiredCapacityGiB ??= share.ShareQuotaGiB;
+
+                        double? currentThroughput = null;
+                        if (share.ProvisionedBandwidthMiBps.HasValue)
+                        {
+                            currentThroughput = share.ProvisionedBandwidthMiBps.Value;
+                        }
+                        else if (share.EstimatedThroughputMiBps.HasValue)
+                        {
+                            currentThroughput = share.EstimatedThroughputMiBps.Value;
+                        }
+                        dto.CurrentThroughputMiBps = currentThroughput;
+
+                        double? currentIops = null;
+                        if (share.ProvisionedIops.HasValue)
+                        {
+                            currentIops = share.ProvisionedIops.Value;
+                        }
+                        else if (share.EstimatedIops.HasValue)
+                        {
+                            currentIops = share.EstimatedIops.Value;
+                        }
+                        dto.CurrentIops = currentIops;
+
+                        dto.RequiredThroughputMiBps ??= currentThroughput;
+                    }
+                    break;
+
+                case "ANF":
+                    if (volume.VolumeData is DiscoveredAnfVolume anf)
+                    {
+                        var provisionedGiB = anf.ProvisionedSizeBytes / (1024.0 * 1024.0 * 1024.0);
+                        dto.RequiredCapacityGiB ??= provisionedGiB;
+
+                        double? currentThroughput = null;
+                        if (anf.ThroughputMibps.HasValue)
+                        {
+                            currentThroughput = anf.ThroughputMibps.Value;
+                        }
+                        else if (anf.ActualThroughputMibps.HasValue)
+                        {
+                            currentThroughput = anf.ActualThroughputMibps.Value;
+                        }
+                        else if (anf.EstimatedThroughputMiBps.HasValue)
+                        {
+                            currentThroughput = anf.EstimatedThroughputMiBps.Value;
+                        }
+                        dto.CurrentThroughputMiBps = currentThroughput;
+
+                        if (anf.EstimatedIops.HasValue)
+                        {
+                            dto.CurrentIops = anf.EstimatedIops.Value;
+                        }
+
+                        dto.RequiredThroughputMiBps ??= currentThroughput;
+                    }
+                    break;
+
+                case "ManagedDisk":
+                    if (volume.VolumeData is DiscoveredManagedDisk disk)
+                    {
+                        dto.RequiredCapacityGiB ??= disk.DiskSizeGB;
+
+                        if (disk.EstimatedThroughputMiBps.HasValue)
+                        {
+                            dto.CurrentThroughputMiBps = disk.EstimatedThroughputMiBps.Value;
+                        }
+
+                        if (disk.EstimatedIops.HasValue)
+                        {
+                            dto.CurrentIops = disk.EstimatedIops.Value;
+                        }
+
+                        dto.RequiredThroughputMiBps ??= dto.CurrentThroughputMiBps;
+                    }
+                    break;
+            }
+
             // Attach latest cost summary for this specific volume, if available (by normalized VolumeId)
             var jobCosts = await _resourceStorage.GetVolumeCostsByJobIdAsync(jobId);
             var cost = jobCosts

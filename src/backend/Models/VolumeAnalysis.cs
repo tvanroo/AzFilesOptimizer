@@ -244,6 +244,34 @@ public class VolumeWithAnalysis
     public string? CostStatus { get; set; }
 
     /// <summary>
+    /// Recommended capacity for this workload in GiB. When AI sizing is available and
+    /// has sufficient metrics, this is derived from CapacitySizing.RecommendedCapacityGiB.
+    /// Otherwise it falls back to the current provisioned capacity for the volume.
+    /// </summary>
+    public double? RequiredCapacityGiB { get; set; }
+
+    /// <summary>
+    /// Recommended throughput in MiB/s. When AI sizing is available and has sufficient
+    /// metrics, this is derived from CapacitySizing.RecommendedThroughputMiBps
+    /// (based on observed peaks plus buffer). Otherwise it falls back to the current
+    /// configured or estimated throughput for the volume.
+    /// </summary>
+    public double? RequiredThroughputMiBps { get; set; }
+
+    /// <summary>
+    /// Current configured or estimated throughput for the volume in MiB/s, based on
+    /// discovered properties (e.g., ProvisionedBandwidthMiBps, ThroughputMibps,
+    /// EstimatedThroughputMiBps).
+    /// </summary>
+    public double? CurrentThroughputMiBps { get; set; }
+
+    /// <summary>
+    /// Current configured or estimated IOPS limit for the volume, based on discovered
+    /// properties (e.g., ProvisionedIops, EstimatedIops).
+    /// </summary>
+    public double? CurrentIops { get; set; }
+
+    /// <summary>
     /// Optional history of user annotation changes for this volume.
     /// /// Populated for detail views.
     /// </summary>

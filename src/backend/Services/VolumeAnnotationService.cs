@@ -152,6 +152,109 @@ public class VolumeAnnotationService
                 dto.CostStatus = "Pending";
             }
 
+            // Derive required capacity/throughput from AI sizing when available,
+            // otherwise fall back to discovered properties per volume type.
+            var sizing = v.AiAnalysis?.CapacitySizing;
+            if (sizing != null && sizing.HasSufficientData)
+            {
+                dto.RequiredCapacityGiB = sizing.RecommendedCapacityGiB;
+                dto.RequiredThroughputMiBps = sizing.RecommendedThroughputMiBps;
+            }
+
+            // Derive current throughput/IOPS and, when sizing is missing, approximate required values
+            switch (v.VolumeType)
+            {
+                case "AzureFiles":
+                    if (v.VolumeData is DiscoveredAzureFileShare share)
+                    {
+                        // Capacity: quota in GiB if we don't already have an AI recommendation
+                        dto.RequiredCapacityGiB ??= share.ShareQuotaGiB;
+
+                        // Current throughput from provisioned or estimated values
+                        double? currentThroughput = null;
+                        if (share.ProvisionedBandwidthMiBps.HasValue)
+                        {
+                            currentThroughput = share.ProvisionedBandwidthMiBps.Value;
+                        }
+                        else if (share.EstimatedThroughputMiBps.HasValue)
+                        {
+                            currentThroughput = share.EstimatedThroughputMiBps.Value;
+                        }
+                        dto.CurrentThroughputMiBps = currentThroughput;
+
+                        // Current IOPS from provisioned or estimated values
+                        double? currentIops = null;
+                        if (share.ProvisionedIops.HasValue)
+                        {
+                            currentIops = share.ProvisionedIops.Value;
+                        }
+                        else if (share.EstimatedIops.HasValue)
+                        {
+                            currentIops = share.EstimatedIops.Value;
+                        }
+                        dto.CurrentIops = currentIops;
+
+                        // If we don't have an AI-based required throughput yet, fall back to current throughput
+                        dto.RequiredThroughputMiBps ??= currentThroughput;
+                    }
+                    break;
+
+                case "ANF":
+                    if (v.VolumeData is DiscoveredAnfVolume anf)
+                    {
+                        // Capacity from provisioned size (bytes -> GiB) when AI sizing is not present
+                        var provisionedGiB = anf.ProvisionedSizeBytes / (1024.0 * 1024.0 * 1024.0);
+                        dto.RequiredCapacityGiB ??= provisionedGiB;
+
+                        // Current throughput: prefer provisioned, then actual, then estimated
+                        double? currentThroughput = null;
+                        if (anf.ThroughputMibps.HasValue)
+                        {
+                            currentThroughput = anf.ThroughputMibps.Value;
+                        }
+                        else if (anf.ActualThroughputMibps.HasValue)
+                        {
+                            currentThroughput = anf.ActualThroughputMibps.Value;
+                        }
+                        else if (anf.EstimatedThroughputMiBps.HasValue)
+                        {
+                            currentThroughput = anf.EstimatedThroughputMiBps.Value;
+                        }
+                        dto.CurrentThroughputMiBps = currentThroughput;
+
+                        // Current IOPS from estimated ANF IOPS when available
+                        if (anf.EstimatedIops.HasValue)
+                        {
+                            dto.CurrentIops = anf.EstimatedIops.Value;
+                        }
+
+                        dto.RequiredThroughputMiBps ??= currentThroughput;
+                    }
+                    break;
+
+                case "ManagedDisk":
+                    if (v.VolumeData is DiscoveredManagedDisk disk)
+                    {
+                        // Capacity: disk size in GiB when AI sizing is not present
+                        dto.RequiredCapacityGiB ??= disk.DiskSizeGB;
+
+                        // Current throughput from estimated throughput
+                        if (disk.EstimatedThroughputMiBps.HasValue)
+                        {
+                            dto.CurrentThroughputMiBps = disk.EstimatedThroughputMiBps.Value;
+                        }
+
+                        // Current IOPS from estimated disk IOPS
+                        if (disk.EstimatedIops.HasValue)
+                        {
+                            dto.CurrentIops = disk.EstimatedIops.Value;
+                        }
+
+                        dto.RequiredThroughputMiBps ??= dto.CurrentThroughputMiBps;
+                    }
+                    break;
+            }
+
             return dto;
         }).ToList();
 
