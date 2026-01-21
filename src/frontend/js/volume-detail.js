@@ -113,13 +113,29 @@ const volumeDetailPage = {
         const costSourceEl = document.getElementById('summary-cost-source');
         if (costTotalEl && costDailyEl && costSourceEl) {
             if (cost) {
-                costTotalEl.textContent = `$${(cost.TotalCost30Days || 0).toFixed(2)}`;
-                costDailyEl.textContent = `$${(cost.DailyAverage || 0).toFixed(2)}`;
-                costSourceEl.textContent = cost.IsActual ? 'Actual billed (scaled)' : 'Estimated (retail)';
+                const totalCost = `$${(cost.TotalCost30Days || 0).toFixed(2)}`;
+                const dailyCost = `$${(cost.DailyAverage || 0).toFixed(2)}`;
+                
+                // Show estimates in grey text
+                if (cost.IsActual) {
+                    costTotalEl.textContent = totalCost;
+                    costDailyEl.textContent = dailyCost;
+                    costTotalEl.style.color = '';
+                    costDailyEl.style.color = '';
+                } else {
+                    costTotalEl.textContent = totalCost;
+                    costDailyEl.textContent = dailyCost;
+                    costTotalEl.style.color = '#999';
+                    costDailyEl.style.color = '#999';
+                }
+                
+                costSourceEl.textContent = cost.IsActual ? 'Actual billed' : 'Estimated (retail)';
             } else {
                 costTotalEl.textContent = costStatus === 'Pending' ? 'Pending' : '-';
                 costDailyEl.textContent = costStatus === 'Pending' ? 'Pending' : '-';
                 costSourceEl.textContent = costStatus;
+                costTotalEl.style.color = '';
+                costDailyEl.style.color = '';
             }
         }
 

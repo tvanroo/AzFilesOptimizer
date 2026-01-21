@@ -338,7 +338,13 @@ public class CostCollectionService
             
             if (detailedCosts == null || detailedCosts.Count == 0)
             {
-                _logger.LogInformation("No detailed cost data available for {ResourceId}, keeping retail estimates", analysis.ResourceId);
+                _logger.LogWarning(
+                    "No actual cost data available for {ResourceType} '{VolumeName}' (ResourceId: {ResourceId}). " +
+                    "Keeping retail estimates. This may indicate: 1) Cost data has 24-48hr lag, 2) Resource was recently created, " +
+                    "or 3) Resource ID format issue.",
+                    analysis.ResourceType,
+                    analysis.VolumeName,
+                    analysis.ResourceId);
                 return;
             }
 

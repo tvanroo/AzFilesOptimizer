@@ -539,12 +539,14 @@ const jobDetail = {
             case 'Cost30Days': {
                 const cs = v.CostSummary;
                 if (!cs || typeof cs.TotalCost30Days !== 'number') return v.CostStatus === 'Pending' ? 'Pending' : '-';
-                return `$${cs.TotalCost30Days.toFixed(2)}`;
+                const cost = `$${cs.TotalCost30Days.toFixed(2)}`;
+                return cs.IsActual ? cost : `<span style="color: #999;">${cost}</span>`;
             }
             case 'CostPerDay': {
                 const cs = v.CostSummary;
                 if (!cs || typeof cs.DailyAverage !== 'number') return v.CostStatus === 'Pending' ? 'Pending' : '-';
-                return `$${cs.DailyAverage.toFixed(2)}`;
+                const cost = `$${cs.DailyAverage.toFixed(2)}`;
+                return cs.IsActual ? cost : `<span style="color: #999;">${cost}</span>`;
             }
             case 'CostSource': {
                 const cs = v.CostSummary;
