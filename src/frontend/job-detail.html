@@ -13,6 +13,17 @@
             margin: 20px 0;
             gap: 5px;
         }
+        .job-summary-compact {
+            margin-bottom: 1rem;
+        }
+        .job-summary-compact .info-grid {
+            margin-bottom: 0.75rem;
+        }
+        .job-summary-compact h3 {
+            margin-top: 0.75rem;
+            margin-bottom: 0.4rem;
+            font-size: 0.95rem;
+        }
         .tab-btn {
             padding: 12px 24px;
             border: none;
@@ -443,23 +454,19 @@
             
             <!-- Tab Navigation -->
             <div class="tabs-nav">
-                <button class="tab-btn" onclick="jobDetail.switchTab('overview', this)">Overview</button>
-                <button class="tab-btn active" data-tab="analysis" onclick="jobDetail.switchTab('analysis', this)">Volume Analysis</button>
-                <button class="tab-btn" onclick="jobDetail.switchTab('chat', this)">AI Assistant</button>
+                <button class="tab-btn active" data-tab="analysis" onclick="jobDetail.switchTab('analysis', this)">Volumes</button>
+                <button class="tab-btn" data-tab="chat" onclick="jobDetail.switchTab('chat', this)">AI Assistant</button>
             </div>
             
-            <!-- Overview Tab -->
-            <div id="tab-overview" class="tab-content">
-                <div id="job-details-container">
-                    <div style="text-align: center; padding: 2rem;">
+            <!-- Combined Overview + Volume Analysis Tab -->
+            <div id="tab-analysis" class="tab-content active">
+                <div id="job-details-container" class="job-summary-compact">
+                    <div style="text-align: center; padding: 1.5rem 0;">
                         <div class="loading"></div>
-                        <p style="margin-top: 1rem; color: var(--text-secondary);">Loading job details...</p>
+                        <p style="margin-top: 0.5rem; color: var(--text-secondary);">Loading job details...</p>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Volume Analysis Tab -->
-            <div id="tab-analysis" class="tab-content active">
+
                 <div class="analysis-toolbar">
                     <div>
                         <label>Workload Filter</label>
