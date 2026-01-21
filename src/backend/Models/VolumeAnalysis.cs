@@ -180,6 +180,40 @@ public class VolumeListResponse
     public int PageSize { get; set; }
 }
 
+public class CostSummary
+{
+    /// <summary>
+    /// Total cost for the primary analysis period (typically 30 days).
+    /// </summary>
+    public double TotalCost30Days { get; set; }
+
+    /// <summary>
+    /// Average daily cost over the analysis period.
+    /// </summary>
+    public double DailyAverage { get; set; }
+
+    /// <summary>
+    /// Currency code for the cost values (e.g., USD).
+    /// </summary>
+    public string Currency { get; set; } = "USD";
+
+    /// <summary>
+    /// True when cost reflects actual billed values from Cost Management (after scaling),
+    /// false when cost is purely based on retail price estimates.
+    /// </summary>
+    public bool IsActual { get; set; }
+
+    /// <summary>
+    /// Start of the cost analysis period (UTC).
+    /// </summary>
+    public DateTime? PeriodStart { get; set; }
+
+    /// <summary>
+    /// End of the cost analysis period (UTC).
+    /// </summary>
+    public DateTime? PeriodEnd { get; set; }
+}
+
 public class VolumeWithAnalysis
 {
     public string VolumeId { get; set; } = string.Empty; // Computed from ResourceId
@@ -199,8 +233,19 @@ public class VolumeWithAnalysis
     public UserAnnotations? UserAnnotations { get; set; }
 
     /// <summary>
+    /// Optional compact cost summary for this volume, if cost analysis has been run.
+    /// </summary>
+    public CostSummary? CostSummary { get; set; }
+
+    /// <summary>
+    /// High-level cost status for this volume: Pending, Completed, Failed, etc.
+    /// Primarily used by the UI when cost data is still being collected.
+    /// </summary>
+    public string? CostStatus { get; set; }
+
+    /// <summary>
     /// Optional history of user annotation changes for this volume.
-    /// Populated for detail views.
+    /// /// Populated for detail views.
     /// </summary>
     public List<AnnotationHistoryEntry>? AnnotationHistory { get; set; }
 }

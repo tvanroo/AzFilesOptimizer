@@ -36,6 +36,9 @@ const jobDetail = {
         { key: 'AccessTier', label: 'Tier / SKU', sortable: true },
         { key: 'Protocols', label: 'Protocols', sortable: false },
         { key: 'StorageAccountSku', label: 'SKU', sortable: true },
+        { key: 'Cost30Days', label: '30-Day Cost', sortable: true },
+        { key: 'CostPerDay', label: 'Daily Cost', sortable: true },
+        { key: 'CostSource', label: 'Cost Source', sortable: false },
         { key: 'AiWorkload', label: 'AI Workload', sortable: true },
         { key: 'AiConfidence', label: 'AI Confidence', sortable: true },
         { key: 'AiLastAnalyzed', label: 'AI Last Analyzed', sortable: true },
@@ -44,7 +47,7 @@ const jobDetail = {
         { key: 'ReviewedBy', label: 'Reviewed By', sortable: true },
         { key: 'ReviewedAt', label: 'Reviewed At', sortable: true }
     ],
-    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','AiWorkload','UserWorkload','AiConfidence','MigrationStatus'],
+    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','Cost30Days','AiWorkload','UserWorkload','AiConfidence','MigrationStatus'],
     visibleVolumeColumns: null,
     volumeSortColumn: null,
     volumeSortDirection: 'asc',
@@ -462,6 +465,21 @@ const jobDetail = {
                 if (vType === 'ManagedDisk') return vData.DiskSku || 'N/A';
                 if (vType === 'ANF') return vData.ServiceLevel || 'N/A';
                 return vData.StorageAccountSku || 'N/A';
+            case 'Cost30Days': {
+                const cs = v.CostSummary;
+                if (!cs || typeof cs.TotalCost30Days !== 'number') return v.CostStatus === 'Pending' ? 'Pending' : '-';
+                return `$${cs.TotalCost30Days.toFixed(2)}`;
+            }
+            case 'CostPerDay': {
+                const cs = v.CostSummary;
+                if (!cs || typeof cs.DailyAverage !== 'number') return v.CostStatus === 'Pending' ? 'Pending' : '-';
+                return `$${cs.DailyAverage.toFixed(2)}`;
+            }
+            case 'CostSource': {
+                const cs = v.CostSummary;
+                if (!cs) return v.CostStatus || 'Pending';
+                return cs.IsActual ? 'Actual' : 'Estimate';
+            }
             case 'AiWorkload':
                 return v.AiAnalysis?.SuggestedWorkloadName || '-';
             case 'AiConfidence':

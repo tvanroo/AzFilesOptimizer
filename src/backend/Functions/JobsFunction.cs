@@ -15,6 +15,7 @@ public class JobsFunction
     private readonly JobStorageService _jobStorage;
     private readonly JobLogService _jobLogService;
     private readonly DiscoveredResourceStorageService _resourceStorage;
+    private readonly Azure.Storage.Queues.QueueClient _costAnalysisQueue;
     private MetricsCollectionService? _metricsService;
 
     public JobsFunction(ILoggerFactory loggerFactory)
@@ -26,6 +27,8 @@ public class JobsFunction
         _jobStorage = new JobStorageService(connectionString);
         _jobLogService = new JobLogService(connectionString);
         _resourceStorage = new DiscoveredResourceStorageService(connectionString);
+        _costAnalysisQueue = new Azure.Storage.Queues.QueueClient(connectionString, "cost-analysis-queue");
+        _costAnalysisQueue.CreateIfNotExists();
     }
 
     [Function("GetJobs")]
@@ -465,6 +468,19 @@ public class JobsFunction
 
             _logger.LogInformation("Discovery job completed: {JobId}. Found {SharesCount} shares, {VolumesCount} volumes, and {DisksCount} disks",
                 jobId, result.AzureFileShares.Count, result.AnfVolumes.Count, result.ManagedDisks.Count);
+
+            // Automatically trigger cost analysis for this discovery job in the background.
+            try
+            {
+                var costMessageJson = System.Text.Json.JsonSerializer.Serialize(new { JobId = jobId });
+                await _costAnalysisQueue.SendMessageAsync(costMessageJson);
+                await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Queued automatic cost analysis for job {jobId}");
+            }
+            catch (Exception costEx)
+            {
+                _logger.LogWarning(costEx, "Failed to enqueue automatic cost analysis for job {JobId}", jobId);
+                await _jobLogService.AddLogAsync(jobId, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] WARNING: Failed to queue cost analysis automatically: {costEx.Message}");
+            }
         }
         catch (Exception ex)
         {

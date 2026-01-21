@@ -11,6 +11,7 @@ public class VolumeAnnotationService
     private readonly ILogger _logger;
     private readonly BlobContainerClient _blobContainer;
     private readonly WorkloadProfileService _workloadProfileService;
+    private readonly DiscoveredResourceStorageService _resourceStorage;
 
     public VolumeAnnotationService(string connectionString, ILogger logger)
     {
@@ -19,6 +20,7 @@ public class VolumeAnnotationService
         _blobContainer = blobServiceClient.GetBlobContainerClient("discovery-data");
         _blobContainer.CreateIfNotExists();
         _workloadProfileService = new WorkloadProfileService(connectionString, logger);
+        _resourceStorage = new DiscoveredResourceStorageService(connectionString);
     }
 
     public async Task<DiscoveryData?> GetDiscoveryDataAsync(string discoveryJobId)
@@ -83,6 +85,16 @@ public class VolumeAnnotationService
             return new VolumeListResponse { TotalCount = 0, Page = page, PageSize = pageSize };
         }
 
+        // Preload latest cost analyses for this job so we can attach summaries per volume.
+        var costAnalyses = await _resourceStorage.GetVolumeCostsByJobIdAsync(discoveryJobId);
+        var costByResourceId = costAnalyses
+            .Where(c => !string.IsNullOrWhiteSpace(c.ResourceId))
+            .GroupBy(c => c.ResourceId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(c => c.AnalysisTimestamp).First(),
+                StringComparer.OrdinalIgnoreCase);
+
         var filtered = data.Volumes.AsEnumerable();
 
         // Apply filters
@@ -108,15 +120,41 @@ public class VolumeAnnotationService
         var totalCount = filtered.Count();
         var paged = filtered.Skip((page - 1) * pageSize).Take(pageSize);
 
-        var volumes = paged.Select(v => new VolumeWithAnalysis
+        var volumes = paged.Select(v =>
         {
-            VolumeId = v.VolumeId,
-            VolumeType = v.VolumeType,
-            VolumeData = v.VolumeData,  // Support all volume types: Azure Files, ANF, Managed Disk
-            AiAnalysis = v.AiAnalysis,
-            UserAnnotations = v.UserAnnotations,
-            // List view does not currently need full history; omit for payload size.
-            AnnotationHistory = null
+            // Map discovery volume to API DTO
+            var dto = new VolumeWithAnalysis
+            {
+                VolumeId = v.VolumeId,
+                VolumeType = v.VolumeType,
+                VolumeData = v.VolumeData,  // Support all volume types: Azure Files, ANF, Managed Disk
+                AiAnalysis = v.AiAnalysis,
+                UserAnnotations = v.UserAnnotations,
+                // List view does not currently need full history; omit for payload size.
+                AnnotationHistory = null
+            };
+
+            // Attach cost summary if available
+            var resourceId = GetVolumeResourceId(v);
+            if (!string.IsNullOrWhiteSpace(resourceId) && costByResourceId.TryGetValue(resourceId, out var cost))
+            {
+                dto.CostSummary = new CostSummary
+                {
+                    TotalCost30Days = cost.TotalCostForPeriod,
+                    DailyAverage = cost.TotalCostPerDay,
+                    Currency = cost.CostComponents.FirstOrDefault()?.Currency ?? "USD",
+                    IsActual = cost.CostComponents.Count > 0 && cost.CostComponents.All(c => !c.IsEstimated),
+                    PeriodStart = cost.PeriodStart,
+                    PeriodEnd = cost.PeriodEnd
+                };
+                dto.CostStatus = "Completed";
+            }
+            else
+            {
+                dto.CostStatus = "Pending";
+            }
+
+            return dto;
         }).ToList();
 
         return new VolumeListResponse
@@ -251,6 +289,17 @@ public class VolumeAnnotationService
     private string ExportAsJson(DiscoveryData data)
     {
         return JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static string GetVolumeResourceId(DiscoveredVolumeWithAnalysis volume)
+    {
+        return volume.VolumeType switch
+        {
+            "AzureFiles" => (volume.VolumeData as DiscoveredAzureFileShare)?.ResourceId ?? string.Empty,
+            "ANF" => (volume.VolumeData as DiscoveredAnfVolume)?.ResourceId ?? string.Empty,
+            "ManagedDisk" => (volume.VolumeData as DiscoveredManagedDisk)?.ResourceId ?? string.Empty,
+            _ => string.Empty
+        };
     }
 
     private string ExportAsCsv(DiscoveryData data)

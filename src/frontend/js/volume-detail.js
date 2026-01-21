@@ -91,6 +91,24 @@ const volumeDetailPage = {
         document.getElementById('summary-ai-workload').textContent = aiWorkload;
         document.getElementById('summary-ai-confidence').textContent = aiConfidence;
 
+        // Cost summary (if available)
+        const cost = v.CostSummary || null;
+        const costStatus = v.CostStatus || (cost ? 'Completed' : 'Pending');
+        const costTotalEl = document.getElementById('summary-cost-30d');
+        const costDailyEl = document.getElementById('summary-cost-daily');
+        const costSourceEl = document.getElementById('summary-cost-source');
+        if (costTotalEl && costDailyEl && costSourceEl) {
+            if (cost) {
+                costTotalEl.textContent = `$${(cost.TotalCost30Days || 0).toFixed(2)}`;
+                costDailyEl.textContent = `$${(cost.DailyAverage || 0).toFixed(2)}`;
+                costSourceEl.textContent = cost.IsActual ? 'Actual billed (scaled)' : 'Estimated (retail)';
+            } else {
+                costTotalEl.textContent = costStatus === 'Pending' ? 'Pending' : '-';
+                costDailyEl.textContent = costStatus === 'Pending' ? 'Pending' : '-';
+                costSourceEl.textContent = costStatus;
+            }
+        }
+
         const userWorkload = user?.ConfirmedWorkloadName || 'Not confirmed';
         document.getElementById('summary-user-workload').textContent = userWorkload;
 

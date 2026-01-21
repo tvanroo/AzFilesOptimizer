@@ -19,6 +19,7 @@ public class VolumeAnalysisFunction
     private readonly DiscoveryMigrationService _migrationService;
     private readonly AnalysisLogService _analysisLogService;
     private readonly AnalysisJobRunner _analysisJobRunner;
+    private readonly DiscoveredResourceStorageService _resourceStorage;
     private readonly bool _useAnalysisQueue;
 
     public VolumeAnalysisFunction(ILoggerFactory loggerFactory)
@@ -38,6 +39,7 @@ public class VolumeAnalysisFunction
         _migrationService = new DiscoveryMigrationService(connectionString, _logger);
         _analysisLogService = new AnalysisLogService(connectionString, _logger);
         _analysisJobRunner = new AnalysisJobRunner(connectionString, _logger);
+        _resourceStorage = new DiscoveredResourceStorageService(connectionString);
 
         _useAnalysisQueue = string.Equals(
             Environment.GetEnvironmentVariable("AZFO_ENABLE_ANALYSIS_QUEUE"),
@@ -321,6 +323,35 @@ public class VolumeAnalysisFunction
                 AnnotationHistory = volume.AnnotationHistory
             };
 
+            // Attach latest cost summary for this specific volume, if available
+            var resourceId = GetVolumeResourceId(volume);
+            if (!string.IsNullOrWhiteSpace(resourceId))
+            {
+                var jobCosts = await _resourceStorage.GetVolumeCostsByJobIdAsync(jobId);
+                var cost = jobCosts
+                    .Where(c => string.Equals(c.ResourceId, resourceId, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(c => c.AnalysisTimestamp)
+                    .FirstOrDefault();
+
+                if (cost != null)
+                {
+                    dto.CostSummary = new CostSummary
+                    {
+                        TotalCost30Days = cost.TotalCostForPeriod,
+                        DailyAverage = cost.TotalCostPerDay,
+                        Currency = cost.CostComponents.FirstOrDefault()?.Currency ?? "USD",
+                        IsActual = cost.CostComponents.Count > 0 && cost.CostComponents.All(c => !c.IsEstimated),
+                        PeriodStart = cost.PeriodStart,
+                        PeriodEnd = cost.PeriodEnd
+                    };
+                    dto.CostStatus = "Completed";
+                }
+                else
+                {
+                    dto.CostStatus = "Pending";
+                }
+            }
+
             var response = req.CreateResponse(HttpStatusCode.OK);
             var options = new JsonSerializerOptions
             {
@@ -415,6 +446,17 @@ public class VolumeAnalysisFunction
             await response.WriteStringAsync($"Error: {ex.Message}");
             return response;
         }
+    }
+
+    private static string GetVolumeResourceId(DiscoveredVolumeWithAnalysis volume)
+    {
+        return volume.VolumeType switch
+        {
+            "AzureFiles" => (volume.VolumeData as DiscoveredAzureFileShare)?.ResourceId ?? string.Empty,
+            "ANF" => (volume.VolumeData as DiscoveredAnfVolume)?.ResourceId ?? string.Empty,
+            "ManagedDisk" => (volume.VolumeData as DiscoveredManagedDisk)?.ResourceId ?? string.Empty,
+            _ => string.Empty
+        };
     }
 
     [Function("ExportVolumes")]
