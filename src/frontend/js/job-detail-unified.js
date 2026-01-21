@@ -5,7 +5,7 @@ const JOB_ID = urlParams.get('id');
 const jobDetail = {
     // Shared state
     jobId: JOB_ID,
-    currentTab: 'overview',
+    currentTab: 'analysis',
     jobData: null,
     discoveryLogPollInterval: null,
     isLogConsoleCollapsed: false,
@@ -67,9 +67,26 @@ const jobDetail = {
         const isAuthenticated = await authManager.requireAuth();
         if (!isAuthenticated) return;
         
+        // Determine initial tab from URL (e.g., ?tab=analysis or #analysis)
+        const urlParams = new URLSearchParams(window.location.search);
+        const tabFromQuery = urlParams.get('tab');
+        const hash = window.location.hash ? window.location.hash.substring(1) : '';
+        if (tabFromQuery) {
+            this.currentTab = tabFromQuery;
+        } else if (hash) {
+            this.currentTab = hash;
+        }
+        
         await this.loadJob();
         this.loadVolumeViewState();
         this.setupEventListeners();
+
+        // Apply initial tab selection
+        const initialTab = this.currentTab || 'analysis';
+        const tabButton = document.querySelector(`.tab-btn[data-tab="${initialTab}"]`);
+        if (tabButton) {
+            this.switchTab(initialTab, tabButton);
+        }
     },
     
     setupEventListeners() {
@@ -99,12 +116,15 @@ const jobDetail = {
     },
     
     // Tab Management
-    switchTab(tabName) {
+    switchTab(tabName, sourceElement) {
         this.currentTab = tabName;
         
         // Update tab buttons
         document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
+        const target = sourceElement || event.target;
+        if (target) {
+            target.classList.add('active');
+        }
         
         // Update tab content
         document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));

@@ -18,12 +18,12 @@ const volumeDetailPage = {
             return;
         }
 
-        document.getElementById('breadcrumb-job').href = `job-detail.html?id=${encodeURIComponent(this.jobId)}`;
+        document.getElementById('breadcrumb-job').href = `job-detail.html?id=${encodeURIComponent(this.jobId)}&tab=analysis`;
 
         const backBtn = document.getElementById('back-to-job-btn');
         if (backBtn) {
             backBtn.onclick = () => {
-                window.location.href = `job-detail.html?id=${encodeURIComponent(this.jobId)}`;
+                window.location.href = `job-detail.html?id=${encodeURIComponent(this.jobId)}&tab=analysis`;
             };
         }
 
