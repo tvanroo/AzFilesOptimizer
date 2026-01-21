@@ -240,15 +240,15 @@ public class VolumeAnnotationService
                         var recommendedGiB = estimatedUsedGiB * bufferFactor;
                         dto.RequiredCapacityGiB ??= Math.Max(recommendedGiB, provisionedGiB);
 
-                        // Current throughput: prefer provisioned, then actual, then estimated, then service level heuristic
+                        // Current throughput: prefer actual, then configured max, then estimated, then service level heuristic
                         double? currentThroughput = null;
-                        if (anf.ThroughputMibps.HasValue)
-                        {
-                            currentThroughput = anf.ThroughputMibps.Value;
-                        }
-                        else if (anf.ActualThroughputMibps.HasValue)
+                        if (anf.ActualThroughputMibps.HasValue)
                         {
                             currentThroughput = anf.ActualThroughputMibps.Value;
+                        }
+                        else if (anf.ThroughputMibps.HasValue)
+                        {
+                            currentThroughput = anf.ThroughputMibps.Value;
                         }
                         else if (anf.EstimatedThroughputMiBps.HasValue)
                         {

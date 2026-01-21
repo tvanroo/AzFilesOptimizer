@@ -81,7 +81,18 @@ const volumeDetailPage = {
 
         // Title / breadcrumb
         const name = props.name || 'Unknown volume';
-        document.getElementById('volume-title').textContent = name;
+        const titleEl = document.getElementById('volume-title');
+        if (titleEl) {
+            let iconHtml = '';
+            if (volumeType === 'ManagedDisk') {
+                iconHtml = '<img src="images/icon-managed-disk.png" class="vol-type-icon" alt="Managed Disk">';
+            } else if (volumeType === 'ANF') {
+                iconHtml = '<img src="images/icon-anf.png" class="vol-type-icon" alt="ANF Volume">';
+            } else {
+                iconHtml = '<img src="images/icon-storage-account.png" class="vol-type-icon" alt="Azure Files Share">';
+            }
+            titleEl.innerHTML = `<span class="vol-type">${iconHtml}<span>${this.escapeHtml(name)}</span></span>`;
+        }
         document.getElementById('breadcrumb-volume').textContent = name;
         document.getElementById('breadcrumb-job').textContent = `Job ${this.jobId.substring(0, 8)}`;
 

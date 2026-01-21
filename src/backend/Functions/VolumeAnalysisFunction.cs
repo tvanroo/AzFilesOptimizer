@@ -405,13 +405,13 @@ public class VolumeAnalysisFunction
                         dto.RequiredCapacityGiB ??= Math.Max(recommendedGiB, provisionedGiB);
 
                         double? currentThroughput = null;
-                        if (anf.ThroughputMibps.HasValue)
-                        {
-                            currentThroughput = anf.ThroughputMibps.Value;
-                        }
-                        else if (anf.ActualThroughputMibps.HasValue)
+                        if (anf.ActualThroughputMibps.HasValue)
                         {
                             currentThroughput = anf.ActualThroughputMibps.Value;
+                        }
+                        else if (anf.ThroughputMibps.HasValue)
+                        {
+                            currentThroughput = anf.ThroughputMibps.Value;
                         }
                         else if (anf.EstimatedThroughputMiBps.HasValue)
                         {
