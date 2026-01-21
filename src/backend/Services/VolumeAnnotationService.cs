@@ -149,6 +149,8 @@ public class VolumeAnnotationService
                     PeriodStart = cost.PeriodStart,
                     PeriodEnd = cost.PeriodEnd
                 };
+                // Include full detailed cost analysis with all debugging information
+                dto.DetailedCostAnalysis = cost;
                 dto.CostStatus = "Completed";
             }
             else

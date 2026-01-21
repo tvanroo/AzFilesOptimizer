@@ -236,6 +236,12 @@ public class VolumeWithAnalysis
     /// Optional compact cost summary for this volume, if cost analysis has been run.
     /// </summary>
     public CostSummary? CostSummary { get; set; }
+    
+    /// <summary>
+    /// Full detailed cost analysis with all components, pricing data, and debugging information.
+    /// Includes CostCalculationInputs, RetailPricingData, ActualCostsApplied status, etc.
+    /// </summary>
+    public VolumeCostAnalysis? DetailedCostAnalysis { get; set; }
 
     /// <summary>
     /// High-level cost status for this volume: Pending, Completed, Failed, etc.
