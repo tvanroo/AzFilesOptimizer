@@ -57,11 +57,40 @@ public class CostCollectionService
                 BackupConfigured = share.BackupPolicyConfigured ?? false
             };
 
+            // Parse enums with null checks and defaults
+            AzureFilesAccessTier? accessTier = null;
+            if (!share.IsProvisioned && !string.IsNullOrEmpty(share.AccessTier))
+            {
+                // Map Premium to TransactionOptimized since Premium tier doesn't exist for pay-as-you-go
+                var tierValue = share.AccessTier.Equals("Premium", StringComparison.OrdinalIgnoreCase) 
+                    ? "TransactionOptimized" 
+                    : share.AccessTier;
+                if (Enum.TryParse<AzureFilesAccessTier>(tierValue, true, out var parsedTier))
+                {
+                    accessTier = parsedTier;
+                }
+            }
+            
+            AzureFilesProvisionedTier? provisionedTier = null;
+            if (share.IsProvisioned && !string.IsNullOrEmpty(share.ProvisionedTier))
+            {
+                if (Enum.TryParse<AzureFilesProvisionedTier>(share.ProvisionedTier, true, out var parsedProvTier))
+                {
+                    provisionedTier = parsedProvTier;
+                }
+            }
+            
+            var redundancy = StorageRedundancy.LRS; // Default
+            if (!string.IsNullOrEmpty(share.RedundancyType))
+            {
+                Enum.TryParse<StorageRedundancy>(share.RedundancyType, true, out redundancy);
+            }
+
             var pricing = await _pricingService.GetAzureFilesPricingAsync(
                 share.Location,
-                (AzureFilesAccessTier)Enum.Parse(typeof(AzureFilesAccessTier), share.AccessTier, true),
-                share.IsProvisioned ? (AzureFilesProvisionedTier)Enum.Parse(typeof(AzureFilesProvisionedTier), share.ProvisionedTier) : null,
-                (StorageRedundancy)Enum.Parse(typeof(StorageRedundancy), share.RedundancyType, true)
+                accessTier,
+                provisionedTier,
+                redundancy
             );
 
             if (pricing == null)
@@ -205,9 +234,21 @@ public class CostCollectionService
                 BackupConfigured = volume.BackupPolicyConfigured ?? false
             };
 
+            // Parse service level with null check
+            var serviceLevel = AnfServiceLevel.Standard; // Default
+            if (!string.IsNullOrEmpty(volume.CapacityPoolServiceLevel))
+            {
+                if (!Enum.TryParse<AnfServiceLevel>(volume.CapacityPoolServiceLevel, true, out serviceLevel))
+                {
+                    _logger.LogWarning("Unknown ANF service level '{ServiceLevel}' for volume {VolumeName}, using Standard", 
+                        volume.CapacityPoolServiceLevel, volume.VolumeName);
+                    serviceLevel = AnfServiceLevel.Standard;
+                }
+            }
+
             var pricing = await _pricingService.GetAnfPricingAsync(
                 volume.Location,
-                (AnfServiceLevel)Enum.Parse(typeof(AnfServiceLevel), volume.CapacityPoolServiceLevel, true)
+                serviceLevel
             );
 
             if (pricing == null)
@@ -301,11 +342,28 @@ public class CostCollectionService
                 TotalSnapshotSizeGb = 0
             };
 
+            // Parse enums with null checks and defaults
+            var diskType = ManagedDiskType.StandardHDD; // Default
+            if (!string.IsNullOrEmpty(disk.ManagedDiskType))
+            {
+                if (!Enum.TryParse<ManagedDiskType>(disk.ManagedDiskType, true, out diskType))
+                {
+                    _logger.LogWarning("Unknown managed disk type '{DiskType}' for disk {DiskName}, using StandardHDD",
+                        disk.ManagedDiskType, disk.DiskName);
+                }
+            }
+            
+            var redundancy = StorageRedundancy.LRS; // Default
+            if (!string.IsNullOrEmpty(disk.RedundancyType))
+            {
+                Enum.TryParse<StorageRedundancy>(disk.RedundancyType, true, out redundancy);
+            }
+
             var pricing = await _pricingService.GetManagedDiskPricingAsync(
                 disk.Location,
-                (ManagedDiskType)Enum.Parse(typeof(ManagedDiskType), disk.ManagedDiskType, true),
-                disk.PricingTier,
-                (StorageRedundancy)Enum.Parse(typeof(StorageRedundancy), disk.RedundancyType, true)
+                diskType,
+                disk.PricingTier ?? "P10",
+                redundancy
             );
 
             if (pricing == null)
