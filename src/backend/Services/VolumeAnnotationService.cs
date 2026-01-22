@@ -175,25 +175,66 @@ public class VolumeAnnotationService
                 case "AzureFiles":
                     if (v.VolumeData is DiscoveredAzureFileShare share)
                     {
-                        // Capacity: prefer used+buffer, fall back to quota, unless AI sizing already set it
-                        double? usedGiB = null;
-                        if (share.ShareUsageBytes.HasValue && share.ShareUsageBytes.Value > 0)
+                        // --- Required Capacity Calculation ---
+                        // Base required capacity on the max observed value from metrics, plus a buffer.
+                        if (dto.RequiredCapacityGiB == null && !string.IsNullOrEmpty(share.HistoricalMetricsSummary))
                         {
-                            usedGiB = share.ShareUsageBytes.Value / (1024.0 * 1024.0 * 1024.0);
+                            try
+                            {
+                                var metrics = System.Text.Json.JsonDocument.Parse(share.HistoricalMetricsSummary);
+                                if (metrics.RootElement.TryGetProperty("FileCapacity", out var capacityMetric) &&
+                                    capacityMetric.TryGetProperty("max", out var maxCapacity) &&
+                                    maxCapacity.TryGetDouble(out var maxCapacityBytes) &&
+                                    maxCapacityBytes > 0)
+                                {
+                                    var maxGiB = maxCapacityBytes / (1024.0 * 1024.0 * 1024.0);
+                                    dto.RequiredCapacityGiB = maxGiB * bufferFactor;
+                                }
+                            }
+                            catch (JsonException ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to parse HistoricalMetricsSummary for capacity calculation on share {ShareName}", share.ShareName);
+                            }
                         }
 
-                        if (usedGiB.HasValue)
+                        // Fallback logic if no metrics are available.
+                        if (dto.RequiredCapacityGiB == null)
                         {
-                            var recommendedGiB = usedGiB.Value * bufferFactor;
-                            var currentGiB = (double)(share.ShareQuotaGiB ?? 0);
-                            dto.RequiredCapacityGiB ??= Math.Max(recommendedGiB, currentGiB);
-                        }
-                        else
-                        {
-                            dto.RequiredCapacityGiB ??= share.ShareQuotaGiB;
+                            if (share.ShareUsageBytes.HasValue && share.ShareUsageBytes.Value > 0)
+                            {
+                                var usedGiB = share.ShareUsageBytes.Value / (1024.0 * 1024.0 * 1024.0);
+                                dto.RequiredCapacityGiB = usedGiB * bufferFactor;
+                            }
+                            else
+                            {
+                                dto.RequiredCapacityGiB = share.ShareQuotaGiB;
+                            }
                         }
 
-                        // Current throughput from provisioned or estimated values, with SKU-based fallback
+                        // --- Current/Required Throughput Calculation ---
+                        double? requiredThroughput = null;
+                        if (dto.RequiredThroughputMiBps == null && !string.IsNullOrEmpty(share.HistoricalMetricsSummary))
+                        {
+                             try
+                            {
+                                var metrics = System.Text.Json.JsonDocument.Parse(share.HistoricalMetricsSummary);
+                                if (metrics.RootElement.TryGetProperty("Egress", out var egressMetric) &&
+                                    egressMetric.TryGetProperty("max", out var maxEgress) &&
+                                    maxEgress.TryGetDouble(out var maxEgressBytes) &&
+                                    maxEgressBytes > 0)
+                                {
+                                    // Convert max bytes per hour (from metric) to MiB/s and apply buffer.
+                                    var maxMiBps = (maxEgressBytes / (1024.0 * 1024.0)) / 3600.0;
+                                    requiredThroughput = maxMiBps * bufferFactor;
+                                }
+                            }
+                            catch (JsonException ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to parse HistoricalMetricsSummary for throughput calculation on share {ShareName}", share.ShareName);
+                            }
+                        }
+                        
+                        // --- Current Throughput (for display) is based on provisioned/estimated values ---
                         double? currentThroughput = null;
                         if (share.ProvisionedBandwidthMiBps.HasValue)
                         {
@@ -205,34 +246,16 @@ public class VolumeAnnotationService
                         }
                         else if (!string.IsNullOrEmpty(share.StorageAccountSku))
                         {
-                            // Very rough SKU-based heuristic when metrics are unavailable.
                             var sku = share.StorageAccountSku.ToLowerInvariant();
                             if (sku.Contains("premium"))
-                                currentThroughput = 100; // Premium file storage baseline
+                                currentThroughput = 100;
                             else
-                                currentThroughput = 60;  // Standard storage baseline
+                                currentThroughput = 60;
                         }
                         dto.CurrentThroughputMiBps = currentThroughput;
 
-                        // Current IOPS from provisioned or estimated values; mark standard tiers as "unmetered"
-                        double? currentIops = null;
-                        if (share.ProvisionedIops.HasValue)
-                        {
-                            currentIops = share.ProvisionedIops.Value;
-                        }
-                        else if (share.EstimatedIops.HasValue)
-                        {
-                            currentIops = share.EstimatedIops.Value;
-                        }
-                        else if (!string.Equals(share.AccessTier, "Premium", StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Standard tiers don't have an explicit share-level IOPS cap.
-                            currentIops = -1; // Sentinel for "Unmetered" in the UI
-                        }
-                        dto.CurrentIops = currentIops;
-
-                        // If we don't have an AI-based required throughput yet, fall back to current throughput
-                        dto.RequiredThroughputMiBps ??= currentThroughput;
+                        // Required throughput is the metric-based value, or falls back to the current throughput.
+                        dto.RequiredThroughputMiBps ??= requiredThroughput ?? currentThroughput;
                     }
                     break;
 
