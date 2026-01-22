@@ -167,7 +167,7 @@ public class VolumeAnnotationService
                 dto.RequiredThroughputMiBps = sizing.RecommendedThroughputMiBps;
             }
 
-            const double bufferFactor = 1.3; // 30% buffer above observed/estimated used capacity
+            const double bufferFactor = 1.05; // 5% buffer above observed/estimated used capacity
 
             // Derive current throughput/IOPS and, when sizing is missing, approximate required values
             switch (v.VolumeType)
@@ -186,8 +186,9 @@ public class VolumeAnnotationService
                             }
                             else
                             {
-                                // Fallback to current quota if usage is unknown/zero.
-                                dto.RequiredCapacityGiB = share.ShareQuotaGiB;
+                                // For zero/unknown usage, use minimum 1 GB + buffer instead of full quota
+                                var minimumUsageGiB = 1.0; // Assume minimum 1 GB usage
+                                dto.RequiredCapacityGiB = minimumUsageGiB * bufferFactor; // 1.05 GB minimum
                             }
                         }
 
@@ -279,12 +280,40 @@ public class VolumeAnnotationService
                 case "ANF":
                     if (v.VolumeData is DiscoveredAnfVolume anf)
                     {
-                        // Capacity: approximate used as 70% of provisioned, then apply buffer,
-                        // falling back to provisioned size when metrics are insufficient.
+                        // For ANF, check if we have actual usage data from metrics first
                         var provisionedGiB = anf.ProvisionedSizeBytes / (1024.0 * 1024.0 * 1024.0);
-                        var estimatedUsedGiB = provisionedGiB * 0.7;
-                        var recommendedGiB = estimatedUsedGiB * bufferFactor;
-                        dto.RequiredCapacityGiB ??= Math.Max(recommendedGiB, provisionedGiB);
+                        
+                        // Try to get actual usage from historical metrics if available
+                        double? actualUsedGiB = null;
+                        if (!string.IsNullOrEmpty(anf.HistoricalMetricsSummary))
+                        {
+                            try
+                            {
+                                var metrics = System.Text.Json.JsonDocument.Parse(anf.HistoricalMetricsSummary);
+                                if (metrics.RootElement.TryGetProperty("VolumeLogicalSize", out var logicalSizeMetric) &&
+                                    logicalSizeMetric.TryGetProperty("max", out var maxLogicalSize) &&
+                                    maxLogicalSize.TryGetDouble(out var maxLogicalSizeBytes))
+                                {
+                                    actualUsedGiB = maxLogicalSizeBytes / (1024.0 * 1024.0 * 1024.0);
+                                }
+                            }
+                            catch (JsonException ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to parse HistoricalMetricsSummary for capacity calculation on ANF volume {VolumeName}", anf.VolumeName);
+                            }
+                        }
+                        
+                        if (actualUsedGiB.HasValue && actualUsedGiB.Value > 0)
+                        {
+                            // Use actual usage + buffer
+                            dto.RequiredCapacityGiB ??= actualUsedGiB.Value * bufferFactor;
+                        }
+                        else
+                        {
+                            // No usage data available, use minimum 1 GB + buffer instead of full provisioned
+                            var minimumUsageGiB = 1.0; // Assume minimum 1 GB usage
+                            dto.RequiredCapacityGiB ??= minimumUsageGiB * bufferFactor; // 1.05 GB minimum
+                        }
 
                         // Current throughput: prefer actual, then configured max, then estimated, then service level heuristic
                         double? currentThroughput = null;

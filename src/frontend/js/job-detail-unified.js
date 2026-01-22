@@ -37,9 +37,9 @@ const jobDetail = {
         { key: 'RequiredThroughputMiBps', label: 'Req Throughput (MiB/s)', sortable: true },
         { key: 'CurrentThroughputMiBps', label: 'Current Throughput (MiB/s)', sortable: true },
         { key: 'CurrentIops', label: 'Current IOPS', sortable: true },
-        { key: 'AccessTier', label: 'Tier / SKU', sortable: true },
+        { key: 'AccessTier', label: 'Tier / Service Level', sortable: true },
         { key: 'Protocols', label: 'Protocols', sortable: true },
-        { key: 'StorageAccountSku', label: 'SKU', sortable: true },
+        { key: 'StorageAccountSku', label: 'Redundancy / Replication', sortable: true },
         { key: 'Cost30Days', label: '30-Day Cost', sortable: true },
         { key: 'CostPerDay', label: 'Daily Cost', sortable: true },
         { key: 'CostSource', label: 'Cost Source', sortable: true },
@@ -51,7 +51,7 @@ const jobDetail = {
         { key: 'ReviewedBy', label: 'Reviewed By', sortable: true },
         { key: 'ReviewedAt', label: 'Reviewed At', sortable: true }
     ],
-    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','RequiredCapacityGiB','RequiredThroughputMiBps','Cost30Days','AiWorkload','UserWorkload','AiConfidence','MigrationStatus'],
+    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','UsedCapacity','RequiredCapacityGiB','RequiredThroughputMiBps','AccessTier','Cost30Days','AiWorkload','UserWorkload','AiConfidence','MigrationStatus'],
     visibleVolumeColumns: null,
     volumeSortColumn: null,
     volumeSortDirection: 'asc',
@@ -511,16 +511,28 @@ const jobDetail = {
                 return `<span title="Full precision: ${gib.toFixed(8)} GiB (${bytes} bytes)">${displayValue}</span>`;
             }
             case 'AccessTier':
-                if (vType === 'ManagedDisk') return vData.DiskTier || 'N/A';
+                if (vType === 'ManagedDisk') return vData.DiskTier || vData.DiskSku || 'N/A';
+                if (vType === 'ANF') return vData.ServiceLevel || 'N/A';
                 return vData.AccessTier || 'N/A';
             case 'Protocols':
                 if (vType === 'ManagedDisk') return 'Block';
                 if (vType === 'ANF') return vData.ProtocolTypes?.join(', ') || '-';
                 return vData.EnabledProtocols?.join(', ') || 'SMB';
             case 'StorageAccountSku':
-                if (vType === 'ManagedDisk') return vData.DiskSku || 'N/A';
-                if (vType === 'ANF') return vData.ServiceLevel || 'N/A';
-                return vData.StorageAccountSku || 'N/A';
+                if (vType === 'ManagedDisk') {
+                    // Extract redundancy from DiskSku (e.g., Premium_LRS -> LRS)
+                    const redundancy = vData.DiskSku?.split('_').pop() || 'N/A';
+                    return redundancy;
+                }
+                if (vType === 'ANF') {
+                    // Show QoS type or flexible indicator for ANF
+                    if (vData.PoolQosType) return vData.PoolQosType;
+                    if (vData.ServiceLevel === 'Flexible') return 'Flexible';
+                    return 'Auto';
+                }
+                // For Azure Files, extract redundancy from StorageAccountSku (e.g., Standard_LRS -> LRS)
+                const redundancy = vData.StorageAccountSku?.split('_').pop() || 'N/A';
+                return redundancy;
             case 'RequiredCapacityGiB': {
                 const val = typeof v.RequiredCapacityGiB === 'number' ? v.RequiredCapacityGiB : null;
                 if (val == null) return 'N/A';
