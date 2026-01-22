@@ -340,16 +340,17 @@ public class VolumeAnalysisFunction
                     if (volume.VolumeData is DiscoveredAzureFileShare share)
                     {
                         // --- Required Capacity Calculation ---
-                        // Base on current usage + buffer, as historical metrics are per-account, not per-share.
+                        // Base on current usage + buffer.
                         if (dto.RequiredCapacityGiB == null)
                         {
                             if (share.ShareUsageBytes.HasValue && share.ShareUsageBytes.Value > 0)
                             {
                                 var usedGiB = share.ShareUsageBytes.Value / (1024.0 * 1024.0 * 1024.0);
-                                dto.RequiredCapacityGiB = Math.Max(usedGiB * bufferFactor, (double)(share.ShareQuotaGiB ?? 0));
+                                dto.RequiredCapacityGiB = usedGiB * bufferFactor;
                             }
                             else
                             {
+                                // Fallback to current quota if usage is unknown/zero.
                                 dto.RequiredCapacityGiB = share.ShareQuotaGiB;
                             }
                         }
