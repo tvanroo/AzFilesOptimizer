@@ -409,6 +409,15 @@ public class VolumeAnalysisFunction
                         }
 
                         // Fallback to current throughput if metrics are unavailable
+                        double? currentThroughput = null;
+                        if (share.ProvisionedBandwidthMiBps.HasValue)
+                        {
+                            currentThroughput = share.ProvisionedBandwidthMiBps.Value;
+                        }
+                        else if (share.EstimatedThroughputMiBps.HasValue)
+                        {
+                            currentThroughput = share.EstimatedThroughputMiBps.Value;
+                        }
                         dto.RequiredThroughputMiBps ??= currentThroughput;
 
                         double? currentIops = null;
