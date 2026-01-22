@@ -17,18 +17,126 @@ public class CostCollectionService
     private readonly ILogger _logger;
     private readonly TokenCredential _credential;
     private readonly RetailPricingService _pricingService;
+    private readonly MetricsCollectionService _metricsService;
+    private readonly MetricsNormalizationService _normalizationService;
     private readonly Dictionary<string, RegionalPricing> _pricingCache = new();
     
     private const string CostManagementApiVersion = "2021-10-01";
     private const string PricingApiVersion = "2021-10-01";
 
-    public CostCollectionService(ILogger logger, TokenCredential credential, RetailPricingService pricingService)
+    public CostCollectionService(
+        ILogger logger, 
+        TokenCredential credential, 
+        RetailPricingService pricingService,
+        MetricsCollectionService metricsService,
+        MetricsNormalizationService normalizationService)
     {
         _logger = logger;
         _credential = credential;
         _pricingService = pricingService;
+        _metricsService = metricsService;
+        _normalizationService = normalizationService;
     }
 
+    /// <summary>
+    /// Get weekday-weighted transaction average from metrics
+    /// </summary>
+    private async Task<(double weekdayAvg, double weekendAvg, int sampleDays, double confidence)?> GetTransactionMetricsAsync(
+        string storageAccountResourceId,
+        string storageAccountName)
+    {
+        try
+        {
+            // Collect last 7-14 days of metrics to capture weekday/weekend patterns
+            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectStorageAccountMetricsAsync(
+                storageAccountResourceId,
+                storageAccountName);
+            
+            if (!hasData || string.IsNullOrEmpty(metricsSummary))
+            {
+                _logger.LogDebug("No transaction metrics available for {StorageAccount}", storageAccountName);
+                return null;
+            }
+            
+            // Parse metrics JSON to extract transaction data
+            var metricsTimeSeries = _normalizationService.ParseMetricsToTimeSeries(metricsSummary, "Transactions", "total");
+            
+            if (metricsTimeSeries == null || metricsTimeSeries.Count == 0)
+            {
+                _logger.LogDebug("No transaction data found in metrics for {StorageAccount}", storageAccountName);
+                return null;
+            }
+            
+            // Get weekday/weekend breakdown
+            var (weekdayAvg, weekendAvg, weekdayCount, weekendCount) = 
+                _normalizationService.GetWeekdayWeekendAverages(metricsTimeSeries);
+            
+            int sampleDays = metricsTimeSeries.Count;
+            bool hasSufficientWeekendData = weekendCount >= 2;
+            
+            // Calculate confidence
+            double confidence = _normalizationService.CalculateConfidenceScore(
+                sampleDays,
+                hasCapacityChange: false,
+                hasSufficientWeekendData,
+                metricsTimeSeries.Count);
+            
+            _logger.LogInformation(
+                "Transaction metrics for {StorageAccount}: Weekday={Weekday:F0}/day, Weekend={Weekend:F0}/day, SampleDays={Days}, Confidence={Confidence:F0}%",
+                storageAccountName, weekdayAvg, weekendAvg, sampleDays, confidence);
+            
+            return (weekdayAvg, weekendAvg, sampleDays, confidence);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error collecting transaction metrics for {StorageAccount}", storageAccountName);
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Get average egress per day from metrics
+    /// </summary>
+    private async Task<(double avgEgressGbPerDay, int sampleDays)?> GetEgressMetricsAsync(
+        string storageAccountResourceId,
+        string storageAccountName)
+    {
+        try
+        {
+            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectStorageAccountMetricsAsync(
+                storageAccountResourceId,
+                storageAccountName);
+            
+            if (!hasData || string.IsNullOrEmpty(metricsSummary))
+                return null;
+            
+            // Parse metrics JSON to extract egress data
+            var egressTimeSeries = _normalizationService.ParseMetricsToTimeSeries(metricsSummary, "Egress", "total");
+            
+            if (egressTimeSeries == null || egressTimeSeries.Count == 0)
+                return null;
+            
+            // Convert from bytes to GB and get average
+            var egressGbTimeSeries = egressTimeSeries.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value / (1024.0 * 1024.0 * 1024.0));
+            
+            double avgEgressGbPerDay = egressGbTimeSeries.Values.Average();
+            int sampleDays = egressGbTimeSeries.Count;
+            
+            _logger.LogInformation(
+                "Egress metrics for {StorageAccount}: {AvgEgress:F2} GB/day over {Days} days",
+                storageAccountName, avgEgressGbPerDay, sampleDays);
+            
+            return (avgEgressGbPerDay, sampleDays);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error collecting egress metrics for {StorageAccount}", storageAccountName);
+            return null;
+        }
+    }
+    
     /// <summary>
     /// Collect Azure Files storage costs for a specific storage account
     /// </summary>
@@ -123,7 +231,10 @@ public class CostCollectionService
                 { "ProvisionedStoragePricePerGibHour", pricing.ProvisionedStoragePricePerGibHour },
                 { "ProvisionedIOPSPricePerHour", pricing.ProvisionedIOPSPricePerHour },
                 { "ProvisionedThroughputPricePerMiBPerSecPerHour", pricing.ProvisionedThroughputPricePerMiBPerSecPerHour },
-                { "SnapshotPricePerGbMonth", pricing.SnapshotPricePerGbMonth }
+                { "SnapshotPricePerGbMonth", pricing.SnapshotPricePerGbMonth },
+                { "EgressPricePerGb", pricing.EgressPricePerGb },
+                { "WriteOperationsPricePer10K", pricing.WriteOperationsPricePer10K },
+                { "ReadOperationsPricePer10K", pricing.ReadOperationsPricePer10K }
             };
             
             var days = periodEnd.Subtract(periodStart).Days;
@@ -215,6 +326,108 @@ public class CostCollectionService
                 );
                 analysis.AddCostComponent(snapshotCost);
             }
+            
+            // Add transaction costs (for pay-as-you-go tiers only)
+            if (!share.IsProvisioned && accessTier.HasValue)
+            {
+                // Extract storage account resource ID from share resource ID
+                var storageAccountResourceId = ExtractStorageAccountResourceId(share.ResourceId);
+                if (!string.IsNullOrEmpty(storageAccountResourceId))
+                {
+                    var transactionMetrics = await GetTransactionMetricsAsync(
+                        storageAccountResourceId,
+                        share.StorageAccountName ?? "unknown");
+                    
+                    if (transactionMetrics.HasValue)
+                    {
+                        var (weekdayAvg, weekendAvg, sampleDays, confidence) = transactionMetrics.Value;
+                        
+                        // Store in analysis for debugging
+                        analysis.WeekdayAvgTransactionsPerDay = weekdayAvg;
+                        analysis.WeekendAvgTransactionsPerDay = weekendAvg;
+                        analysis.MetricsSampleDays = sampleDays;
+                        analysis.ProjectionConfidenceScore = confidence;
+                        
+                        // Project monthly transactions: 22 weekdays + 8 weekend days
+                        double monthlyTransactions = (weekdayAvg * 22) + (weekendAvg * 8);
+                        double transactionsPer10K = monthlyTransactions / 10000.0;
+                        
+                        // Use appropriate transaction pricing based on tier
+                        double transactionPrice = accessTier.Value switch
+                        {
+                            AzureFilesAccessTier.TransactionOptimized => pricing.WriteOperationsPricePer10K,
+                            AzureFilesAccessTier.Hot => pricing.WriteOperationsPricePer10K,
+                            AzureFilesAccessTier.Cool => pricing.WriteOperationsPricePer10K,
+                            _ => pricing.WriteOperationsPricePer10K
+                        };
+                        
+                        if (transactionPrice > 0 && transactionsPer10K > 0)
+                        {
+                            var transactionCost = new StorageCostComponent
+                            {
+                                ComponentType = "transactions",
+                                ResourceId = share.ResourceId,
+                                Region = share.Location,
+                                Quantity = transactionsPer10K,
+                                UnitPrice = transactionPrice,
+                                CostForPeriod = transactionsPer10K * transactionPrice,
+                                Unit = "per 10k transactions",
+                                PeriodStart = periodStart,
+                                PeriodEnd = periodEnd,
+                                IsEstimated = true,
+                                Notes = $"Based on {sampleDays} days of metrics. Weekday: {weekdayAvg:F0}/day, Weekend: {weekendAvg:F0}/day"
+                            };
+                            analysis.AddCostComponent(transactionCost);
+                            
+                            _logger.LogInformation(
+                                "Added transaction costs for {Share}: ${Cost:F2}/month (Confidence: {Confidence:F0}%)",
+                                share.ShareName, transactionCost.CostForPeriod, confidence);
+                        }
+                        
+                        if (sampleDays < 7)
+                        {
+                            analysis.Warnings.Add($"Transaction costs based on only {sampleDays} days of data. Confidence: {confidence:F0}%");
+                        }
+                    }
+                    else
+                    {
+                        analysis.Warnings.Add("No transaction metrics available. Transaction costs not included.");
+                        _logger.LogDebug("No transaction metrics for {Share}, skipping transaction costs", share.ShareName);
+                    }
+                    
+                    // Add egress costs
+                    var egressMetrics = await GetEgressMetricsAsync(storageAccountResourceId, share.StorageAccountName ?? "unknown");
+                    if (egressMetrics.HasValue && pricing.EgressPricePerGb > 0)
+                    {
+                        var (avgEgressGbPerDay, sampleDays) = egressMetrics.Value;
+                        double monthlyEgressGb = avgEgressGbPerDay * 30;
+                        
+                        analysis.AvgEgressGbPerDay = avgEgressGbPerDay;
+                        
+                        if (monthlyEgressGb > 0)
+                        {
+                            var egressCost = StorageCostComponent.ForEgress(
+                                share.ResourceId,
+                                share.Location,
+                                monthlyEgressGb,
+                                pricing.EgressPricePerGb,
+                                periodStart,
+                                periodEnd
+                            );
+                            egressCost.Notes = $"Based on {sampleDays} days of metrics: {avgEgressGbPerDay:F2} GB/day";
+                            analysis.AddCostComponent(egressCost);
+                            
+                            _logger.LogInformation(
+                                "Added egress costs for {Share}: ${Cost:F2}/month ({EgressGb:F2} GB/month)",
+                                share.ShareName, egressCost.CostForPeriod, monthlyEgressGb);
+                        }
+                    }
+                    else if (pricing.EgressPricePerGb > 0)
+                    {
+                        _logger.LogDebug("No egress metrics for {Share}, skipping egress costs", share.ShareName);
+                    }
+                }
+            }
 
             // Try to replace retail estimate with actual billed cost if available
             await TryApplyActualCostAsync(analysis, periodStart, periodEnd);
@@ -235,6 +448,140 @@ public class CostCollectionService
         }
     }
 
+    /// <summary>
+    /// Get cool tier breakdown for ANF volumes with cool access enabled
+    /// </summary>
+    private async Task<(double coolTierGb, double hotTierGb, double coolTierPercent)?> GetAnfCoolTierBreakdownAsync(
+        string volumeResourceId,
+        string volumeName,
+        double provisionedSizeGb)
+    {
+        try
+        {
+            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectAnfVolumeMetricsAsync(
+                volumeResourceId,
+                volumeName);
+            
+            if (!hasData || string.IsNullOrEmpty(metricsSummary))
+                return null;
+            
+            // Parse metrics JSON to extract cool tier data
+            var coolTierTimeSeries = _normalizationService.ParseMetricsToTimeSeries(metricsSummary, "CoolTierDataUsed", "average");
+            
+            if (coolTierTimeSeries == null || coolTierTimeSeries.Count == 0)
+                return null;
+            
+            // Get average cool tier usage and convert from bytes to GB
+            double avgCoolTierBytes = coolTierTimeSeries.Values.Average();
+            double coolTierGb = avgCoolTierBytes / (1024.0 * 1024.0 * 1024.0);
+            double hotTierGb = Math.Max(0, provisionedSizeGb - coolTierGb);
+            double coolTierPercent = provisionedSizeGb > 0 ? (coolTierGb / provisionedSizeGb) * 100 : 0;
+            
+            _logger.LogInformation(
+                "Cool tier breakdown for {Volume}: Hot={HotGb:F2} GB, Cool={CoolGb:F2} GB ({CoolPercent:F1}%)",
+                volumeName, hotTierGb, coolTierGb, coolTierPercent);
+            
+            return (coolTierGb, hotTierGb, coolTierPercent);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting cool tier breakdown for {Volume}", volumeName);
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Get flexible throughput usage for ANF Flexible service level
+    /// </summary>
+    private async Task<(double avgThroughputMiBps, double additionalThroughput)?> GetAnfFlexibleThroughputAsync(
+        string volumeResourceId,
+        string volumeName)
+    {
+        try
+        {
+            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectAnfVolumeMetricsAsync(
+                volumeResourceId,
+                volumeName);
+            
+            if (!hasData || string.IsNullOrEmpty(metricsSummary))
+                return null;
+            
+            // Parse metrics JSON to extract throughput data
+            var throughputTimeSeries = _normalizationService.ParseMetricsToTimeSeries(metricsSummary, "AverageThroughput", "average");
+            
+            if (throughputTimeSeries == null || throughputTimeSeries.Count == 0)
+                return null;
+            
+            // Get average throughput in MiB/s
+            double avgThroughputMiBps = throughputTimeSeries.Values.Average();
+            
+            // Flexible tier includes 128 MiB/s baseline for free
+            const double baselineThroughput = 128.0;
+            double additionalThroughput = Math.Max(0, avgThroughputMiBps - baselineThroughput);
+            
+            _logger.LogInformation(
+                "Flexible throughput for {Volume}: Avg={AvgThroughput:F2} MiB/s, Additional={Additional:F2} MiB/s (above baseline)",
+                volumeName, avgThroughputMiBps, additionalThroughput);
+            
+            return (avgThroughputMiBps, additionalThroughput);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting flexible throughput for {Volume}", volumeName);
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Get steady-state capacity for ANF volume
+    /// </summary>
+    private async Task<(double steadyStateGb, bool hasChanged, DateTime? changeDate, int daysUsed)?> GetAnfSteadyStateCapacityAsync(
+        string volumeResourceId,
+        string volumeName,
+        double currentProvisionedGb)
+    {
+        try
+        {
+            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectAnfVolumeMetricsAsync(
+                volumeResourceId,
+                volumeName);
+            
+            if (!hasData || string.IsNullOrEmpty(metricsSummary))
+                return null;
+            
+            // Parse metrics JSON to extract volume logical size (provisioned capacity over time)
+            var capacityTimeSeries = _normalizationService.ParseMetricsToTimeSeries(metricsSummary, "VolumeLogicalSize", "average");
+            
+            if (capacityTimeSeries == null || capacityTimeSeries.Count == 0)
+                return (currentProvisionedGb, false, null, 0);
+            
+            // Convert from bytes to GB
+            var capacityGbTimeSeries = capacityTimeSeries.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value / (1024.0 * 1024.0 * 1024.0));
+            
+            // Detect steady state
+            var (steadyStateGb, hasChanged, changeDate, daysUsed) = _normalizationService.GetSteadyStateValue(
+                capacityGbTimeSeries,
+                lookbackDays: 7,
+                changeThreshold: 0.20);
+            
+            if (hasChanged)
+            {
+                _logger.LogInformation(
+                    "Capacity change detected for {Volume}: Using last {Days} days for steady state ({SteadyState:F2} GB)",
+                    volumeName, daysUsed, steadyStateGb);
+            }
+            
+            return (steadyStateGb, hasChanged, changeDate, daysUsed);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error detecting capacity changes for {Volume}", volumeName);
+            return (currentProvisionedGb, false, null, 0);
+        }
+    }
+    
     /// <summary>
     /// Collect Azure NetApp Files costs for a volume
     /// </summary>
@@ -302,18 +649,187 @@ public class CostCollectionService
             
             var days = periodEnd.Subtract(periodStart).Days;
             if (days == 0) days = 1;
-
-            // ANF is billed by provisioned capacity
-            var storageCost = StorageCostComponent.ForCapacity(
+            
+            // Check for steady-state capacity
+            var steadyStateResult = await GetAnfSteadyStateCapacityAsync(
                 volume.ResourceId,
-                volume.Location,
-                analysis.CapacityGigabytes,
-                pricing.CapacityPricePerGibHour * 730, // Convert hourly to monthly
-                periodStart,
-                periodEnd,
-                $"ANF-{volume.CapacityPoolServiceLevel}"
-            );
-            analysis.AddCostComponent(storageCost);
+                volume.VolumeName,
+                analysis.CapacityGigabytes);
+            
+            double capacityForCosting = analysis.CapacityGigabytes;
+            if (steadyStateResult.HasValue)
+            {
+                var (steadyStateGb, hasChanged, changeDate, daysUsed) = steadyStateResult.Value;
+                if (hasChanged && daysUsed > 0)
+                {
+                    capacityForCosting = steadyStateGb;
+                    analysis.CapacityChangedDuringPeriod = true;
+                    analysis.LastCapacityChangeDate = changeDate;
+                    analysis.MetricsSampleDays = daysUsed;
+                    analysis.Warnings.Add($"Capacity changed during period. Using steady-state value from last {daysUsed} days: {steadyStateGb:F2} GB");
+                    
+                    _logger.LogInformation(
+                        "Using steady-state capacity for {Volume}: {SteadyState:F2} GB (changed from {Current:F2} GB)",
+                        volume.VolumeName, steadyStateGb, analysis.CapacityGigabytes);
+                }
+            }
+
+            // Check for cool tier breakdown (if cool access enabled)
+            bool hasCoolTier = volume.CoolAccessEnabled ?? false;
+            if (hasCoolTier)
+            {
+                var coolTierResult = await GetAnfCoolTierBreakdownAsync(
+                    volume.ResourceId,
+                    volume.VolumeName,
+                    capacityForCosting);
+                
+                if (coolTierResult.HasValue && pricing.CoolTierStoragePricePerGibMonth > 0)
+                {
+                    var (coolTierGb, hotTierGb, coolTierPercent) = coolTierResult.Value;
+                    
+                    analysis.CoolTierUsagePercent = coolTierPercent;
+                    
+                    // Hot tier storage cost
+                    if (hotTierGb > 0)
+                    {
+                        var hotStorageCost = new StorageCostComponent
+                        {
+                            ComponentType = "hot-storage",
+                            ResourceId = volume.ResourceId,
+                            Region = volume.Location,
+                            Quantity = hotTierGb,
+                            UnitPrice = pricing.CapacityPricePerGibHour * 730,
+                            CostForPeriod = hotTierGb * pricing.CapacityPricePerGibHour * 730,
+                            Unit = "GiB/month",
+                            PeriodStart = periodStart,
+                            PeriodEnd = periodEnd,
+                            IsEstimated = true,
+                            Notes = $"Hot tier capacity: {hotTierGb:F2} GB ({100 - coolTierPercent:F1}% of total)",
+                            SkuName = $"ANF-{volume.CapacityPoolServiceLevel}-Hot"
+                        };
+                        analysis.AddCostComponent(hotStorageCost);
+                    }
+                    
+                    // Cool tier storage cost
+                    if (coolTierGb > 0)
+                    {
+                        var coolStorageCost = new StorageCostComponent
+                        {
+                            ComponentType = "cool-storage",
+                            ResourceId = volume.ResourceId,
+                            Region = volume.Location,
+                            Quantity = coolTierGb,
+                            UnitPrice = pricing.CoolTierStoragePricePerGibMonth,
+                            CostForPeriod = coolTierGb * pricing.CoolTierStoragePricePerGibMonth,
+                            Unit = "GiB/month",
+                            PeriodStart = periodStart,
+                            PeriodEnd = periodEnd,
+                            IsEstimated = true,
+                            Notes = $"Cool tier capacity: {coolTierGb:F2} GB ({coolTierPercent:F1}% of total)",
+                            SkuName = $"ANF-{volume.CapacityPoolServiceLevel}-Cool"
+                        };
+                        analysis.AddCostComponent(coolStorageCost);
+                    }
+                    
+                    // Cool tier data transfer costs (estimated)
+                    if (pricing.CoolTierDataTransferPricePerGib > 0)
+                    {
+                        // Estimate monthly tier-in/tier-out as 10% of cool tier data
+                        double estimatedTransferGb = coolTierGb * 0.10;
+                        if (estimatedTransferGb > 0)
+                        {
+                            var coolTransferCost = new StorageCostComponent
+                            {
+                                ComponentType = "cool-tier-transfer",
+                                ResourceId = volume.ResourceId,
+                                Region = volume.Location,
+                                Quantity = estimatedTransferGb,
+                                UnitPrice = pricing.CoolTierDataTransferPricePerGib,
+                                CostForPeriod = estimatedTransferGb * pricing.CoolTierDataTransferPricePerGib,
+                                Unit = "GiB",
+                                PeriodStart = periodStart,
+                                PeriodEnd = periodEnd,
+                                IsEstimated = true,
+                                Notes = $"Estimated cool tier data transfer (tier-in + retrieval): {estimatedTransferGb:F2} GB"
+                            };
+                            analysis.AddCostComponent(coolTransferCost);
+                        }
+                    }
+                    
+                    _logger.LogInformation(
+                        "Added cool tier costs for {Volume}: Hot={HotGb:F2} GB, Cool={CoolGb:F2} GB ({CoolPercent:F1}%)",
+                        volume.VolumeName, hotTierGb, coolTierGb, coolTierPercent);
+                }
+                else
+                {
+                    // Cool access enabled but no metrics - use standard capacity cost
+                    analysis.Warnings.Add("Cool access enabled but no cool tier metrics available. Using standard capacity pricing.");
+                    var storageCost = StorageCostComponent.ForCapacity(
+                        volume.ResourceId,
+                        volume.Location,
+                        capacityForCosting,
+                        pricing.CapacityPricePerGibHour * 730,
+                        periodStart,
+                        periodEnd,
+                        $"ANF-{volume.CapacityPoolServiceLevel}"
+                    );
+                    analysis.AddCostComponent(storageCost);
+                }
+            }
+            else
+            {
+                // Standard capacity cost (no cool tier)
+                var storageCost = StorageCostComponent.ForCapacity(
+                    volume.ResourceId,
+                    volume.Location,
+                    capacityForCosting,
+                    pricing.CapacityPricePerGibHour * 730, // Convert hourly to monthly
+                    periodStart,
+                    periodEnd,
+                    $"ANF-{volume.CapacityPoolServiceLevel}"
+                );
+                analysis.AddCostComponent(storageCost);
+            }
+            
+            // Flexible throughput costs (Flexible service level only)
+            if (serviceLevel == AnfServiceLevel.Flexible && pricing.FlexibleThroughputPricePerMiBSecHour > 0)
+            {
+                var flexibleThroughputResult = await GetAnfFlexibleThroughputAsync(
+                    volume.ResourceId,
+                    volume.VolumeName);
+                
+                if (flexibleThroughputResult.HasValue)
+                {
+                    var (avgThroughputMiBps, additionalThroughput) = flexibleThroughputResult.Value;
+                    
+                    if (additionalThroughput > 0)
+                    {
+                        var throughputCost = new StorageCostComponent
+                        {
+                            ComponentType = "flexible-throughput",
+                            ResourceId = volume.ResourceId,
+                            Region = volume.Location,
+                            Quantity = additionalThroughput,
+                            UnitPrice = pricing.FlexibleThroughputPricePerMiBSecHour * 730, // Convert to monthly
+                            CostForPeriod = additionalThroughput * pricing.FlexibleThroughputPricePerMiBSecHour * 730,
+                            Unit = "MiB/s/month",
+                            PeriodStart = periodStart,
+                            PeriodEnd = periodEnd,
+                            IsEstimated = true,
+                            Notes = $"Additional throughput above 128 MiB/s baseline: {additionalThroughput:F2} MiB/s (avg: {avgThroughputMiBps:F2} MiB/s)"
+                        };
+                        analysis.AddCostComponent(throughputCost);
+                        
+                        _logger.LogInformation(
+                            "Added flexible throughput costs for {Volume}: ${Cost:F2}/month ({Additional:F2} MiB/s above baseline)",
+                            volume.VolumeName, throughputCost.CostForPeriod, additionalThroughput);
+                    }
+                }
+                else
+                {
+                    _logger.LogDebug("No throughput metrics for {Volume}, skipping flexible throughput costs", volume.VolumeName);
+                }
+            }
 
             // Snapshot costs (billed by used capacity)
             if (analysis.TotalSnapshotSizeGb > 0)
@@ -467,15 +983,49 @@ public class CostCollectionService
     {
         try
         {
+            // For Azure Files and ANF, we need to query at the parent resource level
+            var costQueryResourceId = analysis.ResourceId;
+            
+            // Azure Files: query at storage account level, not share level
+            if (analysis.ResourceType == "AzureFile" && costQueryResourceId.Contains("/fileServices/"))
+            {
+                // Extract storage account ResourceId from share ResourceId
+                // From: /subscriptions/.../storageAccounts/marinocloudshell/fileServices/default/shares/aidocs
+                // To:   /subscriptions/.../storageAccounts/marinocloudshell
+                var storageAccountEndIndex = costQueryResourceId.IndexOf("/fileServices/", StringComparison.OrdinalIgnoreCase);
+                if (storageAccountEndIndex > 0)
+                {
+                    costQueryResourceId = costQueryResourceId.Substring(0, storageAccountEndIndex);
+                    _logger.LogInformation(
+                        "Azure Files share detected - querying at storage account level | Storage Account ResourceId: {StorageAccountResourceId}",
+                        costQueryResourceId);
+                }
+            }
+            // ANF: query at capacity pool level, not volume level
+            else if (analysis.ResourceType == "ANF" && costQueryResourceId.Contains("/volumes/"))
+            {
+                // Extract capacity pool ResourceId from volume ResourceId
+                // From: /subscriptions/.../capacityPools/beekertestpool/volumes/testvol2migration
+                // To:   /subscriptions/.../capacityPools/beekertestpool
+                var volumeEndIndex = costQueryResourceId.IndexOf("/volumes/", StringComparison.OrdinalIgnoreCase);
+                if (volumeEndIndex > 0)
+                {
+                    costQueryResourceId = costQueryResourceId.Substring(0, volumeEndIndex);
+                    _logger.LogInformation(
+                        "ANF volume detected - querying at capacity pool level | Capacity Pool ResourceId: {CapacityPoolResourceId}",
+                        costQueryResourceId);
+                }
+            }
+            
             _logger.LogInformation(
                 "Attempting to retrieve actual costs for {ResourceType} '{VolumeName}' | ResourceId: {ResourceId} | Period: {Start} to {End}",
                 analysis.ResourceType,
                 analysis.VolumeName,
-                analysis.ResourceId,
+                costQueryResourceId,
                 periodStart.ToString("yyyy-MM-dd"),
                 periodEnd.ToString("yyyy-MM-dd"));
             
-            var detailedCosts = await GetDetailedActualCostsAsync(analysis.ResourceId, periodStart, periodEnd);
+            var detailedCosts = await GetDetailedActualCostsAsync(costQueryResourceId, periodStart, periodEnd);
             
             if (detailedCosts == null || detailedCosts.Count == 0)
             {
@@ -861,6 +1411,27 @@ public class CostCollectionService
         if (slashIndex < 0) return null;
 
         return resourceId.Substring(subIndex, slashIndex - subIndex);
+    }
+    
+    /// <summary>
+    /// Extract storage account resource ID from share resource ID
+    /// </summary>
+    private string? ExtractStorageAccountResourceId(string shareResourceId)
+    {
+        if (string.IsNullOrWhiteSpace(shareResourceId)) return null;
+        
+        // Share resource ID format:
+        // /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Storage/storageAccounts/{sa}/fileServices/default/shares/{share}
+        // We need:
+        // /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Storage/storageAccounts/{sa}
+        
+        var fileServicesIndex = shareResourceId.IndexOf("/fileServices/", StringComparison.OrdinalIgnoreCase);
+        if (fileServicesIndex > 0)
+        {
+            return shareResourceId.Substring(0, fileServicesIndex);
+        }
+        
+        return null;
     }
 
     /// <summary>

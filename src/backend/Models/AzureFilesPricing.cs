@@ -118,6 +118,11 @@ public class AzureFilesMeterPricing
     public double SnapshotPricePerGbMonth { get; set; }
     
     /// <summary>
+    /// Data egress (transfer out) price per GB
+    /// </summary>
+    public double EgressPricePerGb { get; set; }
+    
+    /// <summary>
     /// Soft-deleted data storage price per GiB per month
     /// </summary>
     public double SoftDeletePricePerGbMonth { get; set; }

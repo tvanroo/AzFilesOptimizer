@@ -218,6 +218,47 @@ public class VolumeCostAnalysis
     public int? ActualCostMeterCount { get; set; }
     
     /// <summary>
+    /// Indicates if capacity changed during analysis period
+    /// </summary>
+    public bool CapacityChangedDuringPeriod { get; set; }
+    
+    /// <summary>
+    /// Date when capacity last changed (if applicable)
+    /// </summary>
+    public DateTime? LastCapacityChangeDate { get; set; }
+    
+    /// <summary>
+    /// Number of days of metrics used for projection
+    /// </summary>
+    public int MetricsSampleDays { get; set; }
+    
+    /// <summary>
+    /// Confidence score for cost projection (0-100)
+    /// Based on sample size and data quality
+    /// </summary>
+    public double ProjectionConfidenceScore { get; set; }
+    
+    /// <summary>
+    /// Weekday average transactions per day (for Azure Files)
+    /// </summary>
+    public double? WeekdayAvgTransactionsPerDay { get; set; }
+    
+    /// <summary>
+    /// Weekend average transactions per day (for Azure Files)
+    /// </summary>
+    public double? WeekendAvgTransactionsPerDay { get; set; }
+    
+    /// <summary>
+    /// Cool tier usage percentage (for ANF with cool access)
+    /// </summary>
+    public double? CoolTierUsagePercent { get; set; }
+    
+    /// <summary>
+    /// Average egress in GB per day (for Azure Files)
+    /// </summary>
+    public double? AvgEgressGbPerDay { get; set; }
+    
+    /// <summary>
     /// Recalculate totals based on cost components
     /// </summary>
     public void RecalculateTotals()

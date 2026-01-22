@@ -154,6 +154,21 @@ public class RetailPricingService
                 pricing.SnapshotPricePerGbMonth = snapshotMeter.UnitPrice;
             }
             
+            // Egress pricing (common to all tiers)
+            // Note: Egress pricing is typically not tier-specific, using "common" as tier
+            var egressKey = RetailPriceCache.CreateAzureFilesMeterKey("common", redundancyStr, "egress");
+            var egressMeter = await GetCachedPriceAsync(region, egressKey, "AzureFiles");
+            if (egressMeter == null)
+            {
+                // Try to refresh if not in cache
+                await RefreshAzureFilesPricingAsync(region, accessTier, redundancy);
+                egressMeter = await GetCachedPriceAsync(region, egressKey, "AzureFiles");
+            }
+            if (egressMeter != null)
+            {
+                pricing.EgressPricePerGb = egressMeter.UnitPrice;
+            }
+            
             return pricing;
         }
         catch (Exception ex)
@@ -391,6 +406,11 @@ public class RetailPricingService
                     meterType = "iops";
                 else if (meterNameLower.Contains("provisioned throughput"))
                     meterType = "throughput";
+                else if (meterNameLower.Contains("data transfer out") || meterNameLower.Contains("egress"))
+                {
+                    meterType = "egress";
+                    tierStr = "common"; // Egress is common across tiers
+                }
                 
                 return RetailPriceCache.CreateAzureFilesMeterKey(tierStr, redundancyStr, meterType);
             });
