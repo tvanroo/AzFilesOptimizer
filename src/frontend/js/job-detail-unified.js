@@ -484,24 +484,31 @@ const jobDetail = {
                 return vData.Location || '-';
             case 'CapacityGiB': {
                 let bytes = 0;
+                let rawValue = 0;
                 if (vType === 'ManagedDisk') {
-                    bytes = (vData.DiskSizeGB || 0) * 1024 ** 3;
+                    rawValue = vData.DiskSizeGB || 0;
+                    bytes = rawValue * 1024 ** 3;
                 } else if (vType === 'ANF') {
                     bytes = vData.ProvisionedSizeBytes || 0;
+                    rawValue = bytes / (1024 ** 3);
                 } else {
-                    bytes = (vData.ShareQuotaGiB || 0) * 1024 ** 3;
+                    rawValue = vData.ShareQuotaGiB || 0;
+                    bytes = rawValue * 1024 ** 3;
                 }
-                return this.formatBytes(bytes);
+                const displayValue = this.formatBytes(bytes);
+                return `<span title="Full precision: ${rawValue.toFixed(8)} GiB (${bytes} bytes)">${displayValue}</span>`;
             }
             case 'UsedCapacity': {
+                let bytes = 0;
                 if (vType === 'ManagedDisk') {
-                    const usedBytes = vData.UsedBytes || 0;
-                    if (!usedBytes) return '0 B';
-                    return this.formatBytes(usedBytes);
+                    bytes = vData.UsedBytes || 0;
+                } else {
+                    bytes = vData.ShareUsageBytes ?? 0;
                 }
-                const bytes = vData.ShareUsageBytes ?? 0;
-                if (!bytes) return '0 B';
-                return this.formatBytes(bytes);
+                if (!bytes) return `<span title="Full precision: 0.00000000 GiB (0 bytes)">0 B</span>`;
+                const gib = bytes / (1024 ** 3);
+                const displayValue = this.formatBytes(bytes);
+                return `<span title="Full precision: ${gib.toFixed(8)} GiB (${bytes} bytes)">${displayValue}</span>`;
             }
             case 'AccessTier':
                 if (vType === 'ManagedDisk') return vData.DiskTier || 'N/A';
@@ -518,7 +525,8 @@ const jobDetail = {
                 const val = typeof v.RequiredCapacityGiB === 'number' ? v.RequiredCapacityGiB : null;
                 if (val == null) return 'N/A';
                 const bytes = val * 1024 ** 3;
-                return this.formatBytes(bytes);
+                const displayValue = this.formatBytes(bytes);
+                return `<span title="Full precision: ${val.toFixed(8)} GiB (${bytes} bytes)">${displayValue}</span>`;
             }
             case 'RequiredThroughputMiBps': {
                 const val = typeof v.RequiredThroughputMiBps === 'number' ? v.RequiredThroughputMiBps : null;
@@ -537,20 +545,29 @@ const jobDetail = {
             case 'CurrentIops': {
                 const val = typeof v.CurrentIops === 'number' ? v.CurrentIops : null;
                 if (val == null) return 'N/A';
-                if (val < 0) return 'Unmetered';
-                return val.toFixed(0);
+                if (val < 0) return '<span title="IOPS are unmetered for this tier">Unmetered</span>';
+                const displayValue = val.toFixed(0);
+                return `<span title="Full precision: ${val.toFixed(8)} IOPS">${displayValue}</span>`;
             }
             case 'Cost30Days': {
                 const cs = v.CostSummary;
                 if (!cs || typeof cs.TotalCost30Days !== 'number') return v.CostStatus === 'Pending' ? 'Pending' : '-';
-                const cost = `$${cs.TotalCost30Days.toFixed(2)}`;
-                return cs.IsActual ? cost : `<span style="color: #999;">${cost}</span>`;
+                const rawValue = cs.TotalCost30Days;
+                const displayValue = `$${rawValue.toFixed(2)}`;
+                const fullPrecision = `$${rawValue.toFixed(8)}`;
+                const costType = cs.IsActual ? 'actual billed' : 'estimated retail';
+                const tooltip = `Full precision: ${fullPrecision} (${costType})`;
+                return cs.IsActual ? `<span title="${tooltip}">${displayValue}</span>` : `<span style="color: #999;" title="${tooltip}">${displayValue}</span>`;
             }
             case 'CostPerDay': {
                 const cs = v.CostSummary;
                 if (!cs || typeof cs.DailyAverage !== 'number') return v.CostStatus === 'Pending' ? 'Pending' : '-';
-                const cost = `$${cs.DailyAverage.toFixed(2)}`;
-                return cs.IsActual ? cost : `<span style="color: #999;">${cost}</span>`;
+                const rawValue = cs.DailyAverage;
+                const displayValue = `$${rawValue.toFixed(2)}`;
+                const fullPrecision = `$${rawValue.toFixed(8)}`;
+                const costType = cs.IsActual ? 'actual billed' : 'estimated retail';
+                const tooltip = `Full precision: ${fullPrecision} (${costType})`;
+                return cs.IsActual ? `<span title="${tooltip}">${displayValue}</span>` : `<span style="color: #999;" title="${tooltip}">${displayValue}</span>`;
             }
             case 'CostSource': {
                 const cs = v.CostSummary;
@@ -559,8 +576,13 @@ const jobDetail = {
             }
             case 'AiWorkload':
                 return v.AiAnalysis?.SuggestedWorkloadName || '-';
-            case 'AiConfidence':
-                return ((v.AiAnalysis?.ConfidenceScore || 0) * 100).toFixed(0) + '%';
+            case 'AiConfidence': {
+                const rawScore = v.AiAnalysis?.ConfidenceScore || 0;
+                const percentage = rawScore * 100;
+                const displayValue = percentage.toFixed(0) + '%';
+                const fullPrecision = percentage.toFixed(8) + '%';
+                return `<span title="Full precision: ${fullPrecision} (confidence score: ${rawScore.toFixed(8)})">${displayValue}</span>`;
+            }
             case 'AiLastAnalyzed':
                 return v.AiAnalysis?.LastAnalyzed ? new Date(v.AiAnalysis.LastAnalyzed).toLocaleString() : '-';
             case 'UserWorkload':
