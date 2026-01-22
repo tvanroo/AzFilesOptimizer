@@ -36,7 +36,28 @@ public class AzureRetailPricesClient
 
         try
         {
-            var filter = $"serviceName eq 'Storage' and productName eq 'Files' and armRegionName eq '{region}' and skuName contains '{tier}' and skuName contains '{redundancy}'";
+            // Map tier names to what Azure Retail Prices API expects
+            // TransactionOptimized doesn't exist as a tier name - it's just standard Files pricing
+            var apiTier = tier switch
+            {
+                "TransactionOptimized" => "", // Standard tier has no tier suffix in SKU name
+                "Hot" => "Hot",
+                "Cool" => "Cool",
+                _ => "Hot" // Default to Hot
+            };
+
+            // Build filter based on whether we're filtering by tier or not
+            string filter;
+            if (string.IsNullOrEmpty(apiTier))
+            {
+                // For TransactionOptimized (standard), don't filter by tier, but exclude Hot and Cool
+                filter = $"serviceName eq 'Storage' and productName eq 'Files' and armRegionName eq '{region}' and skuName contains '{redundancy}' and not (skuName contains 'Hot' or skuName contains 'Cool')";
+            }
+            else
+            {
+                filter = $"serviceName eq 'Storage' and productName eq 'Files' and armRegionName eq '{region}' and skuName contains '{apiTier}' and skuName contains '{redundancy}'";
+            }
+            
             var prices = await QueryPricesAsync(filter);
             
             _cache.Set(cacheKey, prices, _cacheExpiry);
