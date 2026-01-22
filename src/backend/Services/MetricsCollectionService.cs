@@ -61,7 +61,7 @@ public class MetricsCollectionService
             
             metricsData["_meta"] = new
             {
-                interval = "PT1H",
+                interval = "PT1M",
                 timespan = new { start = startTime, end = endTime },
                 resourceType = "FileShare"
             };
@@ -82,7 +82,7 @@ public class MetricsCollectionService
                     // Use the File namespace for file share metrics
                     var apiUrl = $"https://management.azure.com{shareResourceId}/providers/Microsoft.Insights/metrics" +
                         $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
-                        $"&interval=PT1H&metricNamespace=microsoft.storage%2Fstorageaccounts%2Ffileservices%2Fshares&metricnames={metricName}&aggregation={aggregation}";
+                        $"&interval=PT1M&metricNamespace=microsoft.storage%2Fstorageaccounts%2Ffileservices%2Fshares&metricnames={metricName}&aggregation={aggregation}";
                     
                     _logger.LogDebug("Fetching file share metric {MetricName} with {Aggregation}", metricName, aggregation);
                     var response = await httpClient.GetAsync(apiUrl);
@@ -192,7 +192,7 @@ public class MetricsCollectionService
 
              metricsData["_meta"] = new
              {
-                 interval = "PT1H",
+                 interval = "PT1M",
                  timespan = new { start = startTime, end = endTime }
              };
 
@@ -211,7 +211,7 @@ public class MetricsCollectionService
                     var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
                     var apiUrl = $"https://management.azure.com{fileServicesResourceId}/providers/Microsoft.Insights/metrics" +
                         $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
-                        $"&interval=PT1H&metricNamespace=microsoft.storage%2Fstorageaccounts%2Ffileservices&metricnames={metricName}&aggregation={aggregation}";
+                        $"&interval=PT1M&metricNamespace=microsoft.storage%2Fstorageaccounts%2Ffileservices&metricnames={metricName}&aggregation={aggregation}";
                     
                     _logger.LogDebug("Fetching metric {MetricName} with {Aggregation} from: {Url}", metricName, aggregation, apiUrl);
                     var response = await httpClient.GetAsync(apiUrl);
@@ -435,7 +435,7 @@ public class MetricsCollectionService
                     var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
                     var apiUrl = $"https://management.azure.com{resourceId}/providers/Microsoft.Insights/metrics" +
                         $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
-                        $"&interval=PT1H&metricNamespace={metricNamespace}&metricnames={Uri.EscapeDataString(metricName)}&aggregation={aggregation}";
+                        $"&interval=PT1M&metricNamespace={metricNamespace}&metricnames={Uri.EscapeDataString(metricName)}&aggregation={aggregation}";
 
                     if (dimensionFilters != null && dimensionFilters.Count > 0)
                     {
