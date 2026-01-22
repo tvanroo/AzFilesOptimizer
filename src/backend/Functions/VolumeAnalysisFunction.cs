@@ -339,14 +339,17 @@ public class VolumeAnalysisFunction
                 case "AzureFiles":
                     if (volume.VolumeData is DiscoveredAzureFileShare share)
                     {
-                        // Capacity: prefer used+buffer, fall back to quota when used is unknown,
-                        // unless AI sizing already provided a recommendation.
-                        double? usedGiB = null;
-                        if (share.ShareUsageBytes.HasValue && share.ShareUsageBytes.Value > 0)
+                        // Use max observed FileCapacity if available from metrics
+                        if (!string.IsNullOrEmpty(share.HistoricalMetricsSummary))
                         {
-                            usedGiB = share.ShareUsageBytes.Value / (1024.0 * 1024.0 * 1024.0);
+                            var metrics = System.Text.Json.JsonDocument.Parse(share.HistoricalMetricsSummary);
+                            if (metrics.RootElement.TryGetProperty("FileCapacity", out var capacityMetric) &&
+                                capacityMetric.TryGetProperty("max", out var maxCapacity))
+                            {
+                                usedGiB = maxCapacity.GetDouble() / (1024.0 * 1024.0 * 1024.0);
+                            }
                         }
-
+                        
                         if (usedGiB.HasValue)
                         {
                             var recommendedGiB = usedGiB.Value * bufferFactor;
@@ -359,21 +362,37 @@ public class VolumeAnalysisFunction
                         }
 
                         double? currentThroughput = null;
-                        if (share.ProvisionedBandwidthMiBps.HasValue)
+
+                        // Use max observed Egress as baseline for throughput
+                        if (!string.IsNullOrEmpty(share.HistoricalMetricsSummary))
                         {
-                            currentThroughput = share.ProvisionedBandwidthMiBps.Value;
+                            var metrics = System.Text.Json.JsonDocument.Parse(share.HistoricalMetricsSummary);
+                            if (metrics.RootElement.TryGetProperty("Egress", out var egressMetric) &&
+                                egressMetric.TryGetProperty("max", out var maxEgress))
+                            {
+                                // Convert bytes per hour (from metric) to MiB/s for throughput
+                                currentThroughput = maxEgress.GetDouble() / (1024.0 * 1024.0) / 3600.0;
+                            }
                         }
-                        else if (share.EstimatedThroughputMiBps.HasValue)
+
+                        if (!currentThroughput.HasValue)
                         {
-                            currentThroughput = share.EstimatedThroughputMiBps.Value;
-                        }
-                        else if (!string.IsNullOrEmpty(share.StorageAccountSku))
-                        {
-                            var sku = share.StorageAccountSku.ToLowerInvariant();
-                            if (sku.Contains("premium"))
-                                currentThroughput = 100;
-                            else
-                                currentThroughput = 60;
+                            if (share.ProvisionedBandwidthMiBps.HasValue)
+                            {
+                                currentThroughput = share.ProvisionedBandwidthMiBps.Value;
+                            }
+                            else if (share.EstimatedThroughputMiBps.HasValue)
+                            {
+                                currentThroughput = share.EstimatedThroughputMiBps.Value;
+                            }
+                            else if (!string.IsNullOrEmpty(share.StorageAccountSku))
+                            {
+                                var sku = share.StorageAccountSku.ToLowerInvariant();
+                                if (sku.Contains("premium"))
+                                    currentThroughput = 100;
+                                else
+                                    currentThroughput = 60;
+                            }
                         }
                         dto.CurrentThroughputMiBps = currentThroughput;
 
