@@ -22,5 +22,6 @@
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.*" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Storage.Queues" Version="5.*" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="1.*" OutputItemType="Analyzer" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.2" />
   </ItemGroup>
 </Project>

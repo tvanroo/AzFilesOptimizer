@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using AzFilesOptimizer.Backend.Models;
-using AzFilesOptimizer.Backend.Models.Discovery;
 
 namespace AzFilesOptimizer.Backend.Services;
 
@@ -32,7 +31,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Calculate 30-day cost estimate for a discovered resource
     /// </summary>
-    public async Task<VolumeCostEstimate> Calculate30DayCostEstimateAsync(DiscoveredResource resource)
+    public async Task<VolumeCostEstimate> Calculate30DayCostEstimateAsync(UnifiedResource resource)
     {
         try
         {
@@ -65,7 +64,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Calculate costs for Azure Files share
     /// </summary>
-    private async Task<VolumeCostEstimate> CalculateAzureFilesCostAsync(DiscoveredResource resource)
+    private async Task<VolumeCostEstimate> CalculateAzureFilesCostAsync(UnifiedResource resource)
     {
         var volumeInfo = new AzureFilesVolumeInfo
         {
@@ -88,7 +87,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Calculate costs for ANF volume
     /// </summary>
-    private async Task<VolumeCostEstimate> CalculateAnfCostAsync(DiscoveredResource resource)
+    private async Task<VolumeCostEstimate> CalculateAnfCostAsync(UnifiedResource resource)
     {
         var volumeInfo = new AnfVolumeInfo
         {
@@ -112,7 +111,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Calculate costs for Managed Disk (uses actual billing data when available)
     /// </summary>
-    private async Task<VolumeCostEstimate> CalculateManagedDiskCostAsync(DiscoveredResource resource)
+    private async Task<VolumeCostEstimate> CalculateManagedDiskCostAsync(UnifiedResource resource)
     {
         var diskInfo = new ManagedDiskVolumeInfo
         {
@@ -131,7 +130,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Determine if share is provisioned (Premium)
     /// </summary>
-    private bool IsProvisionedShare(DiscoveredResource resource)
+    private bool IsProvisionedShare(UnifiedResource resource)
     {
         var tier = resource.Properties?.GetValueOrDefault("tier")?.ToString() ?? "";
         return tier.Contains("Premium", StringComparison.OrdinalIgnoreCase);
@@ -140,7 +139,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Get share tier (Hot, Cool, TransactionOptimized, Premium)
     /// </summary>
-    private string GetShareTier(DiscoveredResource resource)
+    private string GetShareTier(UnifiedResource resource)
     {
         var tier = resource.Properties?.GetValueOrDefault("tier")?.ToString() ?? "Hot";
         
@@ -157,7 +156,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Get redundancy type (LRS, ZRS, GRS, GZRS)
     /// </summary>
-    private string GetRedundancy(DiscoveredResource resource)
+    private string GetRedundancy(UnifiedResource resource)
     {
         var sku = resource.Properties?.GetValueOrDefault("sku")?.ToString() ?? "Standard_LRS";
         
@@ -174,7 +173,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Get ANF service level
     /// </summary>
-    private string GetAnfServiceLevel(DiscoveredResource resource)
+    private string GetAnfServiceLevel(UnifiedResource resource)
     {
         var serviceLevel = resource.Properties?.GetValueOrDefault("serviceLevel")?.ToString() ?? "Standard";
         return serviceLevel;
@@ -183,7 +182,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Check if cool access is enabled for ANF
     /// </summary>
-    private bool IsCoolAccessEnabled(DiscoveredResource resource)
+    private bool IsCoolAccessEnabled(UnifiedResource resource)
     {
         var coolAccess = resource.Properties?.GetValueOrDefault("coolAccess")?.ToString() ?? "false";
         return bool.TryParse(coolAccess, out var enabled) && enabled;
@@ -192,7 +191,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Get hot data size for ANF with cool access
     /// </summary>
-    private double GetHotDataSize(DiscoveredResource resource)
+    private double GetHotDataSize(UnifiedResource resource)
     {
         var hotData = resource.Properties?.GetValueOrDefault("hotDataSizeGb")?.ToString();
         return double.TryParse(hotData, out var size) ? size : 0;
@@ -201,7 +200,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Get cool data size for ANF with cool access
     /// </summary>
-    private double GetCoolDataSize(DiscoveredResource resource)
+    private double GetCoolDataSize(UnifiedResource resource)
     {
         var coolData = resource.Properties?.GetValueOrDefault("coolDataSizeGb")?.ToString();
         return double.TryParse(coolData, out var size) ? size : 0;
@@ -210,7 +209,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Get disk type (Premium SSD, Standard SSD, Standard HDD, etc.)
     /// </summary>
-    private string GetDiskType(DiscoveredResource resource)
+    private string GetDiskType(UnifiedResource resource)
     {
         var sku = resource.Properties?.GetValueOrDefault("sku")?.ToString() ?? "Premium_LRS";
         
@@ -229,7 +228,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Estimate monthly transactions from Azure Monitor metrics
     /// </summary>
-    private async Task<long> EstimateMonthlyTransactionsAsync(DiscoveredResource resource)
+    private async Task<long> EstimateMonthlyTransactionsAsync(UnifiedResource resource)
     {
         try
         {
@@ -254,7 +253,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Estimate monthly egress from Azure Monitor metrics
     /// </summary>
-    private async Task<double> EstimateMonthlyEgressAsync(DiscoveredResource resource)
+    private async Task<double> EstimateMonthlyEgressAsync(UnifiedResource resource)
     {
         try
         {
@@ -277,7 +276,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Estimate monthly cool tiering activity
     /// </summary>
-    private async Task<double> EstimateMonthlyTieringAsync(DiscoveredResource resource)
+    private async Task<double> EstimateMonthlyTieringAsync(UnifiedResource resource)
     {
         try
         {
@@ -298,7 +297,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Estimate monthly cool retrieval activity
     /// </summary>
-    private async Task<double> EstimateMonthlyRetrievalAsync(DiscoveredResource resource)
+    private async Task<double> EstimateMonthlyRetrievalAsync(UnifiedResource resource)
     {
         try
         {
@@ -350,7 +349,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Create estimate for unknown resource type
     /// </summary>
-    private VolumeCostEstimate CreateUnknownResourceEstimate(DiscoveredResource resource)
+    private VolumeCostEstimate CreateUnknownResourceEstimate(UnifiedResource resource)
     {
         _logger.LogWarning("Unknown resource type: {ResourceType} for {ResourceName}", 
             resource.ResourceType, resource.Name);
@@ -370,7 +369,7 @@ public class AccurateCostEstimationService
     /// <summary>
     /// Calculate cost estimates for multiple resources
     /// </summary>
-    public async Task<List<VolumeCostEstimate>> CalculateBulkEstimatesAsync(List<DiscoveredResource> resources)
+    public async Task<List<VolumeCostEstimate>> CalculateBulkEstimatesAsync(List<UnifiedResource> resources)
     {
         var estimates = new List<VolumeCostEstimate>();
 

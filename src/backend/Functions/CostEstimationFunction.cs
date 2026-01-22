@@ -37,10 +37,24 @@ public class CostEstimationFunction
 
         try
         {
-            // Get discovered resources
-            var resources = await _storageService.GetResourcesByJobIdAsync(jobId);
+            // Get discovered resources from all three tables
+            var shareTask = _storageService.GetSharesByJobIdAsync(jobId);
+            var volumeTask = _storageService.GetVolumesByJobIdAsync(jobId);
+            var diskTask = _storageService.GetDisksByJobIdAsync(jobId);
+
+            await Task.WhenAll(shareTask, volumeTask, diskTask);
+
+            var shares = await shareTask;
+            var volumes = await volumeTask;
+            var disks = await diskTask;
+
+            // Convert to UnifiedResource
+            var unifiedResources = new List<UnifiedResource>();
+            unifiedResources.AddRange(shares.Select(s => UnifiedResource.FromFileShare(s)));
+            unifiedResources.AddRange(volumes.Select(v => UnifiedResource.FromAnfVolume(v)));
+            unifiedResources.AddRange(disks.Select(d => UnifiedResource.FromManagedDisk(d)));
             
-            if (!resources.Any())
+            if (!unifiedResources.Any())
             {
                 var notFoundResponse = req.CreateResponse(HttpStatusCode.NotFound);
                 await notFoundResponse.WriteAsJsonAsync(new
@@ -51,7 +65,7 @@ public class CostEstimationFunction
             }
 
             // Calculate estimates
-            var estimates = await _estimationService.CalculateBulkEstimatesAsync(resources);
+            var estimates = await _estimationService.CalculateBulkEstimatesAsync(unifiedResources);
 
             // Calculate summary
             var summary = new
@@ -102,7 +116,7 @@ public class CostEstimationFunction
         {
             // Parse request body
             var requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var resource = JsonSerializer.Deserialize<DiscoveredResource>(requestBody, new JsonSerializerOptions
+            var resource = JsonSerializer.Deserialize<UnifiedResource>(requestBody, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });

@@ -81,22 +81,33 @@ public class ManagedDiskCostCalculator
                 return null;
             }
 
-            // Try to get actual cost from the last 30 days
+            // Try to get actual cost from the last 30 days using the existing GetManagedDiskCostAsync method
+            // This requires creating a DiscoveredManagedDisk object from diskInfo
+            var discoveredDisk = new DiscoveredManagedDisk
+            {
+                ResourceId = diskInfo.VolumeId,
+                DiskName = diskInfo.VolumeName,
+                Location = diskInfo.Region,
+                DiskSizeGB = (long)diskInfo.DiskSizeGb,
+                ManagedDiskType = diskInfo.DiskType,
+                SubscriptionId = diskInfo.SubscriptionId,
+                ResourceGroup = diskInfo.ResourceGroupName ?? string.Empty,
+                TenantId = string.Empty // Not available in diskInfo
+            };
+
             var endDate = DateTime.UtcNow.Date;
             var startDate = endDate.AddDays(-30);
-
-            var actualCosts = await _costCollectionService.GetResourceCostAsync(
-                diskInfo.SubscriptionId,
-                diskInfo.VolumeId,
+            
+            var costAnalysis = await _costCollectionService.GetManagedDiskCostAsync(
+                discoveredDisk,
                 startDate,
                 endDate);
 
-            if (actualCosts != null && actualCosts.Any())
+            if (costAnalysis != null && costAnalysis.TotalCostForPeriod > 0)
             {
-                var totalCost = actualCosts.Sum(c => c.Cost);
                 _logger.LogInformation("Found actual billing data for {DiskName}: ${ActualCost} for last 30 days",
-                    diskInfo.VolumeName, totalCost);
-                return totalCost;
+                    diskInfo.VolumeName, costAnalysis.TotalCostForPeriod);
+                return costAnalysis.TotalCostForPeriod;
             }
         }
         catch (Exception ex)
