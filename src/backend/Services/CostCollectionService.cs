@@ -42,19 +42,19 @@ public class CostCollectionService
     /// Get weekday-weighted transaction average from metrics
     /// </summary>
     private async Task<(double weekdayAvg, double weekendAvg, int sampleDays, double confidence)?> GetTransactionMetricsAsync(
-        string storageAccountResourceId,
-        string storageAccountName)
+        string shareResourceId,
+        string shareName)
     {
         try
         {
-            // Collect last 7-14 days of metrics to capture weekday/weekend patterns
-            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectStorageAccountMetricsAsync(
-                storageAccountResourceId,
-                storageAccountName);
+            // Collect last 7-14 days of file share-level metrics to capture weekday/weekend patterns
+            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectFileShareMetricsAsync(
+                shareResourceId,
+                shareName);
             
             if (!hasData || string.IsNullOrEmpty(metricsSummary))
             {
-                _logger.LogDebug("No transaction metrics available for {StorageAccount}", storageAccountName);
+                _logger.LogDebug("No transaction metrics available for file share {Share}", shareName);
                 return null;
             }
             
@@ -63,7 +63,7 @@ public class CostCollectionService
             
             if (metricsTimeSeries == null || metricsTimeSeries.Count == 0)
             {
-                _logger.LogDebug("No transaction data found in metrics for {StorageAccount}", storageAccountName);
+                _logger.LogDebug("No transaction data found in metrics for file share {Share}", shareName);
                 return null;
             }
             
@@ -82,14 +82,14 @@ public class CostCollectionService
                 metricsTimeSeries.Count);
             
             _logger.LogInformation(
-                "Transaction metrics for {StorageAccount}: Weekday={Weekday:F0}/day, Weekend={Weekend:F0}/day, SampleDays={Days}, Confidence={Confidence:F0}%",
-                storageAccountName, weekdayAvg, weekendAvg, sampleDays, confidence);
+                "Transaction metrics for file share {Share}: Weekday={Weekday:F0}/day, Weekend={Weekend:F0}/day, SampleDays={Days}, Confidence={Confidence:F0}%",
+                shareName, weekdayAvg, weekendAvg, sampleDays, confidence);
             
             return (weekdayAvg, weekendAvg, sampleDays, confidence);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error collecting transaction metrics for {StorageAccount}", storageAccountName);
+            _logger.LogWarning(ex, "Error collecting transaction metrics for file share {Share}", shareName);
             return null;
         }
     }
@@ -98,14 +98,14 @@ public class CostCollectionService
     /// Get average egress per day from metrics
     /// </summary>
     private async Task<(double avgEgressGbPerDay, int sampleDays)?> GetEgressMetricsAsync(
-        string storageAccountResourceId,
-        string storageAccountName)
+        string shareResourceId,
+        string shareName)
     {
         try
         {
-            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectStorageAccountMetricsAsync(
-                storageAccountResourceId,
-                storageAccountName);
+            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectFileShareMetricsAsync(
+                shareResourceId,
+                shareName);
             
             if (!hasData || string.IsNullOrEmpty(metricsSummary))
                 return null;
@@ -125,14 +125,14 @@ public class CostCollectionService
             int sampleDays = egressGbTimeSeries.Count;
             
             _logger.LogInformation(
-                "Egress metrics for {StorageAccount}: {AvgEgress:F2} GB/day over {Days} days",
-                storageAccountName, avgEgressGbPerDay, sampleDays);
+                "Egress metrics for file share {Share}: {AvgEgress:F2} GB/day over {Days} days",
+                shareName, avgEgressGbPerDay, sampleDays);
             
             return (avgEgressGbPerDay, sampleDays);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error collecting egress metrics for {StorageAccount}", storageAccountName);
+            _logger.LogWarning(ex, "Error collecting egress metrics for file share {Share}", shareName);
             return null;
         }
     }
@@ -330,13 +330,10 @@ public class CostCollectionService
             // Add transaction costs (for pay-as-you-go tiers only)
             if (!share.IsProvisioned && accessTier.HasValue)
             {
-                // Extract storage account resource ID from share resource ID
-                var storageAccountResourceId = ExtractStorageAccountResourceId(share.ResourceId);
-                if (!string.IsNullOrEmpty(storageAccountResourceId))
-                {
-                    var transactionMetrics = await GetTransactionMetricsAsync(
-                        storageAccountResourceId,
-                        share.StorageAccountName ?? "unknown");
+                // Use file share resource ID for share-level metrics
+                var transactionMetrics = await GetTransactionMetricsAsync(
+                    share.ResourceId,
+                    share.ShareName);
                     
                     if (transactionMetrics.HasValue)
                     {
@@ -389,14 +386,14 @@ public class CostCollectionService
                             analysis.Warnings.Add($"Transaction costs based on only {sampleDays} days of data. Confidence: {confidence:F0}%");
                         }
                     }
-                    else
-                    {
-                        analysis.Warnings.Add("No transaction metrics available. Transaction costs not included.");
-                        _logger.LogDebug("No transaction metrics for {Share}, skipping transaction costs", share.ShareName);
-                    }
-                    
-                    // Add egress costs
-                    var egressMetrics = await GetEgressMetricsAsync(storageAccountResourceId, share.StorageAccountName ?? "unknown");
+                else
+                {
+                    analysis.Warnings.Add("No transaction metrics available. Transaction costs not included.");
+                    _logger.LogDebug("No transaction metrics for {Share}, skipping transaction costs", share.ShareName);
+                }
+                
+                // Add egress costs
+                var egressMetrics = await GetEgressMetricsAsync(share.ResourceId, share.ShareName);
                     if (egressMetrics.HasValue && pricing.EgressPricePerGb > 0)
                     {
                         var (avgEgressGbPerDay, sampleDays) = egressMetrics.Value;
@@ -422,10 +419,9 @@ public class CostCollectionService
                                 share.ShareName, egressCost.CostForPeriod, monthlyEgressGb);
                         }
                     }
-                    else if (pricing.EgressPricePerGb > 0)
-                    {
-                        _logger.LogDebug("No egress metrics for {Share}, skipping egress costs", share.ShareName);
-                    }
+                else if (pricing.EgressPricePerGb > 0)
+                {
+                    _logger.LogDebug("No egress metrics for {Share}, skipping egress costs", share.ShareName);
                 }
             }
 

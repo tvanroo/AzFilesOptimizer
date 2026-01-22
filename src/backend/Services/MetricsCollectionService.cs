@@ -18,6 +18,145 @@ public class MetricsCollectionService
         _credential = credential;
     }
 
+    /// <summary>
+    /// Collect file share-level metrics for a specific file share
+    /// </summary>
+    public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectFileShareMetricsAsync(
+        string shareResourceId, string shareName)
+    {
+        try
+        {
+            var endTime = DateTime.UtcNow;
+            var startTime = endTime.AddDays(-30);
+            
+            _logger.LogInformation("Collecting file share-level metrics for {Share}", shareName);
+            
+            // Ask Azure Monitor which metrics are actually supported for this file share
+            var supported = await GetSupportedMetricNamesAsync(shareResourceId);
+            
+            // File share-level metrics from the File namespace
+            var preferred = new (string name, string aggregation)[]
+            {
+                ("FileCapacity","Average"),
+                ("FileCount","Average"),
+                ("FileShareCapacityQuota","Average"),
+                ("FileShareCount","Average"),
+                ("FileShareSnapshotCount","Average"),
+                ("FileShareSnapshotSize","Average"),
+                ("Transactions","Total"),
+                ("Ingress","Total"),
+                ("Egress","Total"),
+                ("SuccessServerLatency","Average"),
+                ("SuccessE2ELatency","Average"),
+                ("Availability","Average")
+            };
+            
+            var metrics = preferred.Where(p => supported.Contains(p.name, StringComparer.OrdinalIgnoreCase))
+                                   .Distinct()
+                                   .ToList();
+            
+            var metricsData = new Dictionary<string, object>();
+            bool hasAnyData = false;
+            int oldestDataDays = 0;
+            
+            metricsData["_meta"] = new
+            {
+                interval = "PT1H",
+                timespan = new { start = startTime, end = endTime },
+                resourceType = "FileShare"
+            };
+            
+            using var httpClient = new HttpClient();
+            var token = await _credential.GetTokenAsync(
+                new TokenRequestContext(new[] { "https://management.azure.com/.default" }), default);
+            httpClient.DefaultRequestHeaders.Authorization = 
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
+            
+            foreach (var metric in metrics)
+            {
+                var metricName = metric.name;
+                var aggregation = metric.aggregation;
+                try
+                {
+                    var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
+                    // Use the File namespace for file share metrics
+                    var apiUrl = $"https://management.azure.com{shareResourceId}/providers/Microsoft.Insights/metrics" +
+                        $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
+                        $"&interval=PT1H&metricNamespace=microsoft.storage%2Fstorageaccounts%2Ffileservices%2Fshares&metricnames={metricName}&aggregation={aggregation}";
+                    
+                    _logger.LogDebug("Fetching file share metric {MetricName} with {Aggregation}", metricName, aggregation);
+                    var response = await httpClient.GetAsync(apiUrl);
+                    
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var content = await response.Content.ReadAsStringAsync();
+                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var result = JsonSerializer.Deserialize<MetricsApiResponse>(content, options);
+                        
+                        if (result?.value?.Any() == true)
+                        {
+                            foreach (var metricValue in result.value)
+                            {
+                                var allTimeseries = metricValue.timeseries ?? Array.Empty<Timeseries>();
+                                var dataPoints = new List<DataPoint>();
+                                
+                                foreach (var timeseries in allTimeseries)
+                                {
+                                    if (timeseries?.data?.Any() == true)
+                                    {
+                                        dataPoints.AddRange(timeseries.data.Where(d => d.total.HasValue || d.average.HasValue));
+                                    }
+                                }
+                                
+                                if (dataPoints.Any())
+                                {
+                                    hasAnyData = true;
+                                    var oldestPoint = dataPoints.Min(d => DateTime.Parse(d.timeStamp));
+                                    oldestDataDays = Math.Max(oldestDataDays, (endTime - oldestPoint).Days);
+                                    
+                                    metricsData[metricName] = new
+                                    {
+                                        average = dataPoints.Average(d => d.average ?? d.total ?? 0),
+                                        max = dataPoints.Max(d => d.average ?? d.total ?? 0),
+                                        total = dataPoints.Where(d => d.total.HasValue).Sum(d => d.total ?? 0),
+                                        dataPointCount = dataPoints.Count
+                                    };
+                                    _logger.LogDebug("Collected {Count} data points for file share metric {MetricName}", dataPoints.Count, metricName);
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        _logger.LogWarning("Metrics API failed for file share metric {MetricName} on {Share}. Status: {Status}", 
+                            metricName, shareName, (int)response.StatusCode);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to collect file share metric {MetricName} for {Share}", metricName, shareName);
+                }
+            }
+            
+            if (!hasAnyData)
+            {
+                _logger.LogInformation("No historical file share metrics found for {Share}", shareName);
+                return (false, null, null);
+            }
+            
+            var jsonSummary = JsonSerializer.Serialize(metricsData);
+            _logger.LogInformation("Successfully collected {Count} file share metrics for {Share}: {MetricNames}", 
+                metricsData.Count, shareName, string.Join(", ", metricsData.Keys));
+            return (true, oldestDataDays > 0 ? oldestDataDays : 30, jsonSummary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error collecting file share metrics for {Share}", shareName);
+            return (false, null, null);
+        }
+    }
+    
     public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectStorageAccountMetricsAsync(
         string storageAccountResourceId, string storageAccountName)
     {
@@ -28,11 +167,11 @@ public class MetricsCollectionService
             
             // Azure Files metrics are at the fileServices sub-resource level
             var fileServicesResourceId = $"{storageAccountResourceId}/fileServices/default";
-            _logger.LogInformation("Collecting metrics for {Account} using fileServices path", storageAccountName);
+            _logger.LogInformation("Collecting storage account-level metrics for {Account} using fileServices path", storageAccountName);
             
             // Ask Azure Monitor which metrics are actually supported for this resource
             var supported = await GetSupportedMetricNamesAsync($"{fileServicesResourceId}");
-            // Preferred metrics for Azure Files
+            // Preferred metrics for Azure Files at storage account level
             var preferred = new (string name, string aggregation)[]
             {
                 ("Transactions","Total"),
