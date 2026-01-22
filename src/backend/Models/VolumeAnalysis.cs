@@ -262,7 +262,8 @@ public class VolumeWithAnalysis
     /// (based on observed peaks plus buffer). Otherwise it falls back to the current
     /// configured or estimated throughput for the volume.
     /// </summary>
-    public double? RequiredThroughputMiBps { get; set; }
+        public double? RequiredThroughputMiBps { get; set; }
+        public string? ThroughputCalculationNote { get; set; }
 
     /// <summary>
     /// Current configured or estimated throughput for the volume in MiB/s, based on

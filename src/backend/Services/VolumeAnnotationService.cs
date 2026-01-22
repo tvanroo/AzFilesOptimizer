@@ -191,51 +191,62 @@ public class VolumeAnnotationService
                             }
                         }
 
-                        // --- Current/Required Throughput Calculation ---
-                        double? requiredThroughput = null;
-                        if (dto.RequiredThroughputMiBps == null && !string.IsNullOrEmpty(share.HistoricalMetricsSummary))
+                        // --- Throughput Calculation with Proportional Allocation ---
+                        if (dto.RequiredThroughputMiBps == null)
                         {
-                             try
+                            if (!string.IsNullOrEmpty(share.HistoricalMetricsSummary))
                             {
-                                var metrics = System.Text.Json.JsonDocument.Parse(share.HistoricalMetricsSummary);
-                                if (metrics.RootElement.TryGetProperty("Egress", out var egressMetric) &&
-                                    egressMetric.TryGetProperty("max", out var maxEgress) &&
-                                    maxEgress.TryGetDouble(out var maxEgressBytes) &&
-                                    maxEgressBytes > 0)
+                                try
                                 {
-                                    // Convert max bytes per hour (from metric) to MiB/s and apply buffer.
-                                    var maxMiBps = (maxEgressBytes / (1024.0 * 1024.0)) / 3600.0;
-                                    requiredThroughput = maxMiBps * bufferFactor;
+                                    var metrics = System.Text.Json.JsonDocument.Parse(share.HistoricalMetricsSummary);
+                                    if (metrics.RootElement.TryGetProperty("Ingress", out var ingressMetric) &&
+                                        ingressMetric.TryGetProperty("max", out var maxIngress) &&
+                                        maxIngress.TryGetDouble(out var maxIngressBytes) &&
+                                        metrics.RootElement.TryGetProperty("Egress", out var egressMetric) &&
+                                        egressMetric.TryGetProperty("max", out var maxEgress) &&
+                                        maxEgress.TryGetDouble(out var maxEgressBytes))
+                                    {
+                                        var totalPeakBytes = maxIngressBytes + maxEgressBytes;
+                                        var totalPeakMiBps = (totalPeakBytes / (1024.0 * 1024.0)) / 3600.0;
+                                        
+                                        // For Standard storage, this is an account-level metric. We need to allocate it.
+                                        var accountShares = data.Volumes
+                                            .Where(vol => vol.VolumeType == "AzureFiles" && (vol.VolumeData as DiscoveredAzureFileShare)?.StorageAccountName == share.StorageAccountName)
+                                            .Select(vol => vol.VolumeData as DiscoveredAzureFileShare)
+                                            .Where(s => s != null)
+                                            .ToList();
+
+                                        var totalUsedBytes = accountShares.Sum(s => s?.ShareUsageBytes ?? 0);
+
+                                        if (totalUsedBytes > 0)
+                                        {
+                                            var shareProportion = (double)(share.ShareUsageBytes ?? 0) / totalUsedBytes;
+                                            dto.RequiredThroughputMiBps = (totalPeakMiBps * shareProportion) * bufferFactor;
+                                            if (accountShares.Count > 1)
+                                            {
+                                                dto.ThroughputCalculationNote = "Based on peak Ingress+Egress for the storage account, allocated proportionally by this share's capacity.";
+                                            }
+                                            else
+                                            {
+                                                dto.ThroughputCalculationNote = "Based on peak Ingress+Egress for the storage account.";
+                                            }
+                                        }
+                                        else
+                                        {
+                                            dto.RequiredThroughputMiBps = totalPeakMiBps * bufferFactor;
+                                            dto.ThroughputCalculationNote = "Based on peak Ingress+Egress for the storage account.";
+                                        }
+                                    }
                                 }
-                            }
-                            catch (JsonException ex)
-                            {
-                                _logger.LogWarning(ex, "Failed to parse HistoricalMetricsSummary for throughput calculation on share {ShareName}", share.ShareName);
+                                catch (JsonException ex)
+                                {
+                                    _logger.LogWarning(ex, "Failed to parse HistoricalMetricsSummary for throughput calculation on share {ShareName}", share.ShareName);
+                                }
                             }
                         }
                         
-                        // --- Current Throughput (for display) is based on provisioned/estimated values ---
-                        double? currentThroughput = null;
-                        if (share.ProvisionedBandwidthMiBps.HasValue)
-                        {
-                            currentThroughput = share.ProvisionedBandwidthMiBps.Value;
-                        }
-                        else if (share.EstimatedThroughputMiBps.HasValue)
-                        {
-                            currentThroughput = share.EstimatedThroughputMiBps.Value;
-                        }
-                        else if (!string.IsNullOrEmpty(share.StorageAccountSku))
-                        {
-                            var sku = share.StorageAccountSku.ToLowerInvariant();
-                            if (sku.Contains("premium"))
-                                currentThroughput = 100;
-                            else
-                                currentThroughput = 60;
-                        }
-                        dto.CurrentThroughputMiBps = currentThroughput;
-
-                        // Required throughput is the metric-based value, or falls back to the current throughput.
-                        dto.RequiredThroughputMiBps ??= requiredThroughput ?? currentThroughput;
+                        // Fallback to current throughput if metrics are unavailable
+                        dto.RequiredThroughputMiBps ??= currentThroughput;
                     }
                     break;
 
