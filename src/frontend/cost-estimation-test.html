@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cost Estimation Test - AzFilesOptimizer</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        .test-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 2rem;
+        }
+        .test-section {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section h2 {
+            margin-top: 0;
+            color: var(--primary-color);
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        .btn:hover {
+            background: var(--primary-dark);
+        }
+        .btn-secondary {
+            background: #6c757d;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        .result-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-top: 1rem;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .result-box pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        .confidence-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        .confidence-high {
+            background: #d4edda;
+            color: #155724;
+        }
+        .confidence-medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .confidence-low {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .estimate-card {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .estimate-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .estimate-cost {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <h1>💰 Cost Estimation Test</h1>
+                <nav class="header-nav">
+                    <a href="jobs.html">Back to Jobs</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main class="test-container">
+        <!-- Test 1: Pricing API Test -->
+        <div class="test-section">
+            <h2>🔍 Test 1: Azure Retail Prices API</h2>
+            <p>Test connectivity to Azure Retail Prices API</p>
+            
+            <div class="form-group">
+                <label for="test-region">Region:</label>
+                <input type="text" id="test-region" value="eastus" placeholder="e.g., eastus, westus">
+            </div>
+            
+            <div class="form-group">
+                <label for="test-service">Service:</label>
+                <select id="test-service">
+                    <option value="files">Azure Files (Hot/Cool)</option>
+                    <option value="premium-files">Premium Files</option>
+                    <option value="anf">Azure NetApp Files</option>
+                    <option value="disk">Managed Disks</option>
+                </select>
+            </div>
+            
+            <button class="btn" onclick="testPricingAPI()">Test Pricing API</button>
+            
+            <div id="pricing-result" class="result-box" style="display: none;">
+                <h3>Results:</h3>
+                <pre id="pricing-json"></pre>
+            </div>
+        </div>
+
+        <!-- Test 2: Job Cost Estimates -->
+        <div class="test-section">
+            <h2>📊 Test 2: Job Cost Estimates</h2>
+            <p>Calculate cost estimates for all resources in a discovery job</p>
+            
+            <div class="form-group">
+                <label for="job-id">Job ID:</label>
+                <input type="text" id="job-id" placeholder="Enter job ID">
+            </div>
+            
+            <button class="btn" onclick="getJobEstimates()">Calculate Estimates</button>
+            <button class="btn btn-secondary" onclick="loadLatestJob()">Use Latest Job</button>
+            
+            <div id="job-result" class="result-box" style="display: none;">
+                <h3>Summary:</h3>
+                <div id="job-summary"></div>
+                
+                <h3 style="margin-top: 1.5rem;">Resource Estimates:</h3>
+                <div id="job-estimates"></div>
+            </div>
+        </div>
+
+        <!-- Test 3: Single Resource Estimate -->
+        <div class="test-section">
+            <h2>🎯 Test 3: Single Resource Estimate</h2>
+            <p>Calculate cost estimate for a single resource</p>
+            
+            <div class="form-group">
+                <label for="resource-type">Resource Type:</label>
+                <select id="resource-type" onchange="updateSampleResource()">
+                    <option value="AzureFile">Azure Files Share</option>
+                    <option value="ANF">Azure NetApp Files Volume</option>
+                    <option value="ManagedDisk">Managed Disk</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="resource-json">Resource JSON:</label>
+                <textarea id="resource-json" rows="15" style="width: 100%; font-family: monospace; padding: 0.5rem;"></textarea>
+            </div>
+            
+            <button class="btn" onclick="calculateSingleEstimate()">Calculate</button>
+            <button class="btn btn-secondary" onclick="updateSampleResource()">Load Sample</button>
+            
+            <div id="single-result" class="result-box" style="display: none;">
+                <pre id="single-json"></pre>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/lib/msal-browser.min.js"></script>
+    <script src="js/auth-config.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/api-client.js"></script>
+    <script>
+        // Test 1: Pricing API
+        async function testPricingAPI() {
+            const region = document.getElementById('test-region').value;
+            const service = document.getElementById('test-service').value;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/pricing/test?region=${encodeURIComponent(region)}&service=${encodeURIComponent(service)}`);
+                const data = await response.json();
+                
+                document.getElementById('pricing-json').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('pricing-result').style.display = 'block';
+            } catch (error) {
+                document.getElementById('pricing-json').textContent = `Error: ${error.message}`;
+                document.getElementById('pricing-result').style.display = 'block';
+            }
+        }
+
+        // Test 2: Job Estimates
+        async function getJobEstimates() {
+            const jobId = document.getElementById('job-id').value;
+            
+            if (!jobId) {
+                alert('Please enter a job ID');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/discovery/${jobId}/cost-estimates`);
+                const data = await response.json();
+                
+                // Render summary
+                const summaryHtml = `
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                        <div>
+                            <strong>Total Estimated Cost:</strong><br>
+                            <span style="font-size: 1.5rem; color: var(--primary-color);">$${data.summary.TotalEstimatedCost.toFixed(2)}</span>
+                        </div>
+                        <div>
+                            <strong>Average Confidence:</strong><br>
+                            <span style="font-size: 1.5rem;">${data.summary.AverageConfidence.toFixed(1)}%</span>
+                        </div>
+                        <div>
+                            <strong>Resource Count:</strong><br>
+                            <span style="font-size: 1.5rem;">${data.summary.ResourceCount}</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <span class="confidence-badge confidence-high">High: ${data.summary.HighConfidenceCount}</span>
+                        <span class="confidence-badge confidence-medium">Medium: ${data.summary.MediumConfidenceCount}</span>
+                        <span class="confidence-badge confidence-low">Low: ${data.summary.LowConfidenceCount}</span>
+                    </div>
+                `;
+                document.getElementById('job-summary').innerHTML = summaryHtml;
+                
+                // Render estimates
+                const estimatesHtml = data.estimates.map(est => {
+                    const confidenceClass = est.ConfidenceLevel >= 80 ? 'confidence-high' :
+                                          est.ConfidenceLevel >= 50 ? 'confidence-medium' : 'confidence-low';
+                    const confidenceLabel = est.ConfidenceLevel >= 80 ? 'High' :
+                                           est.ConfidenceLevel >= 50 ? 'Medium' : 'Low';
+                    
+                    return `
+                        <div class="estimate-card">
+                            <div class="estimate-header">
+                                <div>
+                                    <strong>${est.VolumeName || 'Unnamed'}</strong>
+                                    <span style="color: #6c757d; font-size: 0.875rem;"> (${est.ResourceType})</span>
+                                </div>
+                                <div class="estimate-cost">$${est.TotalEstimatedCost.toFixed(2)}</div>
+                            </div>
+                            <div>
+                                <span class="confidence-badge ${confidenceClass}">${confidenceLabel} (${est.ConfidenceLevel.toFixed(0)}%)</span>
+                                <span style="color: #6c757d; font-size: 0.875rem; margin-left: 0.5rem;">${est.EstimationMethod}</span>
+                            </div>
+                            ${est.CostComponents && est.CostComponents.length > 0 ? `
+                                <div style="margin-top: 0.5rem; font-size: 0.875rem;">
+                                    <strong>Components:</strong>
+                                    ${est.CostComponents.map(c => `${c.ComponentType}: $${c.EstimatedCost.toFixed(2)}`).join(' | ')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }).join('');
+                document.getElementById('job-estimates').innerHTML = estimatesHtml;
+                
+                document.getElementById('job-result').style.display = 'block';
+            } catch (error) {
+                document.getElementById('job-summary').textContent = `Error: ${error.message}`;
+                document.getElementById('job-result').style.display = 'block';
+            }
+        }
+
+        async function loadLatestJob() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/discovery/jobs?limit=1`);
+                const data = await response.json();
+                
+                if (data.jobs && data.jobs.length > 0) {
+                    document.getElementById('job-id').value = data.jobs[0].JobId;
+                } else {
+                    alert('No jobs found');
+                }
+            } catch (error) {
+                alert(`Error loading jobs: ${error.message}`);
+            }
+        }
+
+        // Test 3: Single Resource
+        function updateSampleResource() {
+            const resourceType = document.getElementById('resource-type').value;
+            let sample = {};
+            
+            if (resourceType === 'AzureFile') {
+                sample = {
+                    "ResourceId": "/subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/account/fileServices/default/shares/share1",
+                    "Name": "share1",
+                    "ResourceType": "AzureFile",
+                    "Location": "eastus",
+                    "CapacityGb": 500,
+                    "UsedGb": 350,
+                    "SnapshotSizeGb": 50,
+                    "Properties": {
+                        "tier": "Hot",
+                        "sku": "Standard_LRS"
+                    }
+                };
+            } else if (resourceType === 'ANF') {
+                sample = {
+                    "ResourceId": "/subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.NetApp/netAppAccounts/account/capacityPools/pool/volumes/volume1",
+                    "Name": "volume1",
+                    "ResourceType": "ANF",
+                    "Location": "eastus",
+                    "CapacityGb": 4096,
+                    "UsedGb": 2048,
+                    "Properties": {
+                        "serviceLevel": "Premium",
+                        "coolAccess": "false"
+                    }
+                };
+            } else {
+                sample = {
+                    "ResourceId": "/subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1",
+                    "Name": "disk1",
+                    "ResourceType": "ManagedDisk",
+                    "Location": "eastus",
+                    "CapacityGb": 512,
+                    "Properties": {
+                        "sku": "Premium_LRS"
+                    }
+                };
+            }
+            
+            document.getElementById('resource-json').value = JSON.stringify(sample, null, 2);
+        }
+
+        async function calculateSingleEstimate() {
+            const resourceJson = document.getElementById('resource-json').value;
+            
+            try {
+                const resource = JSON.parse(resourceJson);
+                const response = await fetch(`${API_BASE_URL}/cost-estimates/calculate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(resource)
+                });
+                
+                const data = await response.json();
+                document.getElementById('single-json').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('single-result').style.display = 'block';
+            } catch (error) {
+                document.getElementById('single-json').textContent = `Error: ${error.message}`;
+                document.getElementById('single-result').style.display = 'block';
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await authManager.initialize();
+                const isAuthenticated = await authManager.requireAuth();
+                if (!isAuthenticated) return;
+                
+                // Load sample resource
+                updateSampleResource();
+            } catch (e) {
+                console.error('Error initializing test page:', e);
+            }
+        });
+    </script>
+</body>
+</html>

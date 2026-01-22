@@ -557,6 +557,84 @@
             return 'N/A';
         }
         
+        // Helper function to format cost estimate with confidence indicator
+        function formatCostEstimate(estimate) {
+            if (!estimate || estimate.TotalEstimatedCost === null || estimate.TotalEstimatedCost === undefined) {
+                return '<span style="color: var(--text-secondary);">N/A</span>';
+            }
+            
+            const cost = estimate.TotalEstimatedCost;
+            const confidence = estimate.ConfidenceLevel || 0;
+            const method = estimate.EstimationMethod || 'Unknown';
+            
+            let confidenceColor = '#4caf50'; // Green
+            let confidenceLabel = 'High';
+            
+            if (confidence < 50) {
+                confidenceColor = '#f44336'; // Red
+                confidenceLabel = 'Low';
+            } else if (confidence < 80) {
+                confidenceColor = '#ff9800'; // Orange
+                confidenceLabel = 'Medium';
+            }
+            
+            const confidenceBadge = `<span style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; background: ${confidenceColor}20; color: ${confidenceColor}; margin-left: 0.5rem;" title="Confidence: ${confidence.toFixed(0)}% - ${method}">${confidenceLabel}</span>`;
+            
+            return `<strong>$${cost.toFixed(2)}</strong>${confidenceBadge}`;
+        }
+        
+        // Helper function to render cost breakdown
+        function renderCostBreakdown(estimate) {
+            if (!estimate || !estimate.CostComponents || estimate.CostComponents.length === 0) {
+                return '<div style="color: var(--text-secondary); font-style: italic;">No cost breakdown available</div>';
+            }
+            
+            let html = '<div style="margin-top: 1rem; padding: 1rem; background: #f9f9f9; border-radius: 4px;">';
+            html += '<strong style="display: block; margin-bottom: 0.75rem;">💰 Cost Breakdown (30-day estimate):</strong>';
+            html += '<table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">';
+            html += '<thead><tr style="border-bottom: 2px solid #ddd;">';
+            html += '<th style="text-align: left; padding: 0.5rem;">Component</th>';
+            html += '<th style="text-align: right; padding: 0.5rem;">Quantity</th>';
+            html += '<th style="text-align: right; padding: 0.5rem;">Unit Price</th>';
+            html += '<th style="text-align: right; padding: 0.5rem;">Cost</th>';
+            html += '</tr></thead><tbody>';
+            
+            for (const component of estimate.CostComponents) {
+                html += '<tr style="border-bottom: 1px solid #eee;">';
+                html += `<td style="padding: 0.5rem;">${component.Description}</td>`;
+                html += `<td style="text-align: right; padding: 0.5rem;">${formatNumber(component.Quantity)} ${component.Unit}</td>`;
+                html += `<td style="text-align: right; padding: 0.5rem;">$${component.UnitPrice.toFixed(4)}</td>`;
+                html += `<td style="text-align: right; padding: 0.5rem; font-weight: 600;">$${component.EstimatedCost.toFixed(2)}</td>`;
+                html += '</tr>';
+            }
+            
+            html += '</tbody></table>';
+            
+            // Add notes and warnings
+            if (estimate.Notes && estimate.Notes.length > 0) {
+                html += '<div style="margin-top: 0.75rem; padding: 0.5rem; background: #e3f2fd; border-left: 3px solid #2196f3; font-size: 0.8rem;">';
+                html += '<strong>ℹ️ Notes:</strong><ul style="margin: 0.25rem 0 0 1.5rem; padding: 0;">';
+                estimate.Notes.forEach(note => {
+                    html += `<li>${note}</li>`;
+                });
+                html += '</ul></div>';
+            }
+            
+            if (estimate.Warnings && estimate.Warnings.length > 0) {
+                html += '<div style="margin-top: 0.75rem; padding: 0.5rem; background: #fff3e0; border-left: 3px solid #ff9800; font-size: 0.8rem;">';
+                html += '<strong>⚠️ Warnings:</strong><ul style="margin: 0.25rem 0 0 1.5rem; padding: 0;">';
+                estimate.Warnings.forEach(warning => {
+                    html += `<li>${warning}</li>`;
+                });
+                html += '</ul></div>';
+            }
+            
+            html += `<div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-secondary);">Method: ${estimate.EstimationMethod} | Confidence: ${estimate.ConfidenceLevel.toFixed(0)}% | Source: ${estimate.CostComponents[0]?.DataSource || 'Unknown'}</div>`;
+            html += '</div>';
+            
+            return html;
+        }
+        
         // Helper function to format ANF SKU with service level and cool access
         function formatAnfSku(volume) {
             if (!volume) return 'N/A';
