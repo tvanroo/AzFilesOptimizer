@@ -474,8 +474,8 @@ const volumeDetailPage = {
         html += `
             <div class="sizing-card">
                 <div class="sizing-card-label">Recommended Throughput</div>
-                <div class="sizing-card-value">${sizing.RecommendedThroughputMiBps.toFixed(1)} MiB/s</div>
-                <div class="sizing-card-subvalue">Peak: ${sizing.PeakThroughputMiBps.toFixed(1)} MiB/s</div>
+                <div class="sizing-card-value" title="Full precision: ${sizing.RecommendedThroughputMiBps.toFixed(8)} MiB/s">${sizing.RecommendedThroughputMiBps.toFixed(1)} MiB/s</div>
+                <div class="sizing-card-subvalue" title="Full precision: ${sizing.PeakThroughputMiBps.toFixed(8)} MiB/s">Peak: ${sizing.PeakThroughputMiBps.toFixed(1)} MiB/s</div>
             </div>
         `;
         
@@ -509,7 +509,7 @@ const volumeDetailPage = {
                 html += `
                     <div class="sizing-card">
                         <div class="sizing-card-label">Peak Read Throughput</div>
-                        <div class="sizing-card-value" style="font-size:0.95rem;">${sizing.PeakReadThroughputMiBps.toFixed(1)} MiB/s</div>
+                        <div class="sizing-card-value" style="font-size:0.95rem;" title="Full precision: ${sizing.PeakReadThroughputMiBps.toFixed(8)} MiB/s">${sizing.PeakReadThroughputMiBps.toFixed(1)} MiB/s</div>
                     </div>
                 `;
             }
@@ -518,7 +518,7 @@ const volumeDetailPage = {
                 html += `
                     <div class="sizing-card">
                         <div class="sizing-card-label">Peak Write Throughput</div>
-                        <div class="sizing-card-value" style="font-size:0.95rem;">${sizing.PeakWriteThroughputMiBps.toFixed(1)} MiB/s</div>
+                        <div class="sizing-card-value" style="font-size:0.95rem;" title="Full precision: ${sizing.PeakWriteThroughputMiBps.toFixed(8)} MiB/s">${sizing.PeakWriteThroughputMiBps.toFixed(1)} MiB/s</div>
                     </div>
                 `;
             }
@@ -855,8 +855,8 @@ const volumeDetailPage = {
         }
 
         if (vol.AverageReadThroughputMiBps || vol.AverageWriteThroughputMiBps) {
-            const readMb = vol.AverageReadThroughputMiBps ? vol.AverageReadThroughputMiBps.toFixed(1) : '-';
-            const writeMb = vol.AverageWriteThroughputMiBps ? vol.AverageWriteThroughputMiBps.toFixed(1) : '-';
+            const readMb = vol.AverageReadThroughputMiBps ? `<span title="Full precision: ${vol.AverageReadThroughputMiBps.toFixed(8)} MiB/s">${vol.AverageReadThroughputMiBps.toFixed(1)}</span>` : '-';
+            const writeMb = vol.AverageWriteThroughputMiBps ? `<span title="Full precision: ${vol.AverageWriteThroughputMiBps.toFixed(8)} MiB/s">${vol.AverageWriteThroughputMiBps.toFixed(1)}</span>` : '-';
             diskProps.push({ label: 'Avg Read Throughput (MiB/s)', value: readMb });
             diskProps.push({ label: 'Avg Write Throughput (MiB/s)', value: writeMb });
         }
@@ -1100,6 +1100,9 @@ const volumeDetailPage = {
             capacityInput.placeholder = sizing.RecommendedCapacityGiB 
                 ? `AI recommends: ${sizing.RecommendedCapacityGiB.toFixed(2)} GiB`
                 : 'Leave empty for AI recommendation';
+            capacityInput.title = sizing.RecommendedCapacityGiB 
+                ? `AI recommendation (full precision): ${sizing.RecommendedCapacityGiB.toFixed(8)} GiB`
+                : '';
         }
 
         // Set throughput override
@@ -1109,6 +1112,9 @@ const volumeDetailPage = {
             throughputInput.placeholder = sizing.RecommendedThroughputMiBps
                 ? `AI recommends: ${sizing.RecommendedThroughputMiBps.toFixed(1)} MiB/s`
                 : 'Leave empty for AI recommendation';
+            throughputInput.title = sizing.RecommendedThroughputMiBps
+                ? `AI recommendation (full precision): ${sizing.RecommendedThroughputMiBps.toFixed(8)} MiB/s`
+                : '';
         }
 
         // Set notes

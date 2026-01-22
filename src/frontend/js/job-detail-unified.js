@@ -523,12 +523,16 @@ const jobDetail = {
             case 'RequiredThroughputMiBps': {
                 const val = typeof v.RequiredThroughputMiBps === 'number' ? v.RequiredThroughputMiBps : null;
                 if (val == null) return 'N/A';
-                return val.toFixed(1);
+                const displayValue = val.toFixed(1);
+                const fullPrecision = val.toFixed(8);
+                return `<span title="Full precision: ${fullPrecision} MiB/s">${displayValue}</span>`;
             }
             case 'CurrentThroughputMiBps': {
                 const val = typeof v.CurrentThroughputMiBps === 'number' ? v.CurrentThroughputMiBps : null;
                 if (val == null) return 'N/A';
-                return val.toFixed(1);
+                const displayValue = val.toFixed(1);
+                const fullPrecision = val.toFixed(8);
+                return `<span title="Full precision: ${fullPrecision} MiB/s">${displayValue}</span>`;
             }
             case 'CurrentIops': {
                 const val = typeof v.CurrentIops === 'number' ? v.CurrentIops : null;
