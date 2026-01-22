@@ -323,27 +323,24 @@ public partial class DiscoveryService
                             }
                         }
                         
-                        // Populate monitoring info for ALL shares using file share-level metrics
+                        // Populate monitoring info using storage account-level metrics (cached per account)
                         if (_metricsService != null)
                         {
-                            await LogProgressAsync($"      → Collecting file share metrics for {share.Data.Name}...");
-                            var shareMetrics = await _metricsService.CollectFileShareMetricsAsync(
-                                discoveredShare.ResourceId, share.Data.Name);
-                            
-                            if (shareMetrics.hasData)
+                            var accountId = storageAccount.Id.ToString();
+                            if (!accountMetricsCache.TryGetValue(accountId, out var cached))
                             {
-                                await LogProgressAsync($"      ✓ File share metrics collected: {shareMetrics.daysAvailable} days available");
-                                discoveredShare.MonitoringEnabled = true;
-                                discoveredShare.MonitoringDataAvailableDays = shareMetrics.daysAvailable;
-                                discoveredShare.HistoricalMetricsSummary = shareMetrics.metricsSummary;
+                                await LogProgressAsync($"      → Collecting Azure Monitor metrics for {storageAccount.Data.Name} (once per account)...");
+                                cached = await _metricsService.CollectStorageAccountMetricsAsync(accountId, storageAccount.Data.Name);
+                                accountMetricsCache[accountId] = cached;
+                                if (cached.hasData)
+                                    await LogProgressAsync($"      ✓ Metrics collected for {storageAccount.Data.Name}: {cached.daysAvailable} days available");
+                                else
+                                    await LogProgressAsync($"      ⚠ No metrics data available for {storageAccount.Data.Name}");
                             }
-                            else
-                            {
-                                await LogProgressAsync($"      ⚠ No file share metrics data available for {share.Data.Name}");
-                                discoveredShare.MonitoringEnabled = false;
-                                discoveredShare.MonitoringDataAvailableDays = null;
-                                discoveredShare.HistoricalMetricsSummary = null;
-                            }
+
+                            discoveredShare.MonitoringEnabled = cached.hasData;
+                            discoveredShare.MonitoringDataAvailableDays = cached.daysAvailable;
+                            discoveredShare.HistoricalMetricsSummary = cached.metricsSummary;
                         }
                         else
                         {
