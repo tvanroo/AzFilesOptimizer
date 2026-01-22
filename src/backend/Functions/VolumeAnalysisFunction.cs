@@ -408,7 +408,7 @@ public class VolumeAnalysisFunction
                             }
                         }
 
-                        // Fallback to current throughput if metrics are unavailable
+                        // Current throughput: prefer provisioned, then estimated
                         double? currentThroughput = null;
                         if (share.ProvisionedBandwidthMiBps.HasValue)
                         {
@@ -418,8 +418,10 @@ public class VolumeAnalysisFunction
                         {
                             currentThroughput = share.EstimatedThroughputMiBps.Value;
                         }
+                        dto.CurrentThroughputMiBps = currentThroughput;
                         dto.RequiredThroughputMiBps ??= currentThroughput;
 
+                        // Current IOPS: prefer provisioned, then estimated, or -1 for unmetered standard
                         double? currentIops = null;
                         if (share.ProvisionedIops.HasValue)
                         {
