@@ -339,6 +339,12 @@ public class VolumeAnalysisFunction
                 case "AzureFiles":
                     if (volume.VolumeData is DiscoveredAzureFileShare share)
                     {
+                        double? usedGiB = null;
+                        if (share.ShareUsageBytes.HasValue && share.ShareUsageBytes.Value > 0)
+                        {
+                            usedGiB = share.ShareUsageBytes.Value / (1024.0 * 1024.0 * 1024.0);
+                        }
+                        
                         // Use max observed FileCapacity if available from metrics
                         if (!string.IsNullOrEmpty(share.HistoricalMetricsSummary))
                         {
