@@ -340,27 +340,13 @@ public class VolumeAnalysisFunction
                     if (volume.VolumeData is DiscoveredAzureFileShare share)
                     {
                         // --- Required Capacity Calculation ---
-                        // Base required capacity on the max observed value from metrics, plus a buffer.
-                        if (dto.RequiredCapacityGiB == null && !string.IsNullOrEmpty(share.HistoricalMetricsSummary))
-                        {
-                            var metrics = System.Text.Json.JsonDocument.Parse(share.HistoricalMetricsSummary);
-                            if (metrics.RootElement.TryGetProperty("FileCapacity", out var capacityMetric) &&
-                                capacityMetric.TryGetProperty("max", out var maxCapacity) &&
-                                maxCapacity.TryGetDouble(out var maxCapacityBytes) &&
-                                maxCapacityBytes > 0)
-                            {
-                                var maxGiB = maxCapacityBytes / (1024.0 * 1024.0 * 1024.0);
-                                dto.RequiredCapacityGiB = maxGiB * bufferFactor;
-                            }
-                        }
-
-                        // Fallback logic if no metrics are available or if AI sizing has not provided a recommendation.
+                        // Base on current usage + buffer, as historical metrics are per-account, not per-share.
                         if (dto.RequiredCapacityGiB == null)
                         {
                             if (share.ShareUsageBytes.HasValue && share.ShareUsageBytes.Value > 0)
                             {
                                 var usedGiB = share.ShareUsageBytes.Value / (1024.0 * 1024.0 * 1024.0);
-                                dto.RequiredCapacityGiB = usedGiB * bufferFactor;
+                                dto.RequiredCapacityGiB = Math.Max(usedGiB * bufferFactor, (double)(share.ShareQuotaGiB ?? 0));
                             }
                             else
                             {
