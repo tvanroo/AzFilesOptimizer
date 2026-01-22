@@ -511,9 +511,42 @@ const jobDetail = {
                 return `<span title="Full precision: ${gib.toFixed(8)} GiB (${bytes} bytes)">${displayValue}</span>`;
             }
             case 'AccessTier':
-                if (vType === 'ManagedDisk') return vData.DiskTier || vData.DiskSku || 'N/A';
-                if (vType === 'ANF') return vData.ServiceLevel || 'N/A';
-                return vData.AccessTier || 'N/A';
+                if (vType === 'ManagedDisk') {
+                    return vData.DiskTier || vData.DiskSku || 'N/A';
+                }
+                if (vType === 'ANF') {
+                    // Handle ANF service levels including cool variants
+                    const serviceLevel = vData.ServiceLevel || 'N/A';
+                    if (vData.CoolAccessEnabled) {
+                        return serviceLevel + ' Cool';
+                    }
+                    return serviceLevel;
+                }
+                // Azure Files - comprehensive deployment type detection
+                const accessTier = vData.AccessTier || '';
+                const accountKind = vData.StorageAccountKind || '';
+                const provisionedTier = vData.ProvisionedTier || '';
+                const isProvisioned = vData.IsProvisioned;
+                
+                // Premium FileStorage accounts
+                if (accountKind === 'FileStorage' || accessTier === 'Premium') {
+                    return 'Premium';
+                }
+                
+                // Provisioned v1/v2 variations
+                if (isProvisioned || provisionedTier) {
+                    if (provisionedTier === 'ProvisionedV2SSD') return 'Provisioned v2 SSD';
+                    if (provisionedTier === 'ProvisionedV2HDD') return 'Provisioned v2 HDD';
+                    if (provisionedTier === 'ProvisionedV1') return 'Provisioned v1';
+                    if (isProvisioned) return 'Provisioned v1'; // fallback
+                }
+                
+                // Standard deployment types
+                if (accessTier === 'TransactionOptimized') return 'Transaction Optimized';
+                if (accessTier === 'Hot') return 'Hot';
+                if (accessTier === 'Cool') return 'Cool';
+                
+                return accessTier || 'N/A';
             case 'Protocols':
                 if (vType === 'ManagedDisk') return 'Block';
                 if (vType === 'ANF') return vData.ProtocolTypes?.join(', ') || '-';
@@ -525,14 +558,28 @@ const jobDetail = {
                     return redundancy;
                 }
                 if (vType === 'ANF') {
-                    // Show QoS type or flexible indicator for ANF
-                    if (vData.PoolQosType) return vData.PoolQosType;
-                    if (vData.ServiceLevel === 'Flexible') return 'Flexible';
-                    return 'Auto';
+                    // ANF Replication options: None, CRR (Cross-Region), CZR (Cross-Zone), CZRR (Cross-Zone+Region)
+                    // TODO: Enhance discovery service to collect ANF replication configuration
+                    // Properties needed: VolumeReplicationEnabled, ReplicationEndpoints, ReplicationSchedule
+                    // For now, return 'None' as most volumes don't have replication configured
+                    return 'None';
                 }
-                // For Azure Files, extract redundancy from StorageAccountSku (e.g., Standard_LRS -> LRS)
-                const redundancy = vData.StorageAccountSku?.split('_').pop() || 'N/A';
-                return redundancy;
+                // Azure Files redundancy from StorageAccountSku (e.g., Standard_LRS -> LRS, Standard_GRS -> GRS)
+                const sku = vData.StorageAccountSku || '';
+                if (sku.includes('_')) {
+                    const redundancy = sku.split('_').pop();
+                    // Map specific redundancy types
+                    switch (redundancy) {
+                        case 'LRS': return 'LRS';
+                        case 'ZRS': return 'ZRS';
+                        case 'GRS': return 'GRS';
+                        case 'GZRS': return 'GZRS';
+                        case 'RAGRS': return 'RA-GRS';
+                        case 'RAGZRS': return 'RA-GZRS';
+                        default: return redundancy || 'N/A';
+                    }
+                }
+                return 'N/A';
             case 'RequiredCapacityGiB': {
                 const val = typeof v.RequiredCapacityGiB === 'number' ? v.RequiredCapacityGiB : null;
                 if (val == null) return 'N/A';
