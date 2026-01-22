@@ -12,16 +12,40 @@ public class CostEstimationFunction
 {
     private readonly AccurateCostEstimationService _estimationService;
     private readonly DiscoveredResourceStorageService _storageService;
-    private readonly ILogger<CostEstimationFunction> _logger;
+    private readonly AzureRetailPricesClient _pricesClient;
+    private readonly ILogger _logger;
 
-    public CostEstimationFunction(
-        AccurateCostEstimationService estimationService,
-        DiscoveredResourceStorageService storageService,
-        ILogger<CostEstimationFunction> logger)
+    public CostEstimationFunction(ILoggerFactory loggerFactory)
     {
-        _estimationService = estimationService;
-        _storageService = storageService;
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger<CostEstimationFunction>();
+        
+        // Get storage connection string from environment
+        var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
+        _storageService = new DiscoveredResourceStorageService(connectionString);
+        
+        // Initialize services
+        var httpClient = new HttpClient();
+        var memoryCache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions());
+        
+        _pricesClient = new AzureRetailPricesClient(
+            httpClient, 
+            memoryCache,
+            loggerFactory.CreateLogger<AzureRetailPricesClient>());
+        
+        var fileCalculator = new AzureFilesCostCalculator(_pricesClient, loggerFactory.CreateLogger<AzureFilesCostCalculator>());
+        var anfCalculator = new AnfCostCalculator(_pricesClient, loggerFactory.CreateLogger<AnfCostCalculator>());
+        var diskCalculator = new ManagedDiskCostCalculator(
+            _pricesClient, 
+            null!, // CostCollectionService not needed for basic estimation
+            loggerFactory.CreateLogger<ManagedDiskCostCalculator>());
+        
+        _estimationService = new AccurateCostEstimationService(
+            fileCalculator,
+            anfCalculator,
+            diskCalculator,
+            null!, // CostCollectionService not needed for basic estimation
+            loggerFactory.CreateLogger<AccurateCostEstimationService>());
     }
 
     /// <summary>
@@ -169,31 +193,24 @@ public class CostEstimationFunction
             var region = query["region"] ?? "eastus";
             var service = query["service"] ?? "files";
 
-            var pricesClient = req.FunctionContext.InstanceServices.GetService(typeof(AzureRetailPricesClient)) as AzureRetailPricesClient;
-            
-            if (pricesClient == null)
-            {
-                throw new InvalidOperationException("AzureRetailPricesClient not available");
-            }
-
             List<PriceItem> prices;
 
             switch (service.ToLowerInvariant())
             {
                 case "files":
-                    prices = await pricesClient.GetAzureFilesPricingAsync(region);
+                    prices = await _pricesClient.GetAzureFilesPricingAsync(region);
                     break;
                 case "premium-files":
-                    prices = await pricesClient.GetPremiumFilesPricingAsync(region);
+                    prices = await _pricesClient.GetPremiumFilesPricingAsync(region);
                     break;
                 case "anf":
-                    prices = await pricesClient.GetAnfPricingAsync(region);
+                    prices = await _pricesClient.GetAnfPricingAsync(region);
                     break;
                 case "disk":
-                    prices = await pricesClient.GetManagedDiskPricingAsync(region);
+                    prices = await _pricesClient.GetManagedDiskPricingAsync(region);
                     break;
                 default:
-                    prices = await pricesClient.GetAzureFilesPricingAsync(region);
+                    prices = await _pricesClient.GetAzureFilesPricingAsync(region);
                     break;
             }
 
