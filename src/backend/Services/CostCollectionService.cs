@@ -630,9 +630,23 @@ public class CostCollectionService
 
             if (pricing == null)
             {
-                _logger.LogWarning("Could not retrieve pricing for ANF volume {VolumeName}", volume.VolumeName);
-                analysis.Warnings.Add("Failed to retrieve retail pricing data");
+                _logger.LogWarning("Could not retrieve pricing for ANF volume {VolumeName} in region {Region} with service level {ServiceLevel}", 
+                    volume.VolumeName, volume.Location, serviceLevel);
+                analysis.Warnings.Add($"Failed to retrieve retail pricing data for region {volume.Location} and service level {serviceLevel}");
                 return analysis;
+            }
+            
+            // Log pricing details for debugging
+            _logger.LogInformation(
+                "Retrieved ANF pricing for {Volume} | Region: {Region} | ServiceLevel: {ServiceLevel} | CapacityPrice/GiB/hr: ${CapacityPrice} | CapacityPrice/TiB/mo: ${CapacityPriceMonth}",
+                volume.VolumeName, volume.Location, serviceLevel, pricing.CapacityPricePerGibHour, pricing.CapacityPricePerTibMonth);
+            
+            if (pricing.CapacityPricePerGibHour <= 0)
+            {
+                _logger.LogError(
+                    "Zero or negative capacity pricing returned for ANF volume {VolumeName} in region {Region} with service level {ServiceLevel}. This will result in $0 cost calculation.",
+                    volume.VolumeName, volume.Location, serviceLevel);
+                analysis.Warnings.Add($"Invalid pricing data: CapacityPricePerGibHour is {pricing.CapacityPricePerGibHour}");
             }
             
             // Store pricing data for debugging
@@ -775,6 +789,13 @@ public class CostCollectionService
             else
             {
                 // Standard capacity cost (no cool tier)
+                _logger.LogInformation(
+                    "Calculating standard capacity cost for {Volume} | Capacity: {CapacityGb:F2} GB | Price/GiB/month: ${PricePerGib} | Expected cost: ${ExpectedCost:F2}",
+                    volume.VolumeName, 
+                    capacityForCosting, 
+                    pricing.CapacityPricePerGibHour * 730,
+                    capacityForCosting * pricing.CapacityPricePerGibHour * 730);
+                
                 var storageCost = StorageCostComponent.ForCapacity(
                     volume.ResourceId,
                     volume.Location,
