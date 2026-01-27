@@ -409,23 +409,9 @@ public class CostAnalysisFunction
                     
                     cost.JobId = job.JobId;
                     
+                    // Azure Files costs are calculated from retail pricing, not Cost Management API
                     await _jobLogService.AddLogAsync(job.JobId,
-                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Querying Cost Management API for actual costs...");
-                    
-                    // Enrich with detailed actual costs from Cost Management API
-                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, costPeriodStart, costPeriodEnd);
-                    
-                    // Log the result
-                    if (cost.ActualCostsApplied)
-                    {
-                        await _jobLogService.AddLogAsync(job.JobId,
-                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ✓ Actual costs applied: ${cost.TotalCostForPeriod:F2} ({cost.ActualCostMeterCount} meters)");
-                    }
-                    else
-                    {
-                        await _jobLogService.AddLogAsync(job.JobId,
-                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚠ Using retail estimates: ${cost.TotalCostForPeriod:F2} | Reason: {cost.ActualCostsNotAppliedReason}");
-                    }
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ✓ Calculated from retail pricing: ${cost.TotalCostForPeriod:F2}");
                     
                     costAnalyses.Add(cost);
 
@@ -472,23 +458,9 @@ public class CostAnalysisFunction
                     
                     cost.JobId = job.JobId;
                     
+                    // ANF costs are calculated from retail pricing, not Cost Management API
                     await _jobLogService.AddLogAsync(job.JobId,
-                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Querying Cost Management API for actual costs...");
-                    
-                    // Enrich with detailed actual costs from Cost Management API
-                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, costPeriodStart, costPeriodEnd);
-                    
-                    // Log the result
-                    if (cost.ActualCostsApplied)
-                    {
-                        await _jobLogService.AddLogAsync(job.JobId,
-                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ✓ Actual costs applied: ${cost.TotalCostForPeriod:F2} ({cost.ActualCostMeterCount} meters)");
-                    }
-                    else
-                    {
-                        await _jobLogService.AddLogAsync(job.JobId,
-                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚠ Using retail estimates: ${cost.TotalCostForPeriod:F2} | Reason: {cost.ActualCostsNotAppliedReason}");
-                    }
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ✓ Calculated from retail pricing: ${cost.TotalCostForPeriod:F2}");
                     
                     costAnalyses.Add(cost);
 
@@ -531,8 +503,26 @@ public class CostAnalysisFunction
                     
                     cost.JobId = job.JobId;
                     
-                    // Enrich with detailed actual costs from Cost Management API
+                    await _jobLogService.AddLogAsync(job.JobId,
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Processing disk '{disk.DiskName}' | ResourceId: {disk.ResourceId}");
+                    
+                    await _jobLogService.AddLogAsync(job.JobId,
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Querying Cost Management API for actual costs...");
+                    
+                    // Managed disks: enrich with detailed actual costs from Cost Management API
                     await _costCollection.EnrichWithDetailedActualCostsAsync(cost, costPeriodStart, costPeriodEnd);
+                    
+                    // Log the result
+                    if (cost.ActualCostsApplied)
+                    {
+                        await _jobLogService.AddLogAsync(job.JobId,
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ✓ Actual costs applied: ${cost.TotalCostForPeriod:F2} ({cost.ActualCostMeterCount} meters)");
+                    }
+                    else
+                    {
+                        await _jobLogService.AddLogAsync(job.JobId,
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚠ Using retail estimates: ${cost.TotalCostForPeriod:F2} | Reason: {cost.ActualCostsNotAppliedReason}");
+                    }
                     
                     costAnalyses.Add(cost);
 
