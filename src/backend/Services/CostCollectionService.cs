@@ -815,6 +815,17 @@ public class CostCollectionService
                         $"ANF-{volume.CapacityPoolServiceLevel}"
                     );
                     analysis.AddCostComponent(storageCost);
+                    
+                    // Log detailed calculation formula to job log
+                    if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                    {
+                        await _jobLogService.AddLogAsync(jobId, 
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Data Capacity Cost Formula: ProvisionedCapacityGiB * Retail API meterName '{serviceLevel} Service Level Capacity' retailPrice * time conversion");
+                        await _jobLogService.AddLogAsync(jobId, 
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Data Capacity Cost Calculation: {capacityForCosting:F2} GiB * (${pricing.CapacityPricePerGibHour:F6}/Hour * 730 Hours) = ${storageCost.CostForPeriod:F3}");
+                        await _jobLogService.AddLogAsync(jobId, 
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚠️  Note: Cool access enabled but no cool tier data metrics available yet. Using standard capacity pricing.");
+                    }
                 }
             }
             else
@@ -901,6 +912,15 @@ public class CostCollectionService
                         _logger.LogInformation(
                             "Flexible volume {Volume} with {VolumeAlloc:F2} MiB/s allocation. Pool total={PoolTotal:F2} MiB/s (within {Baseline:F2} MiB/s baseline, no additional throughput costs)",
                             volume.VolumeName, volumeAllocatedThroughputMiBps.Value, poolTotalThroughputMiBps.Value, poolBaselineThroughput);
+                        
+                        // Log detailed explanation to job log
+                        if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                        {
+                            await _jobLogService.AddLogAsync(jobId, 
+                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚡ Flexible Throughput Cost Formula: ((ThroughputMiBps / PoolTotalThroughputMiBps) * (PoolTotalThroughputMiBps - 128 MiB/s baseline)) * Retail API 'Flexible Throughput' retailPrice * time conversion");
+                            await _jobLogService.AddLogAsync(jobId, 
+                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚡ Flexible Throughput Cost Calculation: Pool total {poolTotalThroughputMiBps:F2} MiB/s <= 128 MiB/s baseline. Volume allocated {volumeAllocatedThroughputMiBps:F2} MiB/s is fully covered by free baseline. Billable throughput = 0.00 MiB/s = $0.000");
+                        }
                     }
                     else
                     {
