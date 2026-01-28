@@ -17,10 +17,10 @@ public class RetailPricingService
     private readonly TableClient _tableClient;
     private readonly HttpClient _httpClient;
     
-    // In-memory cache with 24-hour expiry for frequently accessed prices
+    // In-memory cache with 60-second expiry for debugging (TODO: change back to 24 hours)
     private readonly ConcurrentDictionary<string, CachedPrice> _memoryCache = new();
-    private static readonly TimeSpan MemoryCacheExpiry = TimeSpan.FromHours(24);
-    private static readonly TimeSpan TableStorageExpiry = TimeSpan.FromDays(7);
+    private static readonly TimeSpan MemoryCacheExpiry = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan TableStorageExpiry = TimeSpan.FromSeconds(60);
     
     private const string RetailApiBaseUrl = "https://prices.azure.com/api/retail/prices";
     private const string ApiVersion = "2023-01-01-preview";
