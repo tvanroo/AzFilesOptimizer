@@ -592,6 +592,46 @@ public class CostCollectionService
     {
         try
         {
+            // Identify ANF cost permutation
+            bool isDoubleEncryption = volume.EncryptionKeySource != null &&
+                !volume.EncryptionKeySource.Equals("Microsoft.NetApp", StringComparison.OrdinalIgnoreCase);
+            
+            var permutation = AnfCostPermutation.Identify(
+                volume.ServiceLevel ?? volume.CapacityPoolServiceLevel ?? "Standard",
+                volume.CoolAccessEnabled ?? false,
+                isDoubleEncryption
+            );
+            
+            // Log permutation identification
+            if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+            {
+                await _jobLogService.AddLogAsync(jobId, 
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🔍 ANF Cost Permutation: #{permutation.PermutationId} - {permutation.Name}");
+                await _jobLogService.AddLogAsync(jobId, 
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   📊 Configuration: Service Level={permutation.ServiceLevel}, Cool Access={permutation.CoolAccessEnabled}, Double Encryption={permutation.DoubleEncryptionEnabled}");
+                
+                // Log throughput characteristics for this permutation
+                if (permutation.ServiceLevel == "Flexible")
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚡ Throughput Model: Flexible tier - 128 MiB/s base (flat) + pay for additional throughput");
+                }
+                else if (permutation.CoolAccessEnabled && permutation.CoolAccessThroughputPerTib.HasValue)
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚡ Throughput Model: {permutation.CoolAccessThroughputPerTib.Value:F1} MiB/s per TiB (reduced from {permutation.BaseThroughputPerTib:F1} due to cool access)");
+                }
+                else
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚡ Throughput Model: {permutation.BaseThroughputPerTib:F1} MiB/s per TiB");
+                }
+            }
+            
+            _logger.LogInformation(
+                "Identified ANF permutation for {Volume}: #{PermutationId} - {PermutationName}",
+                volume.VolumeName, permutation.PermutationId, permutation.Name);
+            
             var analysis = new VolumeCostAnalysis
             {
                 ResourceId = volume.ResourceId,
@@ -608,6 +648,11 @@ public class CostCollectionService
                 BackupConfigured = volume.BackupPolicyConfigured ?? false,
                 CostCalculationInputs = new Dictionary<string, object>
                 {
+                    { "PermutationId", permutation.PermutationId },
+                    { "PermutationName", permutation.Name },
+                    { "ServiceLevel", permutation.ServiceLevel },
+                    { "CoolAccessEnabled", permutation.CoolAccessEnabled },
+                    { "DoubleEncryptionEnabled", permutation.DoubleEncryptionEnabled },
                     { "CapacityPoolServiceLevel", volume.CapacityPoolServiceLevel ?? "null" },
                     { "ProvisionedSizeBytes", volume.ProvisionedSizeBytes },
                     { "SnapshotCount", volume.SnapshotCount ?? 0 },
