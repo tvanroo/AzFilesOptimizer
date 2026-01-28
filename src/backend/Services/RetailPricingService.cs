@@ -439,7 +439,16 @@ public class RetailPricingService
         try
         {
             var query = BuildAnfQuery(region, serviceLevel);
+            _logger.LogInformation("Querying ANF pricing API for region {Region}, service level {ServiceLevel}: {Query}", 
+                region, serviceLevel, query);
             var meters = await QueryRetailApiAsync(query);
+            _logger.LogInformation("ANF pricing API returned {Count} meters for {ServiceLevel}", 
+                meters.Count, serviceLevel);
+            foreach (var meter in meters)
+            {
+                _logger.LogInformation("  - Meter: {MeterName}, Price: ${Price}, SKU: {SKU}", 
+                    meter.MeterName, meter.RetailPrice, meter.SkuName);
+            }
             
             await CacheMetersAsync(region, "ANF", meters, (meter) =>
             {
@@ -679,7 +688,7 @@ public class RetailPricingService
         {
             try
             {
-                _logger.LogDebug("Querying Retail API: {Url}", url);
+                _logger.LogInformation("Querying Retail API: {Url}", url);
                 
                 var response = await _httpClient.GetAsync(url);
                 response.EnsureSuccessStatusCode();
