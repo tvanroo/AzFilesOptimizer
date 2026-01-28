@@ -111,13 +111,14 @@ public class AzureRetailPricesClient
         {
             // Product name is always "Azure NetApp Files" (not "Azure NetApp Files Standard")  
             // Service level is in the SKU name (e.g., "Standard", "Premium", "Ultra", "Flexible Service Level")
-            // Meter name for capacity is "{tier} Capacity" (e.g., "Standard Capacity", "Ultra Capacity")
-            var meterName = tier == "Flexible Service Level" ? "Flexible Service Level Capacity" : $"{tier} Capacity";
+            // Note: API uses "Flexible Service Level" but our code might pass "Flexible"
+            var skuName = (tier == "Flexible" || tier == "Flexible Service Level") ? "Flexible Service Level" : tier;
+            var meterName = skuName == "Flexible Service Level" ? "Flexible Service Level Capacity" : $"{tier} Capacity";
             
-            var filter = $"serviceFamily eq 'Storage' and serviceName eq 'Azure NetApp Files' and productName eq 'Azure NetApp Files' and armRegionName eq '{region}' and skuName eq '{tier}' and meterName eq '{meterName}'";
+            var filter = $"serviceFamily eq 'Storage' and serviceName eq 'Azure NetApp Files' and productName eq 'Azure NetApp Files' and armRegionName eq '{region}' and skuName eq '{skuName}' and meterName eq '{meterName}'";
             var prices = await QueryPricesAsync(filter);
             
-            _logger.LogInformation("Retrieved {Count} ANF pricing items for region {Region}, tier {Tier}, meterName {MeterName}", prices.Count, region, tier, meterName);
+            _logger.LogInformation("Retrieved {Count} ANF pricing items for region {Region}, tier {Tier}, skuName {SkuName}, meterName {MeterName}", prices.Count, region, tier, skuName, meterName);
             
             _cache.Set(cacheKey, prices, _cacheExpiry);
             return prices;

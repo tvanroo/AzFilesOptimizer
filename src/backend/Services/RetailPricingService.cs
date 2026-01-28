@@ -559,6 +559,9 @@ public class RetailPricingService
         var armRegionName = NormalizeRegionForApi(region);
         var serviceLevelStr = serviceLevel.ToString();
         
+        // SKU name pattern: API uses "Flexible Service Level" but enum is just "Flexible"
+        var skuName = serviceLevel == AnfServiceLevel.Flexible ? "Flexible Service Level" : serviceLevelStr;
+        
         // Meter name pattern: "{ServiceLevel} Capacity" (e.g., "Standard Capacity", "Premium Capacity")
         var meterName = serviceLevel == AnfServiceLevel.Flexible ? "Flexible Service Level Capacity" : $"{serviceLevelStr} Capacity";
         
@@ -568,7 +571,7 @@ public class RetailPricingService
             "serviceName eq 'Azure NetApp Files'",
             "productName eq 'Azure NetApp Files'",
             $"armRegionName eq '{armRegionName}'",
-            $"skuName eq '{serviceLevelStr}'",
+            $"skuName eq '{skuName}'",
             $"meterName eq '{meterName}'"
         };
         
