@@ -33,10 +33,11 @@ public class CostAnalysisFunction
         var metricsService = new MetricsCollectionService(_logger, credential);
         var normalizationService = new MetricsNormalizationService(_logger, credential);
         _jobLogService = new JobLogService(connectionString);
-        var pricingServiceWithLogs = new RetailPricingService(_logger, tableServiceClient, httpClient, _jobLogService);
-        _costCollection = new CostCollectionService(_logger, credential, pricingServiceWithLogs, metricsService, normalizationService, _jobLogService);
-        _costForecasting = new CostForecastingService(_logger);
         _resourceStorage = new DiscoveredResourceStorageService(connectionString);
+        var assumptionsService = new CoolDataAssumptionsService(tableServiceClient, _resourceStorage, loggerFactory.CreateLogger<CoolDataAssumptionsService>());
+        var pricingServiceWithLogs = new RetailPricingService(_logger, tableServiceClient, httpClient, _jobLogService);
+        _costCollection = new CostCollectionService(_logger, credential, pricingServiceWithLogs, metricsService, normalizationService, assumptionsService, _jobLogService);
+        _costForecasting = new CostForecastingService(_logger);
         _jobStorage = new JobStorageService(connectionString);
         _costHistory = new CostHistoryService(connectionString, _logger);
     }
