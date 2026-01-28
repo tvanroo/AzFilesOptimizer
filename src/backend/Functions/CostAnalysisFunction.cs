@@ -381,18 +381,15 @@ public class CostAnalysisFunction
             var costAnalyses = new List<VolumeCostAnalysis>();
             var forecasts = new List<CostForecastResult>();
 
-            // Cost Management API has 1-2 day lag, so query up to 2 days ago
+            // Cost Management API has 1-2 day lag, so query up to 2 days ago (only used for Managed Disks)
             var costPeriodEnd = DateTime.UtcNow.AddDays(-2);
             var costPeriodStart = costPeriodEnd.AddDays(-30);
-
-            await _jobLogService.AddLogAsync(job.JobId,
-                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Cost analysis period: {costPeriodStart:yyyy-MM-dd} to {costPeriodEnd:yyyy-MM-dd} (accounting for Cost Management API lag)");
 
             // Process Azure Files
             if (shares.Count > 0)
             {
                 await _jobLogService.AddLogAsync(job.JobId,
-                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating costs for Azure Files shares...");
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating projected 30-day costs for Azure Files shares (based on current configuration + metrics)...");
             }
 
             foreach (var share in shares)
@@ -441,7 +438,7 @@ public class CostAnalysisFunction
             if (volumes.Count > 0)
             {
                 await _jobLogService.AddLogAsync(job.JobId,
-                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating costs for Azure NetApp Files volumes...");
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating projected 30-day costs for Azure NetApp Files volumes (based on current configuration + metrics)...");
             }
 
             foreach (var volume in volumes)
@@ -490,7 +487,7 @@ public class CostAnalysisFunction
             if (disks.Count > 0)
             {
                 await _jobLogService.AddLogAsync(job.JobId,
-                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating costs for managed disks...");
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating costs for managed disks (querying actual billed costs from {costPeriodStart:yyyy-MM-dd} to {costPeriodEnd:yyyy-MM-dd})...");
             }
 
             foreach (var disk in disks)
