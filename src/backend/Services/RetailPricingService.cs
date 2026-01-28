@@ -466,12 +466,19 @@ public class RetailPricingService
                     meterType = "capacity";
                 else if (meterNameLower.Contains("throughput"))
                     meterType = "throughput";
-                else if (meterNameLower.Contains("cool") && meterNameLower.Contains("storage"))
-                    meterType = "coolstorage";
-                else if (meterNameLower.Contains("cool") && meterNameLower.Contains("transfer"))
-                    meterType = "cooltransfer";
+                // Note: Cool tier meters come from separate SKU, shouldn't be in this query
                 
-                return RetailPriceCache.CreateAnfMeterKey(serviceLevelStr, meterType);
+                if (string.IsNullOrEmpty(meterType))
+                {
+                    _logger.LogWarning("⚠️ SKIPPING meter with unrecognized name: {MeterName} (SKU: {SKU})", 
+                        meter.MeterName, meter.SkuName);
+                    return ""; // Return empty to skip caching
+                }
+                
+                var key = RetailPriceCache.CreateAnfMeterKey(serviceLevelStr, meterType);
+                _logger.LogWarning("📝 CACHING: {MeterName} → key '{Key}' with price ${Price}", 
+                    meter.MeterName, key, meter.RetailPrice);
+                return key;
             });
             
             _logger.LogInformation("Refreshed ANF pricing for region {Region}, service level {ServiceLevel}, cached {Count} meters", 
@@ -748,7 +755,10 @@ public class RetailPricingService
             {
                 var meterKey = meterKeyFunc(meter);
                 if (string.IsNullOrWhiteSpace(meterKey))
+                {
+                    _logger.LogWarning("⚠️ Skipping meter {MeterName} - empty cache key returned", meter.MeterName);
                     continue;
+                }
                 
                 var cacheEntity = new RetailPriceCache
                 {
