@@ -33,7 +33,8 @@ public class CostAnalysisFunction
         var metricsService = new MetricsCollectionService(_logger, credential);
         var normalizationService = new MetricsNormalizationService(_logger, credential);
         _jobLogService = new JobLogService(connectionString);
-        _costCollection = new CostCollectionService(_logger, credential, pricingService, metricsService, normalizationService, _jobLogService);
+        var pricingServiceWithLogs = new RetailPricingService(_logger, tableServiceClient, httpClient, _jobLogService);
+        _costCollection = new CostCollectionService(_logger, credential, pricingServiceWithLogs, metricsService, normalizationService, _jobLogService);
         _costForecasting = new CostForecastingService(_logger);
         _resourceStorage = new DiscoveredResourceStorageService(connectionString);
         _jobStorage = new JobStorageService(connectionString);

@@ -629,7 +629,8 @@ public class CostCollectionService
 
             var pricing = await _pricingService.GetAnfPricingAsync(
                 volume.Location,
-                serviceLevel
+                serviceLevel,
+                jobId
             );
 
             if (pricing == null)

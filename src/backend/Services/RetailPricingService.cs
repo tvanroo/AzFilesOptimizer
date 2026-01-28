@@ -16,6 +16,7 @@ public class RetailPricingService
     private readonly ILogger _logger;
     private readonly TableClient _tableClient;
     private readonly HttpClient _httpClient;
+    private readonly JobLogService? _jobLogService;
     
     // In-memory cache with 60-second expiry for debugging (TODO: change back to 24 hours)
     private readonly ConcurrentDictionary<string, CachedPrice> _memoryCache = new();
@@ -25,11 +26,12 @@ public class RetailPricingService
     private const string RetailApiBaseUrl = "https://prices.azure.com/api/retail/prices";
     private const string ApiVersion = "2023-01-01-preview";
     
-    public RetailPricingService(ILogger logger, TableServiceClient tableServiceClient, HttpClient httpClient)
+    public RetailPricingService(ILogger logger, TableServiceClient tableServiceClient, HttpClient httpClient, JobLogService? jobLogService = null)
     {
         _logger = logger;
         _httpClient = httpClient;
         _tableClient = tableServiceClient.GetTableClient("RetailPriceCache");
+        _jobLogService = jobLogService;
     }
     
     /// <summary>
@@ -181,7 +183,7 @@ public class RetailPricingService
     /// <summary>
     /// Get Azure NetApp Files pricing for a specific service level
     /// </summary>
-    public async Task<AnfMeterPricing?> GetAnfPricingAsync(string region, AnfServiceLevel serviceLevel)
+    public async Task<AnfMeterPricing?> GetAnfPricingAsync(string region, AnfServiceLevel serviceLevel, string? jobId = null)
     {
         try
         {
@@ -200,11 +202,16 @@ public class RetailPricingService
             // Force refresh if cache is missing OR has suspicious $0 price
             if (capacityMeter == null || capacityMeter.UnitPrice == 0)
             {
-                _logger.LogWarning("🔄 FORCING REFRESH: ANF pricing for {Region}/{ServiceLevel} (cache missing={Missing} or price=${Price})", 
-                    region, serviceLevel, capacityMeter == null, capacityMeter?.UnitPrice ?? 0);
-                await RefreshAnfPricingAsync(region, serviceLevel);
+                if (_jobLogService != null && jobId != null)
+                {
+                    await _jobLogService.AddLogAsync(jobId, $"🔄 FORCING REFRESH: ANF pricing for {region}/{serviceLevel} (cache missing={capacityMeter == null} or price=${capacityMeter?.UnitPrice ?? 0})");
+                }
+                await RefreshAnfPricingAsync(region, serviceLevel, jobId);
                 capacityMeter = await GetCachedPriceAsync(region, capacityKey, "ANF");
-                _logger.LogWarning("🔄 AFTER REFRESH: ANF pricing cached price is now ${Price}", capacityMeter?.UnitPrice ?? 0);
+                if (_jobLogService != null && jobId != null)
+                {
+                    await _jobLogService.AddLogAsync(jobId, $"🔄 AFTER REFRESH: ANF pricing cached price is now ${capacityMeter?.UnitPrice ?? 0}");
+                }
             }
             
             if (capacityMeter != null)
@@ -439,7 +446,7 @@ public class RetailPricingService
     /// <summary>
     /// Refresh ANF pricing from Retail API
     /// </summary>
-    private async Task RefreshAnfPricingAsync(string region, AnfServiceLevel serviceLevel)
+    private async Task RefreshAnfPricingAsync(string region, AnfServiceLevel serviceLevel, string? jobId = null)
     {
         try
         {
@@ -466,20 +473,14 @@ public class RetailPricingService
                     meterType = "capacity";
                 else if (meterNameLower.Contains("throughput"))
                     meterType = "throughput";
-                // Note: Cool tier meters come from separate SKU, shouldn't be in this query
                 
                 if (string.IsNullOrEmpty(meterType))
                 {
-                    _logger.LogWarning("⚠️ SKIPPING meter with unrecognized name: {MeterName} (SKU: {SKU})", 
-                        meter.MeterName, meter.SkuName);
                     return ""; // Return empty to skip caching
                 }
                 
-                var key = RetailPriceCache.CreateAnfMeterKey(serviceLevelStr, meterType);
-                _logger.LogWarning("📝 CACHING: {MeterName} → key '{Key}' with price ${Price}", 
-                    meter.MeterName, key, meter.RetailPrice);
-                return key;
-            });
+                return RetailPriceCache.CreateAnfMeterKey(serviceLevelStr, meterType);
+            }, jobId);
             
             _logger.LogInformation("Refreshed ANF pricing for region {Region}, service level {ServiceLevel}, cached {Count} meters", 
                 region, serviceLevel, meters.Count);
@@ -747,7 +748,8 @@ public class RetailPricingService
         string region,
         string resourceType,
         List<RetailPriceMeter> meters,
-        Func<RetailPriceMeter, string> meterKeyFunc)
+        Func<RetailPriceMeter, string> meterKeyFunc,
+        string? jobId = null)
     {
         foreach (var meter in meters)
         {
@@ -756,8 +758,16 @@ public class RetailPricingService
                 var meterKey = meterKeyFunc(meter);
                 if (string.IsNullOrWhiteSpace(meterKey))
                 {
-                    _logger.LogWarning("⚠️ Skipping meter {MeterName} - empty cache key returned", meter.MeterName);
+                    if (_jobLogService != null && jobId != null)
+                    {
+                        await _jobLogService.AddLogAsync(jobId, $"⚠️ SKIPPING meter with unrecognized name: {meter.MeterName} (SKU: {meter.SkuName})");
+                    }
                     continue;
+                }
+
+                if (_jobLogService != null && jobId != null)
+                {
+                    await _jobLogService.AddLogAsync(jobId, $"📝 CACHING: '{meter.MeterName}' → key '{meterKey}' with price ${meter.RetailPrice}");
                 }
                 
                 var cacheEntity = new RetailPriceCache
