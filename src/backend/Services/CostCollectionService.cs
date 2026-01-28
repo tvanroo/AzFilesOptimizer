@@ -703,64 +703,64 @@ public class CostCollectionService
                     
                     analysis.CoolTierUsagePercent = coolTierPercent;
                     
-                    // Hot tier storage cost
+                    // Hot tier storage cost (always log, even if $0)
+                    var hotStorageCost = new StorageCostComponent
+                    {
+                        ComponentType = "hot-storage",
+                        ResourceId = volume.ResourceId,
+                        Region = volume.Location,
+                        Quantity = hotTierGb,
+                        UnitPrice = pricing.CapacityPricePerGibHour * 730,
+                        CostForPeriod = hotTierGb * pricing.CapacityPricePerGibHour * 730,
+                        Unit = "GiB/month",
+                        PeriodStart = periodStart,
+                        PeriodEnd = periodEnd,
+                        IsEstimated = true,
+                        Notes = $"Hot tier capacity: {hotTierGb:F2} GB ({100 - coolTierPercent:F1}% of total)",
+                        SkuName = $"ANF-{volume.CapacityPoolServiceLevel}-Hot"
+                    };
                     if (hotTierGb > 0)
                     {
-                        var hotStorageCost = new StorageCostComponent
-                        {
-                            ComponentType = "hot-storage",
-                            ResourceId = volume.ResourceId,
-                            Region = volume.Location,
-                            Quantity = hotTierGb,
-                            UnitPrice = pricing.CapacityPricePerGibHour * 730,
-                            CostForPeriod = hotTierGb * pricing.CapacityPricePerGibHour * 730,
-                            Unit = "GiB/month",
-                            PeriodStart = periodStart,
-                            PeriodEnd = periodEnd,
-                            IsEstimated = true,
-                            Notes = $"Hot tier capacity: {hotTierGb:F2} GB ({100 - coolTierPercent:F1}% of total)",
-                            SkuName = $"ANF-{volume.CapacityPoolServiceLevel}-Hot"
-                        };
                         analysis.AddCostComponent(hotStorageCost);
-                        
-                        // Log detailed calculation formula to job log
-                        if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
-                        {
-                            await _jobLogService.AddLogAsync(jobId, 
-                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Hot Tier Capacity Cost Formula: (ProvisionedCapacityGiB - CoolDataSizeGiB) * Retail API '{serviceLevel} Service Level Capacity' retailPrice * time conversion");
-                            await _jobLogService.AddLogAsync(jobId, 
-                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Hot Tier Capacity Cost Calculation: {hotTierGb:F2} GiB * (${pricing.CapacityPricePerGibHour:F6}/Hour * 730 Hours) = ${hotStorageCost.CostForPeriod:F3}");
-                        }
                     }
                     
-                    // Cool tier storage cost
+                    // Log detailed calculation formula to job log (always, even if $0)
+                    if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                    {
+                        await _jobLogService.AddLogAsync(jobId, 
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Hot Tier Capacity Cost Formula: (ProvisionedCapacityGiB - CoolDataSizeGiB) * Retail API '{serviceLevel} Service Level Capacity' retailPrice * time conversion");
+                        await _jobLogService.AddLogAsync(jobId, 
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Hot Tier Capacity Cost Calculation: ({capacityForCosting:F2} GiB - {coolTierGb:F2} GiB) = {hotTierGb:F2} GiB * (${pricing.CapacityPricePerGibHour:F6}/Hour * 730 Hours) = ${hotStorageCost.CostForPeriod:F3}");
+                    }
+                    
+                    // Cool tier storage cost (always log, even if $0)
+                    var coolStorageCost = new StorageCostComponent
+                    {
+                        ComponentType = "cool-storage",
+                        ResourceId = volume.ResourceId,
+                        Region = volume.Location,
+                        Quantity = coolTierGb,
+                        UnitPrice = pricing.CoolTierStoragePricePerGibMonth,
+                        CostForPeriod = coolTierGb * pricing.CoolTierStoragePricePerGibMonth,
+                        Unit = "GiB/month",
+                        PeriodStart = periodStart,
+                        PeriodEnd = periodEnd,
+                        IsEstimated = true,
+                        Notes = $"Cool tier capacity: {coolTierGb:F2} GB ({coolTierPercent:F1}% of total)",
+                        SkuName = $"ANF-{volume.CapacityPoolServiceLevel}-Cool"
+                    };
                     if (coolTierGb > 0)
                     {
-                        var coolStorageCost = new StorageCostComponent
-                        {
-                            ComponentType = "cool-storage",
-                            ResourceId = volume.ResourceId,
-                            Region = volume.Location,
-                            Quantity = coolTierGb,
-                            UnitPrice = pricing.CoolTierStoragePricePerGibMonth,
-                            CostForPeriod = coolTierGb * pricing.CoolTierStoragePricePerGibMonth,
-                            Unit = "GiB/month",
-                            PeriodStart = periodStart,
-                            PeriodEnd = periodEnd,
-                            IsEstimated = true,
-                            Notes = $"Cool tier capacity: {coolTierGb:F2} GB ({coolTierPercent:F1}% of total)",
-                            SkuName = $"ANF-{volume.CapacityPoolServiceLevel}-Cool"
-                        };
                         analysis.AddCostComponent(coolStorageCost);
-                        
-                        // Log detailed calculation formula to job log
-                        if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
-                        {
-                            await _jobLogService.AddLogAsync(jobId, 
-                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost Formula: CoolDataSizeGiB * Retail API 'Cool Capacity' retailPrice");
-                            await _jobLogService.AddLogAsync(jobId, 
-                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost Calculation: {coolTierGb:F2} GiB * ${pricing.CoolTierStoragePricePerGibMonth:F6}/GiB/month = ${coolStorageCost.CostForPeriod:F3}");
-                        }
+                    }
+                    
+                    // Log detailed calculation formula to job log (always, even if $0)
+                    if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                    {
+                        await _jobLogService.AddLogAsync(jobId, 
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost Formula: CoolDataSizeGiB * Retail API 'Cool Capacity' retailPrice");
+                        await _jobLogService.AddLogAsync(jobId, 
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost Calculation: {coolTierGb:F2} GiB * ${pricing.CoolTierStoragePricePerGibMonth:F6}/GiB/month = ${coolStorageCost.CostForPeriod:F3}");
                     }
                     
                     // Cool tier data transfer costs (estimated)
