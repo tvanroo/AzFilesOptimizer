@@ -67,4 +67,10 @@ public class DiscoveryJob : ITableEntity
     // Error tracking
     public string? ErrorMessage { get; set; }
     public string? ErrorDetails { get; set; }
+    
+    // Cool data assumptions (job-level overrides)
+    // Null means use global defaults
+    public double? CoolDataPercentage { get; set; }
+    public double? CoolDataRetrievalPercentage { get; set; }
+    public DateTime? CoolAssumptionsModifiedAt { get; set; }
 }

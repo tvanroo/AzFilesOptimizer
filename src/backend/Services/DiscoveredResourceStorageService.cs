@@ -214,7 +214,12 @@ public DiscoveredResourceStorageService(string storageConnectionString)
             { "HistoricalMetricsSummary", volume.HistoricalMetricsSummary },
 
             // Security / TLS
-            { "MinimumTlsVersion", volume.MinimumTlsVersion }
+            { "MinimumTlsVersion", volume.MinimumTlsVersion },
+            
+            // Cool data assumptions (volume-level overrides)
+            { "CoolDataPercentageOverride", volume.CoolDataPercentageOverride },
+            { "CoolDataRetrievalPercentageOverride", volume.CoolDataRetrievalPercentageOverride },
+            { "CoolAssumptionsModifiedAt", volume.CoolAssumptionsModifiedAt }
         };
 
         await _volumesTableClient.UpsertEntityAsync(entity);
@@ -374,7 +379,12 @@ public DiscoveredResourceStorageService(string storageConnectionString)
             HistoricalMetricsSummary = entity.GetString("HistoricalMetricsSummary"),
 
             // Security / TLS
-            MinimumTlsVersion = entity.GetString("MinimumTlsVersion")
+            MinimumTlsVersion = entity.GetString("MinimumTlsVersion"),
+            
+            // Cool data assumptions (volume-level overrides)
+            CoolDataPercentageOverride = entity.GetDouble("CoolDataPercentageOverride"),
+            CoolDataRetrievalPercentageOverride = entity.GetDouble("CoolDataRetrievalPercentageOverride"),
+            CoolAssumptionsModifiedAt = entity.GetDateTime("CoolAssumptionsModifiedAt")
         };
     }
 

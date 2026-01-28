@@ -157,6 +157,12 @@ public class DiscoveredAnfVolume
     public string? BillingServiceLevel { get; set; }
     public double? AverageProtocolOpsPerDay { get; set; }
     public List<string>? BillingDetectedProtocols { get; set; }
+    
+    // Cool data assumptions (volume-level overrides)
+    // Null means use job-level or global defaults
+    public double? CoolDataPercentageOverride { get; set; }
+    public double? CoolDataRetrievalPercentageOverride { get; set; }
+    public DateTime? CoolAssumptionsModifiedAt { get; set; }
 }
 
 public class DiscoveredManagedDisk

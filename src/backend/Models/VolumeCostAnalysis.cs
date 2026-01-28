@@ -259,6 +259,17 @@ public class VolumeCostAnalysis
     public double? AvgEgressGbPerDay { get; set; }
     
     /// <summary>
+    /// Whether real metrics were available or assumptions were used
+    /// </summary>
+    public bool HasMetrics { get; set; } = true;
+    
+    /// <summary>
+    /// Cool data assumptions used (if HasMetrics is false)
+    /// Null if metrics were available
+    /// </summary>
+    public CoolDataAssumptions? CoolDataAssumptionsUsed { get; set; }
+    
+    /// <summary>
     /// Recalculate totals based on cost components
     /// </summary>
     public void RecalculateTotals()
