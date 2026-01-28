@@ -211,12 +211,31 @@ public class RetailPricingService
                 if (_jobLogService != null && jobId != null)
                 {
                     await _jobLogService.AddLogAsync(jobId, $"🔄 AFTER REFRESH: ANF pricing cached price is now ${capacityMeter?.UnitPrice ?? 0}");
+                    await _jobLogService.AddLogAsync(jobId, $"🔍 DEBUG: CapacityMeter details - IsNull={capacityMeter == null}, UnitPrice={capacityMeter?.UnitPrice}, MeterName='{capacityMeter?.MeterName}', RowKey='{capacityMeter?.RowKey}'");
+                }
+            }
+            else
+            {
+                if (_jobLogService != null && jobId != null)
+                {
+                    await _jobLogService.AddLogAsync(jobId, $"✅ CACHE HIT: ANF pricing for {region}/{serviceLevel} found in cache with price ${capacityMeter.UnitPrice}");
                 }
             }
             
             if (capacityMeter != null)
             {
                 pricing.CapacityPricePerGibHour = capacityMeter.UnitPrice;
+                if (_jobLogService != null && jobId != null)
+                {
+                    await _jobLogService.AddLogAsync(jobId, $"✅ ASSIGNED: pricing.CapacityPricePerGibHour = ${pricing.CapacityPricePerGibHour} from capacityMeter.UnitPrice = ${capacityMeter.UnitPrice}");
+                }
+            }
+            else
+            {
+                if (_jobLogService != null && jobId != null)
+                {
+                    await _jobLogService.AddLogAsync(jobId, $"⚠️ WARNING: capacityMeter is NULL after cache retrieval! CapacityPricePerGibHour will remain at default value ${pricing.CapacityPricePerGibHour}");
+                }
             }
             
             // Flexible throughput (only for Flexible service level)
@@ -794,7 +813,7 @@ public class RetailPricingService
                 await _tableClient.UpsertEntityAsync(cacheEntity);
                 
                 // Also cache in memory
-                var memoryKey = $"{region}:{meterKey}";
+                var memoryKey = $"{region.ToLowerInvariant()}:{meterKey}";
                 _memoryCache[memoryKey] = new CachedPrice
                 {
                     Price = cacheEntity,
@@ -813,27 +832,44 @@ public class RetailPricingService
     /// </summary>
     private async Task<RetailPriceCache?> GetCachedPriceAsync(string region, string meterKey, string resourceType)
     {
-        var memoryKey = $"{region}:{meterKey}";
+        var memoryKey = $"{region.ToLowerInvariant()}:{meterKey}";
+        
+        _logger.LogInformation("[CACHE LOOKUP] Region={Region}, MeterKey={MeterKey}, MemoryKey={MemoryKey}", region, meterKey, memoryKey);
         
         // Check memory cache first
         if (_memoryCache.TryGetValue(memoryKey, out var cached))
         {
+            var age = DateTime.UtcNow - cached.CachedAt;
+            _logger.LogInformation("[CACHE HIT - MEMORY] Found in memory cache. Age={Age}s, UnitPrice=${Price}, Expiry={Expiry}s", 
+                age.TotalSeconds, cached.Price.UnitPrice, MemoryCacheExpiry.TotalSeconds);
+            
             if (DateTime.UtcNow - cached.CachedAt < MemoryCacheExpiry)
             {
                 return cached.Price;
             }
             // Remove expired entry
+            _logger.LogWarning("[CACHE EXPIRED - MEMORY] Memory cache entry expired. Removing.");
             _memoryCache.TryRemove(memoryKey, out _);
+        }
+        else
+        {
+            _logger.LogInformation("[CACHE MISS - MEMORY] Not found in memory cache. Checking Table Storage...");
         }
         
         // Check Table Storage
         try
         {
+            _logger.LogInformation("[TABLE STORAGE LOOKUP] PartitionKey={PartitionKey}, RowKey={RowKey}", 
+                region.ToLowerInvariant(), meterKey);
+            
             var response = await _tableClient.GetEntityAsync<RetailPriceCache>(
                 region.ToLowerInvariant(),
                 meterKey);
             
             var price = response.Value;
+            
+            _logger.LogInformation("[TABLE STORAGE RESULT] Found entity. UnitPrice=${Price}, IsExpired={IsExpired}, MeterName='{MeterName}'", 
+                price?.UnitPrice ?? 0, price?.IsExpired ?? true, price?.MeterName ?? "null");
             
             if (price != null && !price.IsExpired)
             {
@@ -844,19 +880,27 @@ public class RetailPricingService
                     CachedAt = DateTime.UtcNow
                 };
                 
+                _logger.LogInformation("[CACHE RESTORED] Restored to memory cache from Table Storage with UnitPrice=${Price}", price.UnitPrice);
+                
                 return price;
+            }
+            else
+            {
+                _logger.LogWarning("[TABLE STORAGE EXPIRED] Table Storage entry expired or null");
             }
         }
         catch (Azure.RequestFailedException ex) when (ex.Status == 404)
         {
             // Not found, will need to query API
+            _logger.LogInformation("[TABLE STORAGE 404] Not found in Table Storage");
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error retrieving cached price for {Region}:{MeterKey}", region, meterKey);
+            _logger.LogError(ex, "[TABLE STORAGE ERROR] Error retrieving cached price for {Region}:{MeterKey}", region, meterKey);
         }
         
+        _logger.LogWarning("[CACHE MISS - TOTAL] Returning null - no valid cache entry found");
         return null;
     }
     
