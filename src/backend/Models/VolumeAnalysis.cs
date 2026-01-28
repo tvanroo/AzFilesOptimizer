@@ -244,6 +244,13 @@ public class VolumeWithAnalysis
     public VolumeCostAnalysis? DetailedCostAnalysis { get; set; }
 
     /// <summary>
+    /// Universal cost calculation inputs, standardized across all storage platforms.
+    /// Includes capacity, performance, transaction, and configuration metrics used
+    /// for cost calculations. Fields may be null when not applicable to the platform.
+    /// </summary>
+    public UniversalCostInputs? CostCalculationInputs { get; set; }
+
+    /// <summary>
     /// High-level cost status for this volume: Pending, Completed, Failed, etc.
     /// Primarily used by the UI when cost data is still being collected.
     /// </summary>

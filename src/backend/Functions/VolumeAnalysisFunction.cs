@@ -557,6 +557,23 @@ public class VolumeAnalysisFunction
                     break;
             }
 
+            // Populate universal cost calculation inputs
+            switch (volume.VolumeType)
+            {
+                case "ANF":
+                    if (volume.VolumeData is DiscoveredAnfVolume anfVol)
+                    {
+                        dto.CostCalculationInputs = UniversalCostInputsMapper.FromDiscoveredAnfVolume(anfVol);
+                    }
+                    break;
+                case "AzureFiles":
+                    // Azure Files mapping would go here when needed
+                    break;
+                case "ManagedDisk":
+                    // Managed Disk mapping would go here when needed
+                    break;
+            }
+
             // Attach latest cost summary for this specific volume, if available (by normalized VolumeId)
             var jobCosts = await _resourceStorage.GetVolumeCostsByJobIdAsync(jobId);
             var cost = jobCosts
