@@ -185,6 +185,10 @@ public static class UniversalCostInputsMapper
             
             // Performance
             ThroughputMiBps = volume.ThroughputMibps,
+            PoolTotalThroughputMiBps = volume.PoolTotalThroughputMibps,
+            PoolTotalCapacityGiB = volume.PoolTotalCapacityBytes.HasValue 
+                ? volume.PoolTotalCapacityBytes.Value / (1024.0 * 1024.0 * 1024.0) 
+                : null,
             
             // Flags
             IsProvisioned = true,

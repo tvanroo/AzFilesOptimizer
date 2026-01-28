@@ -92,10 +92,23 @@ public class UniversalCostInputs
     public long? IopsValue { get; set; }
     
     /// <summary>
-    /// Provisioned or consumed throughput in MiB/s
+    /// Provisioned or consumed throughput in MiB/s (volume/disk level)
     /// Used by: Managed Disks (Premium SSD v2, Ultra), Azure Files Premium v2, ANF Flexible
     /// </summary>
     public double? ThroughputMiBps { get; set; }
+    
+    /// <summary>
+    /// Total throughput provisioned at the capacity pool level (ANF Flexible only)
+    /// Used for calculating the proportion of paid vs. free throughput allocation
+    /// ANF Flexible: Baseline is 128 MiB/s per pool, additional throughput is billed
+    /// </summary>
+    public double? PoolTotalThroughputMiBps { get; set; }
+    
+    /// <summary>
+    /// Total capacity of the capacity pool (ANF only)
+    /// Used for context and throughput allocation calculations
+    /// </summary>
+    public double? PoolTotalCapacityGiB { get; set; }
     
     // ===== Transaction Metrics =====
     

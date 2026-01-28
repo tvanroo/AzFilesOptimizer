@@ -101,8 +101,12 @@ public class DiscoveredAnfVolume
     public string? CapacityPoolServiceLevel { get; set; } // Service level from parent pool
     public bool IsFlexibleServiceLevel { get; set; } // True if Flexible service level
     public long ProvisionedSizeBytes { get; set; }
-    public double? ThroughputMibps { get; set; }
+    public double? ThroughputMibps { get; set; } // Volume's allocated throughput
     public double? ActualThroughputMibps { get; set; }
+    
+    // Capacity pool level throughput (for Flexible tier cost allocation)
+    public double? PoolTotalThroughputMibps { get; set; } // Total throughput provisioned at pool level
+    public long? PoolTotalCapacityBytes { get; set; } // Total pool capacity
 
     // Cooling / tiering
     public bool? CoolAccessEnabled { get; set; }

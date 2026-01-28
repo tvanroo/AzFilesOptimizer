@@ -809,38 +809,24 @@ public class CostCollectionService
             }
             
             // Flexible throughput costs (Flexible service level only)
+            // ANF Flexible billing model: Each pool gets 128 MiB/s baseline for free.
+            // Additional throughput purchased at the pool level is proportionally allocated to volumes.
             if (serviceLevel == AnfServiceLevel.Flexible && pricing.FlexibleThroughputPricePerMiBSecHour > 0)
             {
-                double? configuredThroughputMiBps = volume.ThroughputMibps;
-                double? avgThroughputMiBps = null;
-                double? additionalThroughput = null;
+                double? volumeAllocatedThroughputMiBps = volume.ThroughputMibps;
+                double? poolTotalThroughputMiBps = volume.PoolTotalThroughputMibps;
                 
-                // Try to get throughput from configured value first
-                if (configuredThroughputMiBps.HasValue && configuredThroughputMiBps.Value > 0)
+                // Try to get volume allocated throughput
+                if (!volumeAllocatedThroughputMiBps.HasValue || volumeAllocatedThroughputMiBps.Value <= 0)
                 {
-                    avgThroughputMiBps = configuredThroughputMiBps.Value;
-                    // Flexible tier includes 128 MiB/s baseline for free
-                    const double baselineThroughput = 128.0;
-                    additionalThroughput = Math.Max(0, avgThroughputMiBps.Value - baselineThroughput);
-                    
-                    _logger.LogInformation(
-                        "Using configured throughput for {Volume}: {ThroughputMiBps:F2} MiB/s (additional: {Additional:F2} MiB/s above 128 baseline)",
-                        volume.VolumeName, avgThroughputMiBps.Value, additionalThroughput.Value);
-                }
-                else
-                {
-                    // Fall back to metrics
+                    // Fall back to metrics if not configured
                     var flexibleThroughputResult = await GetAnfFlexibleThroughputAsync(
                         volume.ResourceId,
                         volume.VolumeName);
                     
                     if (flexibleThroughputResult.HasValue)
                     {
-                        (avgThroughputMiBps, additionalThroughput) = flexibleThroughputResult.Value;
-                        
-                        _logger.LogInformation(
-                            "Using metrics-based throughput for {Volume}: {ThroughputMiBps:F2} MiB/s (additional: {Additional:F2} MiB/s above baseline)",
-                            volume.VolumeName, avgThroughputMiBps.Value, additionalThroughput.Value);
+                        (volumeAllocatedThroughputMiBps, _) = flexibleThroughputResult.Value;
                     }
                     else
                     {
@@ -848,27 +834,70 @@ public class CostCollectionService
                     }
                 }
                 
-                if (additionalThroughput.HasValue && additionalThroughput.Value > 0)
+                if (volumeAllocatedThroughputMiBps.HasValue && volumeAllocatedThroughputMiBps.Value > 0)
                 {
-                    var throughputCost = new StorageCostComponent
-                    {
-                        ComponentType = "flexible-throughput",
-                        ResourceId = volume.ResourceId,
-                        Region = volume.Location,
-                        Quantity = additionalThroughput.Value,
-                        UnitPrice = pricing.FlexibleThroughputPricePerMiBSecHour * 730, // Convert to monthly
-                        CostForPeriod = additionalThroughput.Value * pricing.FlexibleThroughputPricePerMiBSecHour * 730,
-                        Unit = "MiB/s/month",
-                        PeriodStart = periodStart,
-                        PeriodEnd = periodEnd,
-                        IsEstimated = true,
-                        Notes = $"Additional throughput above 128 MiB/s baseline: {additionalThroughput.Value:F2} MiB/s (configured: {avgThroughputMiBps:F2} MiB/s)"
-                    };
-                    analysis.AddCostComponent(throughputCost);
+                    const double poolBaselineThroughput = 128.0; // Free baseline per pool
+                    double poolPaidThroughputMiBps = 0;
+                    double volumeBillableThroughputMiBps = 0;
                     
-                    _logger.LogInformation(
-                        "Added flexible throughput costs for {Volume}: ${Cost:F2}/month ({Additional:F2} MiB/s above baseline)",
-                        volume.VolumeName, throughputCost.CostForPeriod, additionalThroughput.Value);
+                    if (poolTotalThroughputMiBps.HasValue && poolTotalThroughputMiBps.Value > poolBaselineThroughput)
+                    {
+                        // Pool has purchased additional throughput above baseline
+                        poolPaidThroughputMiBps = poolTotalThroughputMiBps.Value - poolBaselineThroughput;
+                        
+                        // Calculate proportion of volume's allocation that comes from paid throughput
+                        // Formula: (volume_allocated / pool_total) * pool_paid_throughput
+                        double proportionOfPool = volumeAllocatedThroughputMiBps.Value / poolTotalThroughputMiBps.Value;
+                        volumeBillableThroughputMiBps = proportionOfPool * poolPaidThroughputMiBps;
+                        
+                        _logger.LogInformation(
+                            "Flexible throughput allocation for {Volume}: Volume={VolumeAlloc:F2} MiB/s, Pool Total={PoolTotal:F2} MiB/s (Baseline={Baseline:F2}, Paid={Paid:F2}), Volume's Billable={Billable:F2} MiB/s ({Proportion:P1} of pool)",
+                            volume.VolumeName, volumeAllocatedThroughputMiBps.Value, poolTotalThroughputMiBps.Value, 
+                            poolBaselineThroughput, poolPaidThroughputMiBps, volumeBillableThroughputMiBps, proportionOfPool);
+                    }
+                    else if (poolTotalThroughputMiBps.HasValue)
+                    {
+                        // Pool is using only baseline throughput (no additional purchase)
+                        _logger.LogInformation(
+                            "Flexible volume {Volume} with {VolumeAlloc:F2} MiB/s allocation. Pool total={PoolTotal:F2} MiB/s (within {Baseline:F2} MiB/s baseline, no additional throughput costs)",
+                            volume.VolumeName, volumeAllocatedThroughputMiBps.Value, poolTotalThroughputMiBps.Value, poolBaselineThroughput);
+                    }
+                    else
+                    {
+                        // Pool throughput not available - fall back to volume-only calculation (legacy behavior)
+                        _logger.LogWarning(
+                            "Pool total throughput not available for {Volume}. Assuming volume allocation {VolumeAlloc:F2} MiB/s is entirely from pool (old calculation method)",
+                            volume.VolumeName, volumeAllocatedThroughputMiBps.Value);
+                        
+                        // Legacy calculation: assume volume allocation above 128 is billable
+                        volumeBillableThroughputMiBps = Math.Max(0, volumeAllocatedThroughputMiBps.Value - poolBaselineThroughput);
+                    }
+                    
+                    // Add cost component if there's billable throughput
+                    if (volumeBillableThroughputMiBps > 0)
+                    {
+                        var throughputCost = new StorageCostComponent
+                        {
+                            ComponentType = "flexible-throughput",
+                            ResourceId = volume.ResourceId,
+                            Region = volume.Location,
+                            Quantity = volumeBillableThroughputMiBps,
+                            UnitPrice = pricing.FlexibleThroughputPricePerMiBSecHour * 730, // Convert to monthly
+                            CostForPeriod = volumeBillableThroughputMiBps * pricing.FlexibleThroughputPricePerMiBSecHour * 730,
+                            Unit = "MiB/s/month",
+                            PeriodStart = periodStart,
+                            PeriodEnd = periodEnd,
+                            IsEstimated = true,
+                            Notes = poolTotalThroughputMiBps.HasValue 
+                                ? $"Volume allocated: {volumeAllocatedThroughputMiBps:F2} MiB/s. Pool total: {poolTotalThroughputMiBps:F2} MiB/s (baseline: {poolBaselineThroughput:F2} MiB/s free, paid: {poolPaidThroughputMiBps:F2} MiB/s). Volume's billable share: {volumeBillableThroughputMiBps:F2} MiB/s."
+                                : $"Volume allocated: {volumeAllocatedThroughputMiBps:F2} MiB/s. Billable throughput (above {poolBaselineThroughput:F2} MiB/s baseline): {volumeBillableThroughputMiBps:F2} MiB/s. (Pool total unknown, using legacy calculation)"
+                        };
+                        analysis.AddCostComponent(throughputCost);
+                        
+                        _logger.LogInformation(
+                            "Added flexible throughput costs for {Volume}: ${Cost:F2}/month ({Billable:F2} MiB/s billable)",
+                            volume.VolumeName, throughputCost.CostForPeriod, volumeBillableThroughputMiBps);
+                    }
                 }
             }
 
