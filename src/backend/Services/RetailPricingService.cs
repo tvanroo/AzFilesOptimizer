@@ -562,17 +562,14 @@ public class RetailPricingService
         // SKU name pattern: API uses "Flexible Service Level" but enum is just "Flexible"
         var skuName = serviceLevel == AnfServiceLevel.Flexible ? "Flexible Service Level" : serviceLevelStr;
         
-        // Meter name pattern: "{ServiceLevel} Capacity" (e.g., "Standard Capacity", "Premium Capacity")
-        var meterName = serviceLevel == AnfServiceLevel.Flexible ? "Flexible Service Level Capacity" : $"{serviceLevelStr} Capacity";
-        
+        // Don't filter by specific meterName - we want ALL meters for this SKU (capacity, throughput, cool storage, etc.)
         var filters = new List<string>
         {
             "serviceFamily eq 'Storage'",
             "serviceName eq 'Azure NetApp Files'",
             "productName eq 'Azure NetApp Files'",
             $"armRegionName eq '{armRegionName}'",
-            $"skuName eq '{skuName}'",
-            $"meterName eq '{meterName}'"
+            $"skuName eq '{skuName}'"
         };
         
         return string.Join(" and ", filters);
