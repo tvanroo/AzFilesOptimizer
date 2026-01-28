@@ -196,8 +196,12 @@ public class RetailPricingService
             // Capacity meter
             var capacityKey = RetailPriceCache.CreateAnfMeterKey(serviceLevelStr, "capacity");
             var capacityMeter = await GetCachedPriceAsync(region, capacityKey, "ANF");
-            if (capacityMeter == null)
+            
+            // Force refresh if cache is missing OR has suspicious $0 price
+            if (capacityMeter == null || capacityMeter.UnitPrice == 0)
             {
+                _logger.LogInformation("Refreshing ANF pricing for {Region}/{ServiceLevel} (cache missing or $0 price)", 
+                    region, serviceLevel);
                 await RefreshAnfPricingAsync(region, serviceLevel);
                 capacityMeter = await GetCachedPriceAsync(region, capacityKey, "ANF");
             }
