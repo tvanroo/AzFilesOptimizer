@@ -11,7 +11,7 @@ public class CoolDataAssumptionsService
 {
     private readonly TableClient _globalAssumptionsTable;
     private readonly TableClient _jobsTable;
-    private readonly IDiscoveredResourceStorageService _volumeStorage;
+    private readonly DiscoveredResourceStorageService _volumeStorage;
     private readonly ILogger<CoolDataAssumptionsService> _logger;
     
     // Cache for global assumptions (refreshed every 5 minutes)
@@ -21,7 +21,7 @@ public class CoolDataAssumptionsService
     
     public CoolDataAssumptionsService(
         TableServiceClient tableServiceClient,
-        IDiscoveredResourceStorageService volumeStorage,
+        DiscoveredResourceStorageService volumeStorage,
         ILogger<CoolDataAssumptionsService> logger)
     {
         _globalAssumptionsTable = tableServiceClient.GetTableClient("CoolDataGlobalAssumptions");

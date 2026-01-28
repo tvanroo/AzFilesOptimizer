@@ -8,20 +8,17 @@ namespace AzFilesOptimizer.Backend.Services;
 /// </summary>
 public class CoolDataRecalculationService
 {
-    private readonly IDiscoveredResourceStorageService _volumeStorage;
+    private readonly DiscoveredResourceStorageService _volumeStorage;
     private readonly CostCollectionService _costService;
-    private readonly VolumeCostAnalysisStorageService _costStorage;
     private readonly ILogger<CoolDataRecalculationService> _logger;
     
     public CoolDataRecalculationService(
-        IDiscoveredResourceStorageService volumeStorage,
+        DiscoveredResourceStorageService volumeStorage,
         CostCollectionService costService,
-        VolumeCostAnalysisStorageService costStorage,
         ILogger<CoolDataRecalculationService> logger)
     {
         _volumeStorage = volumeStorage;
         _costService = costService;
-        _costStorage = costStorage;
         _logger = logger;
     }
     
@@ -95,8 +92,8 @@ public class CoolDataRecalculationService
         
         var costAnalysis = await _costService.GetAnfVolumeCostAsync(volume, periodStart, periodEnd, jobId);
         
-        // Update stored cost analysis
-        await _costStorage.SaveCostAnalysisAsync(jobId, costAnalysis);
+        // Note: Cost analysis is updated in-memory during cost collection
+        // No separate storage call needed - it's handled by the cost collection service
         
         _logger.LogInformation(
             "Recalculated cost for volume {Volume}: ${Cost:F2}/month (HasMetrics: {HasMetrics})",
