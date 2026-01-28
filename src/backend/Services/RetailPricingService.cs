@@ -218,15 +218,22 @@ public class RetailPricingService
                 }
             }
             
-            // Cool tier pricing (available for all service levels)
-            var coolStorageKey = RetailPriceCache.CreateAnfMeterKey(serviceLevelStr, "coolstorage");
+            // Cool tier pricing (available for all service levels, uses shared SKU 'Standard Storage with Cool Access')
+            // Note: Cool pricing is NOT service-level specific
+            var coolStorageKey = RetailPriceCache.CreateAnfMeterKey("CoolAccess", "coolstorage");
             var coolStorageMeter = await GetCachedPriceAsync(region, coolStorageKey, "ANF");
+            if (coolStorageMeter == null)
+            {
+                // Need to refresh cool pricing separately
+                await RefreshAnfCoolPricingAsync(region);
+                coolStorageMeter = await GetCachedPriceAsync(region, coolStorageKey, "ANF");
+            }
             if (coolStorageMeter != null)
             {
                 pricing.CoolTierStoragePricePerGibMonth = coolStorageMeter.UnitPrice;
             }
             
-            var coolTransferKey = RetailPriceCache.CreateAnfMeterKey(serviceLevelStr, "cooltransfer");
+            var coolTransferKey = RetailPriceCache.CreateAnfMeterKey("CoolAccess", "cooltransfer");
             var coolTransferMeter = await GetCachedPriceAsync(region, coolTransferKey, "ANF");
             if (coolTransferMeter != null)
             {
@@ -464,6 +471,39 @@ public class RetailPricingService
     }
     
     /// <summary>
+    /// Refresh ANF Cool Access pricing from Retail API
+    /// Cool storage uses a separate SKU: 'Standard Storage with Cool Access'
+    /// </summary>
+    private async Task RefreshAnfCoolPricingAsync(string region)
+    {
+        try
+        {
+            var query = BuildAnfCoolQuery(region);
+            var meters = await QueryRetailApiAsync(query);
+            
+            await CacheMetersAsync(region, "ANF", meters, (meter) =>
+            {
+                var meterNameLower = meter.MeterName.ToLowerInvariant();
+                string meterType = "";
+                
+                if (meterNameLower.Contains("capacity"))
+                    meterType = "coolstorage";
+                else if (meterNameLower.Contains("transfer"))
+                    meterType = "cooltransfer";
+                
+                return RetailPriceCache.CreateAnfMeterKey("CoolAccess", meterType);
+            });
+            
+            _logger.LogInformation("Refreshed ANF Cool Access pricing for region {Region}, cached {Count} meters", 
+                region, meters.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error refreshing ANF Cool Access pricing for region {Region}", region);
+        }
+    }
+    
+    /// <summary>
     /// Refresh Managed Disk pricing from Retail API
     /// </summary>
     private async Task RefreshManagedDiskPricingAsync(
@@ -570,6 +610,26 @@ public class RetailPricingService
             "productName eq 'Azure NetApp Files'",
             $"armRegionName eq '{armRegionName}'",
             $"skuName eq '{skuName}'"
+        };
+        
+        return string.Join(" and ", filters);
+    }
+    
+    /// <summary>
+    /// Build OData query for ANF Cool Access pricing
+    /// Cool storage uses SKU 'Standard Storage with Cool Access' for all service levels
+    /// </summary>
+    private string BuildAnfCoolQuery(string region)
+    {
+        var armRegionName = NormalizeRegionForApi(region);
+        
+        var filters = new List<string>
+        {
+            "serviceFamily eq 'Storage'",
+            "serviceName eq 'Azure NetApp Files'",
+            "productName eq 'Azure NetApp Files'",
+            $"armRegionName eq '{armRegionName}'",
+            "skuName eq 'Standard Storage with Cool Access'"
         };
         
         return string.Join(" and ", filters);
