@@ -461,6 +461,7 @@ public partial class DiscoveryService
                         // Capture pool-level data for cost allocation (especially Flexible tier)
                         double? poolTotalThroughputMibps = null;
                         long? poolTotalCapacityBytes = null;
+                        string? poolEncryptionType = null;
                         
                         try
                         {
@@ -479,6 +480,13 @@ public partial class DiscoveryService
                             
                             // Get pool capacity (Size property)
                             poolTotalCapacityBytes = capacityPool.Data.Size;
+                            
+                            // Get pool encryption type (Single or Double)
+                            var encryptionTypeProp = poolType.GetProperty("EncryptionType");
+                            if (encryptionTypeProp != null)
+                            {
+                                poolEncryptionType = encryptionTypeProp.GetValue(poolData)?.ToString();
+                            }
                             
                             if (poolTotalThroughputMibps.HasValue)
                             {
@@ -652,6 +660,7 @@ public partial class DiscoveryService
                                 Location = netAppAccount.Data.Location.Name,
                                 ServiceLevel = capacityPool.Data.ServiceLevel.ToString(),
                                 PoolQosType = poolQosType,
+                                PoolEncryptionType = poolEncryptionType,
                                 
                                 // Pricing metadata
                                 CapacityPoolServiceLevel = capacityPool.Data.ServiceLevel.ToString(),

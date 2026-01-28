@@ -593,8 +593,9 @@ public class CostCollectionService
         try
         {
             // Identify ANF cost permutation
-            bool isDoubleEncryption = volume.EncryptionKeySource != null &&
-                !volume.EncryptionKeySource.Equals("Microsoft.NetApp", StringComparison.OrdinalIgnoreCase);
+            // Double encryption is a pool-level setting, not volume-level
+            bool isDoubleEncryption = volume.PoolEncryptionType != null &&
+                volume.PoolEncryptionType.Equals("Double", StringComparison.OrdinalIgnoreCase);
             
             var permutation = AnfCostPermutation.Identify(
                 volume.ServiceLevel ?? volume.CapacityPoolServiceLevel ?? "Standard",

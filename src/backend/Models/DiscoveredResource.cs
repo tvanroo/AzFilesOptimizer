@@ -96,6 +96,7 @@ public class DiscoveredAnfVolume
     public string Location { get; set; } = string.Empty;
     public string ServiceLevel { get; set; } = string.Empty; // "Standard", "Premium", "Ultra", "Flexible"
     public string? PoolQosType { get; set; } // "Auto" or "Manual"
+    public string? PoolEncryptionType { get; set; } // "Single" or "Double"
     
     // Pricing metadata (parsed from ServiceLevel and pool properties)
     public string? CapacityPoolServiceLevel { get; set; } // Service level from parent pool

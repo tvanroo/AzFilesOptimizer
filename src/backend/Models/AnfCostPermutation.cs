@@ -350,9 +350,9 @@ public class UniversalAnfCostInputs
     /// </summary>
     public static UniversalAnfCostInputs FromDiscoveredVolume(DiscoveredAnfVolume volume)
     {
-        // Determine if double encryption is enabled
-        bool isDoubleEncryption = volume.EncryptionKeySource != null &&
-                                  !volume.EncryptionKeySource.Equals("Microsoft.NetApp", StringComparison.OrdinalIgnoreCase);
+        // Determine if double encryption is enabled (pool-level setting)
+        bool isDoubleEncryption = volume.PoolEncryptionType != null &&
+                                  volume.PoolEncryptionType.Equals("Double", StringComparison.OrdinalIgnoreCase);
         
         // Identify permutation
         var permutation = AnfCostPermutation.Identify(
