@@ -19,6 +19,7 @@ public class CostCollectionService
     private readonly RetailPricingService _pricingService;
     private readonly MetricsCollectionService _metricsService;
     private readonly MetricsNormalizationService _normalizationService;
+    private readonly JobLogService? _jobLogService;
     private readonly Dictionary<string, RegionalPricing> _pricingCache = new();
     
     private const string CostManagementApiVersion = "2021-10-01";
@@ -29,13 +30,15 @@ public class CostCollectionService
         TokenCredential credential, 
         RetailPricingService pricingService,
         MetricsCollectionService metricsService,
-        MetricsNormalizationService normalizationService)
+        MetricsNormalizationService normalizationService,
+        JobLogService? jobLogService = null)
     {
         _logger = logger;
         _credential = credential;
         _pricingService = pricingService;
         _metricsService = metricsService;
         _normalizationService = normalizationService;
+        _jobLogService = jobLogService;
     }
 
     /// <summary>
@@ -584,7 +587,8 @@ public class CostCollectionService
     public async Task<VolumeCostAnalysis> GetAnfVolumeCostAsync(
         DiscoveredAnfVolume volume,
         DateTime periodStart,
-        DateTime periodEnd)
+        DateTime periodEnd,
+        string? jobId = null)
     {
         try
         {
@@ -718,6 +722,15 @@ public class CostCollectionService
                             SkuName = $"ANF-{volume.CapacityPoolServiceLevel}-Hot"
                         };
                         analysis.AddCostComponent(hotStorageCost);
+                        
+                        // Log detailed calculation formula to job log
+                        if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                        {
+                            await _jobLogService.AddLogAsync(jobId, 
+                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Hot Tier Capacity Cost Formula: (ProvisionedCapacityGiB - CoolDataSizeGiB) * Retail API '{serviceLevel} Service Level Capacity' retailPrice * time conversion");
+                            await _jobLogService.AddLogAsync(jobId, 
+                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Hot Tier Capacity Cost Calculation: {hotTierGb:F2} GiB * (${pricing.CapacityPricePerGibHour:F6}/Hour * 730 Hours) = ${hotStorageCost.CostForPeriod:F3}");
+                        }
                     }
                     
                     // Cool tier storage cost
@@ -739,6 +752,15 @@ public class CostCollectionService
                             SkuName = $"ANF-{volume.CapacityPoolServiceLevel}-Cool"
                         };
                         analysis.AddCostComponent(coolStorageCost);
+                        
+                        // Log detailed calculation formula to job log
+                        if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                        {
+                            await _jobLogService.AddLogAsync(jobId, 
+                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost Formula: CoolDataSizeGiB * Retail API 'Cool Capacity' retailPrice");
+                            await _jobLogService.AddLogAsync(jobId, 
+                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost Calculation: {coolTierGb:F2} GiB * ${pricing.CoolTierStoragePricePerGibMonth:F6}/GiB/month = ${coolStorageCost.CostForPeriod:F3}");
+                        }
                     }
                     
                     // Cool tier data transfer costs (estimated)
@@ -763,6 +785,15 @@ public class CostCollectionService
                                 Notes = $"Estimated cool tier data transfer (tier-in + retrieval): {estimatedTransferGb:F2} GB"
                             };
                             analysis.AddCostComponent(coolTransferCost);
+                            
+                            // Log detailed calculation formula to job log
+                            if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                            {
+                                await _jobLogService.AddLogAsync(jobId, 
+                                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🔄 Cool Tier Transfer Cost Formula: CoolDataTransferGiB * Retail API 'Cool Tier Data Retrieval' retailPrice");
+                                await _jobLogService.AddLogAsync(jobId, 
+                                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🔄 Cool Tier Transfer Cost Calculation: {estimatedTransferGb:F2} GiB * ${pricing.CoolTierDataTransferPricePerGib:F6}/GiB = ${coolTransferCost.CostForPeriod:F3}");
+                            }
                         }
                     }
                     
@@ -806,6 +837,15 @@ public class CostCollectionService
                     $"ANF-{volume.CapacityPoolServiceLevel}"
                 );
                 analysis.AddCostComponent(storageCost);
+                
+                // Log detailed calculation formula to job log
+                if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Data Capacity Cost Formula: ProvisionedCapacityGiB * Retail API meterName '{serviceLevel} Service Level Capacity' retailPrice * time conversion");
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Data Capacity Cost Calculation: {capacityForCosting:F2} GiB * (${pricing.CapacityPricePerGibHour:F6}/Hour * 730 Hours) = ${storageCost.CostForPeriod:F3}");
+                }
             }
             
             // Flexible throughput costs (Flexible service level only)
@@ -894,6 +934,25 @@ public class CostCollectionService
                         };
                         analysis.AddCostComponent(throughputCost);
                         
+                        // Log detailed calculation formula to job log
+                        if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                        {
+                            if (poolTotalThroughputMiBps.HasValue)
+                            {
+                                await _jobLogService.AddLogAsync(jobId, 
+                                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚡ Flexible Throughput Cost Formula: ((ThroughputMiBps / PoolTotalThroughputMiBps) * (PoolTotalThroughputMiBps - 128 MiB/s baseline)) * Retail API 'Flexible Throughput' retailPrice * time conversion");
+                                await _jobLogService.AddLogAsync(jobId, 
+                                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚡ Flexible Throughput Cost Calculation: (({volumeAllocatedThroughputMiBps:F2} / {poolTotalThroughputMiBps:F2}) * ({poolTotalThroughputMiBps:F2} - 128.00)) = {volumeBillableThroughputMiBps:F2} MiB/s * (${pricing.FlexibleThroughputPricePerMiBSecHour:F6}/Hour * 730 Hours) = ${throughputCost.CostForPeriod:F3}");
+                            }
+                            else
+                            {
+                                await _jobLogService.AddLogAsync(jobId, 
+                                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚡ Flexible Throughput Cost Formula: (ThroughputMiBps - 128 MiB/s baseline) * Retail API 'Flexible Throughput' retailPrice * time conversion");
+                                await _jobLogService.AddLogAsync(jobId, 
+                                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚡ Flexible Throughput Cost Calculation: {volumeBillableThroughputMiBps:F2} MiB/s * (${pricing.FlexibleThroughputPricePerMiBSecHour:F6}/Hour * 730 Hours) = ${throughputCost.CostForPeriod:F3}");
+                            }
+                        }
+                        
                         _logger.LogInformation(
                             "Added flexible throughput costs for {Volume}: ${Cost:F2}/month ({Billable:F2} MiB/s billable)",
                             volume.VolumeName, throughputCost.CostForPeriod, volumeBillableThroughputMiBps);
@@ -913,20 +972,40 @@ public class CostCollectionService
                     periodEnd
                 );
                 analysis.AddCostComponent(snapshotCost);
+                
+                // Log detailed calculation formula to job log
+                if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   📸 Snapshot Cost Formula: SnapshotSizeGiB * Retail API 'Snapshot' retailPrice * time conversion");
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   📸 Snapshot Cost Calculation: {analysis.TotalSnapshotSizeGb.Value:F2} GiB * (${pricing.SnapshotPricePerGibHour:F6}/Hour * 730 Hours) = ${snapshotCost.CostForPeriod:F3}");
+                }
             }
 
             // Backup costs (if configured, typically included in volume cost for ANF)
             if (analysis.BackupConfigured && analysis.CapacityGigabytes > 0)
             {
+                var backupSizeGb = analysis.CapacityGigabytes * 0.15;
+                var backupPricePerGb = 0.05; // Default backup price
                 var backupCost = StorageCostComponent.ForBackup(
                     volume.ResourceId,
                     volume.Location,
-                    analysis.CapacityGigabytes * 0.15,
-                    0.05, // Default backup price
+                    backupSizeGb,
+                    backupPricePerGb,
                     periodStart,
                     periodEnd
                 );
                 analysis.AddCostComponent(backupCost);
+                
+                // Log detailed calculation formula to job log
+                if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💾 Backup Cost Formula: BackupSizeGiB * Retail API 'Backup' retailPrice");
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💾 Backup Cost Calculation: {backupSizeGb:F2} GiB * ${backupPricePerGb:F6}/GiB/month = ${backupCost.CostForPeriod:F3}");
+                }
             }
 
             // Try to replace retail estimate with actual billed cost if available

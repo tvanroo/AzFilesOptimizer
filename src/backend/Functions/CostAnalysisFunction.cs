@@ -32,11 +32,11 @@ public class CostAnalysisFunction
         var pricingService = new RetailPricingService(_logger, tableServiceClient, httpClient);
         var metricsService = new MetricsCollectionService(_logger, credential);
         var normalizationService = new MetricsNormalizationService(_logger, credential);
-        _costCollection = new CostCollectionService(_logger, credential, pricingService, metricsService, normalizationService);
+        _jobLogService = new JobLogService(connectionString);
+        _costCollection = new CostCollectionService(_logger, credential, pricingService, metricsService, normalizationService, _jobLogService);
         _costForecasting = new CostForecastingService(_logger);
         _resourceStorage = new DiscoveredResourceStorageService(connectionString);
         _jobStorage = new JobStorageService(connectionString);
-        _jobLogService = new JobLogService(connectionString);
         _costHistory = new CostHistoryService(connectionString, _logger);
     }
 
@@ -454,7 +454,8 @@ public class CostAnalysisFunction
                     var cost = await _costCollection.GetAnfVolumeCostAsync(
                         volume,
                         costPeriodStart,
-                        costPeriodEnd);
+                        costPeriodEnd,
+                        job.JobId);
                     
                     cost.JobId = job.JobId;
                     

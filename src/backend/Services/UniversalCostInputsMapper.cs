@@ -177,11 +177,11 @@ public static class UniversalCostInputsMapper
             SnapshotSizeGiB = (volume.TotalSnapshotSizeBytes ?? 0) / (1024.0 * 1024.0 * 1024.0),
             BackupSizeGiB = null, // Not currently tracked
             
-            // Cool tier
+            // Cool tier (null metrics treated as 0 for cost calculations)
             CoolAccessEnabled = volume.CoolAccessEnabled,
-            CoolDataSizeGiB = coolTierSize,
-            CoolDataReadGiB = coolDataRead,
-            CoolDataWriteGiB = coolDataWrite,
+            CoolDataSizeGiB = coolTierSize ?? 0,
+            CoolDataReadGiB = coolDataRead ?? 0,
+            CoolDataWriteGiB = coolDataWrite ?? 0,
             
             // Performance
             ThroughputMiBps = volume.ThroughputMibps,
