@@ -770,6 +770,17 @@ public class RetailPricingService
         Func<RetailPriceMeter, string> meterKeyFunc,
         string? jobId = null)
     {
+        // Ensure table exists before attempting to cache
+        try
+        {
+            await _tableClient.CreateIfNotExistsAsync();
+            _logger.LogInformation("RetailPriceCache table ensured before caching {Count} meters", meters.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to ensure RetailPriceCache table exists. Caching will likely fail.");
+        }
+        
         foreach (var meter in meters)
         {
             try
