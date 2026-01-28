@@ -304,22 +304,33 @@ public class MetricsCollectionService
         // We query metricDefinitions to get the supported metric names, then request
         // Average/Total/Maximum/Minimum aggregates for each. CollectMetricsAsync will
         // further filter based on what the service actually supports.
+        _logger.LogInformation("[ANF-METRICS] Starting metric collection for volume {Volume}, resourceId: {ResourceId}", volumeName, resourceId);
+        
         var supportedNames = await GetSupportedMetricNamesAsync(resourceId);
         if (supportedNames == null || supportedNames.Count == 0)
         {
-            _logger.LogDebug("No supported ANF metrics found for {Volume}", volumeName);
+            _logger.LogWarning("[ANF-METRICS] No supported ANF metrics found for {Volume}. This may indicate a problem with metric definitions endpoint.", volumeName);
             return (false, null, null);
         }
+
+        _logger.LogInformation("[ANF-METRICS] Found {Count} supported metrics for {Volume}: {Metrics}", 
+            supportedNames.Count, volumeName, string.Join(", ", supportedNames));
 
         var preferred = supportedNames
             .Select(name => (name, "Average,Total,Maximum,Minimum"))
             .ToArray();
 
-        return await CollectMetricsAsync(
+        var result = await CollectMetricsAsync(
             resourceId,
             "microsoft.netapp%2Fnetappaccounts%2Fcapacitypools%2Fvolumes",
             volumeName,
-            preferred);
+            preferred,
+            interval: "PT1H");  // ANF volumes require hourly intervals, not PT1M
+        
+        _logger.LogInformation("[ANF-METRICS] Collection result for {Volume}: hasData={HasData}, daysAvailable={Days}", 
+            volumeName, result.hasData, result.daysAvailable);
+        
+        return result;
     }
 
     public async Task<(bool hasData, int? daysAvailable, string? metricsSummary)> CollectManagedDiskMetricsAsync(
@@ -398,7 +409,8 @@ public class MetricsCollectionService
         string displayName,
         IEnumerable<(string name, string aggregation)> preferredMetrics,
         bool excludeZeroDataPoints = false,
-        Dictionary<string, string>? dimensionFilters = null)
+        Dictionary<string, string>? dimensionFilters = null,
+        string interval = "PT1M")
     {
         try
         {
@@ -435,7 +447,7 @@ public class MetricsCollectionService
                     var timespan = $"{startTime:yyyy-MM-ddTHH:mm:ssZ}/{endTime:yyyy-MM-ddTHH:mm:ssZ}";
                     var apiUrl = $"https://management.azure.com{resourceId}/providers/Microsoft.Insights/metrics" +
                         $"?api-version={MetricsApiVersion}&timespan={Uri.EscapeDataString(timespan)}" +
-                        $"&interval=PT1M&metricNamespace={metricNamespace}&metricnames={Uri.EscapeDataString(metricName)}&aggregation={aggregation}";
+                        $"&interval={interval}&metricNamespace={metricNamespace}&metricnames={Uri.EscapeDataString(metricName)}&aggregation={aggregation}";
 
                     if (dimensionFilters != null && dimensionFilters.Count > 0)
                     {
