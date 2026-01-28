@@ -811,40 +811,64 @@ public class CostCollectionService
             // Flexible throughput costs (Flexible service level only)
             if (serviceLevel == AnfServiceLevel.Flexible && pricing.FlexibleThroughputPricePerMiBSecHour > 0)
             {
-                var flexibleThroughputResult = await GetAnfFlexibleThroughputAsync(
-                    volume.ResourceId,
-                    volume.VolumeName);
+                double? configuredThroughputMiBps = volume.ThroughputMibps;
+                double? avgThroughputMiBps = null;
+                double? additionalThroughput = null;
                 
-                if (flexibleThroughputResult.HasValue)
+                // Try to get throughput from configured value first
+                if (configuredThroughputMiBps.HasValue && configuredThroughputMiBps.Value > 0)
                 {
-                    var (avgThroughputMiBps, additionalThroughput) = flexibleThroughputResult.Value;
+                    avgThroughputMiBps = configuredThroughputMiBps.Value;
+                    // Flexible tier includes 128 MiB/s baseline for free
+                    const double baselineThroughput = 128.0;
+                    additionalThroughput = Math.Max(0, avgThroughputMiBps.Value - baselineThroughput);
                     
-                    if (additionalThroughput > 0)
-                    {
-                        var throughputCost = new StorageCostComponent
-                        {
-                            ComponentType = "flexible-throughput",
-                            ResourceId = volume.ResourceId,
-                            Region = volume.Location,
-                            Quantity = additionalThroughput,
-                            UnitPrice = pricing.FlexibleThroughputPricePerMiBSecHour * 730, // Convert to monthly
-                            CostForPeriod = additionalThroughput * pricing.FlexibleThroughputPricePerMiBSecHour * 730,
-                            Unit = "MiB/s/month",
-                            PeriodStart = periodStart,
-                            PeriodEnd = periodEnd,
-                            IsEstimated = true,
-                            Notes = $"Additional throughput above 128 MiB/s baseline: {additionalThroughput:F2} MiB/s (avg: {avgThroughputMiBps:F2} MiB/s)"
-                        };
-                        analysis.AddCostComponent(throughputCost);
-                        
-                        _logger.LogInformation(
-                            "Added flexible throughput costs for {Volume}: ${Cost:F2}/month ({Additional:F2} MiB/s above baseline)",
-                            volume.VolumeName, throughputCost.CostForPeriod, additionalThroughput);
-                    }
+                    _logger.LogInformation(
+                        "Using configured throughput for {Volume}: {ThroughputMiBps:F2} MiB/s (additional: {Additional:F2} MiB/s above 128 baseline)",
+                        volume.VolumeName, avgThroughputMiBps.Value, additionalThroughput.Value);
                 }
                 else
                 {
-                    _logger.LogDebug("No throughput metrics for {Volume}, skipping flexible throughput costs", volume.VolumeName);
+                    // Fall back to metrics
+                    var flexibleThroughputResult = await GetAnfFlexibleThroughputAsync(
+                        volume.ResourceId,
+                        volume.VolumeName);
+                    
+                    if (flexibleThroughputResult.HasValue)
+                    {
+                        (avgThroughputMiBps, additionalThroughput) = flexibleThroughputResult.Value;
+                        
+                        _logger.LogInformation(
+                            "Using metrics-based throughput for {Volume}: {ThroughputMiBps:F2} MiB/s (additional: {Additional:F2} MiB/s above baseline)",
+                            volume.VolumeName, avgThroughputMiBps.Value, additionalThroughput.Value);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No throughput data for Flexible volume {Volume} (neither configured value nor metrics available), skipping throughput costs", volume.VolumeName);
+                    }
+                }
+                
+                if (additionalThroughput.HasValue && additionalThroughput.Value > 0)
+                {
+                    var throughputCost = new StorageCostComponent
+                    {
+                        ComponentType = "flexible-throughput",
+                        ResourceId = volume.ResourceId,
+                        Region = volume.Location,
+                        Quantity = additionalThroughput.Value,
+                        UnitPrice = pricing.FlexibleThroughputPricePerMiBSecHour * 730, // Convert to monthly
+                        CostForPeriod = additionalThroughput.Value * pricing.FlexibleThroughputPricePerMiBSecHour * 730,
+                        Unit = "MiB/s/month",
+                        PeriodStart = periodStart,
+                        PeriodEnd = periodEnd,
+                        IsEstimated = true,
+                        Notes = $"Additional throughput above 128 MiB/s baseline: {additionalThroughput.Value:F2} MiB/s (configured: {avgThroughputMiBps:F2} MiB/s)"
+                    };
+                    analysis.AddCostComponent(throughputCost);
+                    
+                    _logger.LogInformation(
+                        "Added flexible throughput costs for {Volume}: ${Cost:F2}/month ({Additional:F2} MiB/s above baseline)",
+                        volume.VolumeName, throughputCost.CostForPeriod, additionalThroughput.Value);
                 }
             }
 
