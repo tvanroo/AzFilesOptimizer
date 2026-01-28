@@ -325,7 +325,7 @@ public class MetricsCollectionService
             "microsoft.netapp%2Fnetappaccounts%2Fcapacitypools%2Fvolumes",
             volumeName,
             preferred,
-            interval: "PT1H");  // ANF volumes require hourly intervals, not PT1M
+            interval: "PT5M");  // ANF volumes use 5-minute intervals
         
         _logger.LogInformation("[ANF-METRICS] Collection result for {Volume}: hasData={HasData}, daysAvailable={Days}", 
             volumeName, result.hasData, result.daysAvailable);
