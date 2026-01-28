@@ -641,9 +641,9 @@ public class CostCollectionService
             }
             
             // Log pricing details for debugging
-            _logger.LogInformation(
-                "Retrieved ANF pricing for {Volume} | Region: {Region} | ServiceLevel: {ServiceLevel} | CapacityPrice/GiB/hr: ${CapacityPrice} | CapacityPrice/TiB/mo: ${CapacityPriceMonth}",
-                volume.VolumeName, volume.Location, serviceLevel, pricing.CapacityPricePerGibHour, pricing.CapacityPricePerTibMonth);
+            _logger.LogWarning(
+                "💰 PRICING RETRIEVED: {Volume} | Region: {Region} | ServiceLevel: {ServiceLevel} | CapacityPrice/GiB/hr: ${CapacityPrice:F6}",
+                volume.VolumeName, volume.Location, serviceLevel, pricing.CapacityPricePerGibHour);
             
             if (pricing.CapacityPricePerGibHour <= 0)
             {

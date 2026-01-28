@@ -200,10 +200,11 @@ public class RetailPricingService
             // Force refresh if cache is missing OR has suspicious $0 price
             if (capacityMeter == null || capacityMeter.UnitPrice == 0)
             {
-                _logger.LogInformation("Refreshing ANF pricing for {Region}/{ServiceLevel} (cache missing or $0 price)", 
-                    region, serviceLevel);
+                _logger.LogWarning("🔄 FORCING REFRESH: ANF pricing for {Region}/{ServiceLevel} (cache missing={Missing} or price=${Price})", 
+                    region, serviceLevel, capacityMeter == null, capacityMeter?.UnitPrice ?? 0);
                 await RefreshAnfPricingAsync(region, serviceLevel);
                 capacityMeter = await GetCachedPriceAsync(region, capacityKey, "ANF");
+                _logger.LogWarning("🔄 AFTER REFRESH: ANF pricing cached price is now ${Price}", capacityMeter?.UnitPrice ?? 0);
             }
             
             if (capacityMeter != null)
