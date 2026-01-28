@@ -458,6 +458,38 @@ public partial class DiscoveryService
                     {
                         await LogProgressAsync($"    • Checking capacity pool: {capacityPool.Data.Name}");
                         
+                        // Capture pool-level data for cost allocation (especially Flexible tier)
+                        double? poolTotalThroughputMibps = null;
+                        long? poolTotalCapacityBytes = null;
+                        
+                        try
+                        {
+                            // Try to get TotalThroughputMibps from pool properties
+                            var poolData = capacityPool.Data;
+                            var poolType = poolData.GetType();
+                            var throughputProp = poolType.GetProperty("TotalThroughputMibps");
+                            if (throughputProp != null)
+                            {
+                                var throughputVal = throughputProp.GetValue(poolData);
+                                if (throughputVal is double d)
+                                    poolTotalThroughputMibps = d;
+                                else if (throughputVal is float f)
+                                    poolTotalThroughputMibps = f;
+                            }
+                            
+                            // Get pool capacity (Size property)
+                            poolTotalCapacityBytes = capacityPool.Data.Size;
+                            
+                            if (poolTotalThroughputMibps.HasValue)
+                            {
+                                await LogProgressAsync($"      Pool throughput: {poolTotalThroughputMibps:F2} MiB/s, Capacity: {poolTotalCapacityBytes / (1024.0 * 1024.0 * 1024.0):F2} GiB");
+                            }
+                        }
+                        catch (Exception poolEx)
+                        {
+                            _logger.LogWarning(poolEx, "Failed to retrieve pool-level throughput for pool {PoolName}", capacityPool.Data.Name);
+                        }
+                        
                         int volumeCount = 0;
                         // Get all volumes in this capacity pool
                         await foreach (var volume in capacityPool.GetNetAppVolumes().GetAllAsync())
@@ -627,6 +659,11 @@ public partial class DiscoveryService
                                 ProvisionedSizeBytes = volume.Data.UsageThreshold,
                                 ThroughputMibps = volume.Data.ThroughputMibps,
                                 ActualThroughputMibps = volume.Data.ActualThroughputMibps,
+                                
+                                // Pool-level data for cost allocation (Flexible tier)
+                                PoolTotalThroughputMibps = poolTotalThroughputMibps,
+                                PoolTotalCapacityBytes = poolTotalCapacityBytes,
+                                
                                 CoolAccessEnabled = coolAccessEnabled,
                                 CoolTieringPolicy = coolTieringPolicy,
                                 CoolnessPeriodDays = coolnessPeriodDays,
