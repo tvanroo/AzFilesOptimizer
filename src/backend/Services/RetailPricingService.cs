@@ -557,12 +557,19 @@ public class RetailPricingService
     private string BuildAnfQuery(string region, AnfServiceLevel serviceLevel)
     {
         var armRegionName = NormalizeRegionForApi(region);
+        var serviceLevelStr = serviceLevel.ToString();
+        
+        // Meter name pattern: "{ServiceLevel} Capacity" (e.g., "Standard Capacity", "Premium Capacity")
+        var meterName = serviceLevel == AnfServiceLevel.Flexible ? "Flexible Service Level Capacity" : $"{serviceLevelStr} Capacity";
+        
         var filters = new List<string>
         {
-            "serviceName eq 'Storage'",
+            "serviceFamily eq 'Storage'",
+            "serviceName eq 'Azure NetApp Files'",
             "productName eq 'Azure NetApp Files'",
             $"armRegionName eq '{armRegionName}'",
-            $"meterName contains '{serviceLevel}'"
+            $"skuName eq '{serviceLevelStr}'",
+            $"meterName eq '{meterName}'"
         };
         
         return string.Join(" and ", filters);
