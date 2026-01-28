@@ -189,10 +189,9 @@ public static class UniversalCostInputsMapper
             // Flags
             IsProvisioned = true,
             IsLargeVolume = volume.IsLargeVolume,
-            CoolAccessEnabled = volume.CoolAccessEnabled,
             
             // Metadata
-            CollectedAt = volume.DiscoveredAt ?? DateTime.UtcNow,
+            CollectedAt = volume.DiscoveredAt,
             MetricsPeriodDays = volume.MonitoringDataAvailableDays
         };
     }
