@@ -1176,6 +1176,128 @@ const jobDetail = {
         } catch (error) {
             Toast.error('Failed to delete job: ' + error.message);
         }
+    },
+    
+    // Job Settings Functions
+    async openJobSettings() {
+        const modal = document.getElementById('jobSettingsModal');
+        modal.style.display = 'flex';
+        
+        // Load current job assumptions
+        try {
+            const response = await fetch(`${API_BASE_URL}/cool-assumptions/job/${this.jobId}`, {
+                headers: authManager.isSignedIn() ? {
+                    'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                } : {}
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                document.getElementById('job-cool-data-percentage').value = data.coolDataPercentage || data.CoolDataPercentage || '';
+                document.getElementById('job-cool-retrieval-percentage').value = data.coolDataRetrievalPercentage || data.CoolDataRetrievalPercentage || '';
+                
+                // Show status
+                const statusDiv = document.getElementById('job-assumptions-status');
+                const source = data.source || data.Source || 'Global';
+                if (source === 'Job') {
+                    statusDiv.innerHTML = '✓ Job-wide overrides are active';
+                    statusDiv.style.background = '#e8f5e9';
+                    statusDiv.style.color = '#2e7d32';
+                    statusDiv.style.display = 'block';
+                } else {
+                    statusDiv.innerHTML = `Using ${source.toLowerCase()} defaults`;
+                    statusDiv.style.background = '#f5f5f5';
+                    statusDiv.style.color = '#666';
+                    statusDiv.style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading job assumptions:', error);
+            // Leave fields empty if load fails
+        }
+    },
+    
+    closeJobSettings() {
+        const modal = document.getElementById('jobSettingsModal');
+        modal.style.display = 'none';
+    },
+    
+    async saveJobCoolAssumptions() {
+        const coolDataPercentage = parseFloat(document.getElementById('job-cool-data-percentage').value);
+        const coolRetrievalPercentage = parseFloat(document.getElementById('job-cool-retrieval-percentage').value);
+        
+        if (isNaN(coolDataPercentage) || coolDataPercentage < 0 || coolDataPercentage > 100) {
+            Toast.error('Cool data percentage must be between 0 and 100');
+            return;
+        }
+        
+        if (isNaN(coolRetrievalPercentage) || coolRetrievalPercentage < 0 || coolRetrievalPercentage > 100) {
+            Toast.error('Cool data retrieval percentage must be between 0 and 100');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/cool-assumptions/job/${this.jobId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(authManager.isSignedIn() ? {
+                        'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                    } : {})
+                },
+                body: JSON.stringify({
+                    coolDataPercentage,
+                    coolDataRetrievalPercentage
+                })
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to save job assumptions');
+            }
+            
+            Toast.success('Job cool assumptions saved and costs recalculated');
+            this.closeJobSettings();
+            
+            // Reload volumes to show updated costs
+            if (this.currentTab === 'analysis') {
+                this.loadVolumes();
+            }
+        } catch (error) {
+            console.error('Error saving job assumptions:', error);
+            Toast.error(error.message || 'Failed to save job assumptions');
+        }
+    },
+    
+    async clearJobCoolAssumptions() {
+        if (!confirm('Clear job-wide cool assumptions? This will revert to global defaults and recalculate costs.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/cool-assumptions/job/${this.jobId}`, {
+                method: 'DELETE',
+                headers: authManager.isSignedIn() ? {
+                    'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                } : {}
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to clear job assumptions');
+            }
+            
+            Toast.success('Job overrides cleared and costs recalculated');
+            this.closeJobSettings();
+            
+            // Reload volumes to show updated costs
+            if (this.currentTab === 'analysis') {
+                this.loadVolumes();
+            }
+        } catch (error) {
+            console.error('Error clearing job assumptions:', error);
+            Toast.error(error.message || 'Failed to clear job assumptions');
+        }
     }
 };
 

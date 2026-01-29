@@ -123,6 +123,35 @@
         </div>
         
         <div class="card">
+            <h2>Cool Data Assumptions</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                Configure default assumptions for ANF volumes with cool access when actual metrics are not available.
+                These defaults can be overridden at the job or volume level.
+            </p>
+            
+            <div id="cool-assumptions-form">
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Cool Data Percentage (%)</label>
+                    <input type="number" id="cool-data-percentage" min="0" max="100" step="0.1" 
+                           style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;">
+                    <small style="color: var(--text-secondary); font-size: 0.75rem;">Percentage of data assumed to be in cool tier (0-100)</small>
+                </div>
+                
+                <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Cool Data Retrieval Percentage (%)</label>
+                    <input type="number" id="cool-retrieval-percentage" min="0" max="100" step="0.1" 
+                           style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px;">
+                    <small style="color: var(--text-secondary); font-size: 0.75rem;">Percentage of cool data retrieved per month (0-100)</small>
+                </div>
+                
+                <div style="display: flex; gap: 1rem;">
+                    <button type="button" class="btn" onclick="saveCoolAssumptions()" style="background-color: var(--primary-color);">Save Defaults</button>
+                    <button type="button" class="btn" onclick="resetCoolAssumptions()" style="background-color: var(--surface); color: var(--text);">Reset to Factory</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
             <h2>About AI Features</h2>
             <p>
                 Once configured, AI capabilities will be available for:
@@ -364,6 +393,82 @@
             }
         }
         
+        async function loadCoolAssumptions() {
+            try {
+                const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                    ? 'http://localhost:7071/api'
+                    : 'https://azfo-dev-func-xy76b.azurewebsites.net/api';
+                
+                const response = await fetch(`${API_BASE_URL}/cool-assumptions/global`, {
+                    headers: authManager.isSignedIn() ? {
+                        'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                    } : {}
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('cool-data-percentage').value = data.coolDataPercentage || data.CoolDataPercentage || 80.0;
+                    document.getElementById('cool-retrieval-percentage').value = data.coolDataRetrievalPercentage || data.CoolDataRetrievalPercentage || 15.0;
+                }
+            } catch (error) {
+                console.error('Error loading cool assumptions:', error);
+                // Set defaults if load fails
+                document.getElementById('cool-data-percentage').value = 80.0;
+                document.getElementById('cool-retrieval-percentage').value = 15.0;
+            }
+        }
+        
+        async function saveCoolAssumptions() {
+            const coolDataPercentage = parseFloat(document.getElementById('cool-data-percentage').value);
+            const coolRetrievalPercentage = parseFloat(document.getElementById('cool-retrieval-percentage').value);
+            
+            if (isNaN(coolDataPercentage) || coolDataPercentage < 0 || coolDataPercentage > 100) {
+                Toast.error('Cool data percentage must be between 0 and 100');
+                return;
+            }
+            
+            if (isNaN(coolRetrievalPercentage) || coolRetrievalPercentage < 0 || coolRetrievalPercentage > 100) {
+                Toast.error('Cool data retrieval percentage must be between 0 and 100');
+                return;
+            }
+            
+            try {
+                const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                    ? 'http://localhost:7071/api'
+                    : 'https://azfo-dev-func-xy76b.azurewebsites.net/api';
+                
+                const response = await fetch(`${API_BASE_URL}/cool-assumptions/global`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(authManager.isSignedIn() ? {
+                            'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                        } : {})
+                    },
+                    body: JSON.stringify({
+                        coolDataPercentage,
+                        coolDataRetrievalPercentage
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to save cool assumptions');
+                }
+                
+                Toast.success('Cool data assumptions saved successfully');
+            } catch (error) {
+                console.error('Error saving cool assumptions:', error);
+                Toast.error(error.message || 'Failed to save cool assumptions');
+            }
+        }
+        
+        async function resetCoolAssumptions() {
+            document.getElementById('cool-data-percentage').value = 80.0;
+            document.getElementById('cool-retrieval-percentage').value = 15.0;
+            Toast.info('Reset to factory defaults (80% cool, 15% retrieval). Click Save to apply.');
+        }
+        
         async function initialize() {
             try {
                 await authManager.initialize();
@@ -374,6 +479,7 @@
                 updateAuthUI();
                 toggleEndpointField();
                 loadStatus();
+                loadCoolAssumptions();
             } catch (error) {
                 console.error('Initialization failed:', error);
                 Toast.error('Failed to initialize. Please refresh the page.');

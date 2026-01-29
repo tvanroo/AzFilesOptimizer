@@ -447,6 +447,7 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
                     <button class="btn" id="refresh-btn" onclick="jobDetail.loadJob()">🔄 Refresh</button>
+                    <button class="btn" id="job-settings-btn" onclick="jobDetail.openJobSettings()" style="background-color: #757575; color: white;">⚙️ Job Settings</button>
                     <button class="btn" id="rerun-btn" onclick="jobDetail.rerunJob()" style="background-color: #4caf50; color: white;">▶ Re-run Discovery</button>
                     <button class="btn" id="delete-job-btn" onclick="jobDetail.deleteJob()" style="background-color: #f44336; color: white;">🗑 Delete</button>
                 </div>
@@ -588,6 +589,45 @@
             </div>
             <div class="discovery-log-body" id="discovery-log-body">
                 <div style="color: #888; text-align: center; padding: 20px;">Waiting for job activity logs...</div>
+            </div>
+        </div>
+        <!-- Job Settings Modal -->
+        <div id="jobSettingsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3000; align-items: center; justify-content: center;">
+            <div style="background: white; width: 90%; max-width: 600px; border-radius: 8px; max-height: 80vh; overflow-y: auto;">
+                <div style="padding: 20px; background: #2196f3; color: white; border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0;">Job Settings</h3>
+                    <button class="btn" onclick="jobDetail.closeJobSettings()" style="background: rgba(255,255,255,0.2); padding: 6px 12px;">Close</button>
+                </div>
+                <div style="padding: 20px;">
+                    <h4 style="margin-top: 0;">Cool Data Assumptions (Job-Wide)</h4>
+                    <p style="color: #666; font-size: 0.9rem; margin-bottom: 1.5rem;">
+                        These assumptions apply to all ANF volumes with cool access in this job, unless overridden at the volume level.
+                        They are used when actual metrics are not available.
+                    </p>
+                    
+                    <div style="margin-bottom: 1rem;">
+                        <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Cool Data Percentage (%)</label>
+                        <input type="number" id="job-cool-data-percentage" min="0" max="100" step="0.1" 
+                               style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666; font-size: 0.75rem;">Percentage of data assumed to be in cool tier (0-100)</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 1.5rem;">
+                        <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Cool Data Retrieval Percentage (%)</label>
+                        <input type="number" id="job-cool-retrieval-percentage" min="0" max="100" step="0.1" 
+                               style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                        <small style="color: #666; font-size: 0.75rem;">Percentage of cool data retrieved per month (0-100)</small>
+                    </div>
+                    
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn" onclick="jobDetail.saveJobCoolAssumptions()" style="background-color: #2196f3; color: white;">Save Job Settings</button>
+                        <button class="btn" onclick="jobDetail.clearJobCoolAssumptions()" style="background-color: #f44336; color: white;">Clear Overrides</button>
+                        <button class="btn" onclick="jobDetail.closeJobSettings()" style="background-color: #757575; color: white;">Cancel</button>
+                    </div>
+                    
+                    <div id="job-assumptions-status" style="margin-top: 1rem; padding: 0.75rem; background: #f5f5f5; border-radius: 4px; font-size: 0.85rem; display: none;">
+                    </div>
+                </div>
             </div>
         </div>
     </main>

@@ -620,6 +620,31 @@
                             <h3>Historical Metrics</h3>
                             <div id="metrics-container"></div>
                         </div>
+                        
+                        <div class="metadata-section" id="cool-assumptions-section" style="display: none;">
+                            <h3>Cool Data Assumptions</h3>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+                                Configure assumptions for this volume when actual metrics are not available.
+                            </p>
+                            <div style="background: #f5f5f5; padding: 0.75rem; border-radius: 4px; margin-bottom: 0.75rem;">
+                                <div style="margin-bottom: 0.75rem;">
+                                    <label style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem;">Cool Data Percentage (%)</label>
+                                    <input type="number" id="volume-cool-data-percentage" min="0" max="100" step="0.1" 
+                                           style="width: 100%; padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem;">
+                                </div>
+                                <div style="margin-bottom: 0.75rem;">
+                                    <label style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem;">Cool Data Retrieval Percentage (%)</label>
+                                    <input type="number" id="volume-cool-retrieval-percentage" min="0" max="100" step="0.1" 
+                                           style="width: 100%; padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem;">
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                    <button class="btn" onclick="volumeDetailPage.saveVolumeCoolAssumptions()" style="background-color: #2196f3; color: white; font-size: 0.85rem; padding: 0.4rem 0.75rem;">Save & Recalculate</button>
+                                    <button class="btn" onclick="volumeDetailPage.clearVolumeCoolAssumptions()" style="background-color: #f44336; color: white; font-size: 0.85rem; padding: 0.4rem 0.75rem;">Clear Override</button>
+                                </div>
+                            </div>
+                            <div id="volume-assumptions-status" style="padding: 0.5rem; background: #e8f5e9; border-radius: 4px; font-size: 0.8rem; color: #2e7d32;">
+                            </div>
+                        </div>
 
                         <div class="metadata-section">
                             <h3>ANF Capacity & Throughput Sizing</h3>

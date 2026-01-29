@@ -215,6 +215,9 @@ const volumeDetailPage = {
 
         // History timeline: combine AI prompts, user review, and annotation history
         this.renderHistoryTimeline(ai, user, v.AnnotationHistory || []);
+        
+        // Load cool data assumptions if applicable
+        this.loadCoolAssumptions();
     },
 
     renderTags(elementId, tags) {
@@ -1267,6 +1270,139 @@ const volumeDetailPage = {
         } catch (error) {
             console.error('Error saving decisions:', error);
             Toast.error(`Failed to save: ${error.message}`);
+        }
+    },
+    
+    // Cool Data Assumptions Functions
+    async loadCoolAssumptions() {
+        const vol = this.currentData?.VolumeData;
+        if (!vol) return;
+        
+        // Only show for ANF volumes with cool access
+        const isAnf = this.currentData.VolumeType === 'ANF';
+        const hasCoolAccess = vol.CoolAccessEnabled === true;
+        
+        const section = document.getElementById('cool-assumptions-section');
+        if (!isAnf || !hasCoolAccess) {
+            section.style.display = 'none';
+            return;
+        }
+        
+        section.style.display = 'block';
+        
+        // Load assumptions for this volume
+        try {
+            const encodedVolumeId = encodeURIComponent(this.volumeId);
+            const response = await fetch(`${API_BASE_URL}/cool-assumptions/volume/${this.jobId}/${encodedVolumeId}`, {
+                headers: authManager.isSignedIn() ? {
+                    'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                } : {}
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                document.getElementById('volume-cool-data-percentage').value = data.coolDataPercentage || data.CoolDataPercentage || '';
+                document.getElementById('volume-cool-retrieval-percentage').value = data.coolDataRetrievalPercentage || data.CoolDataRetrievalPercentage || '';
+                
+                // Show status
+                const statusDiv = document.getElementById('volume-assumptions-status');
+                const source = data.source || data.Source || 'Global';
+                const hasMetrics = this.currentData?.CostSummary?.CoolDataAssumptionsUsed?.HasMetrics;
+                
+                if (hasMetrics) {
+                    statusDiv.innerHTML = '✓ Using actual metrics from monitoring';
+                    statusDiv.style.background = '#e8f5e9';
+                    statusDiv.style.color = '#2e7d32';
+                } else if (source === 'Volume') {
+                    statusDiv.innerHTML = '✓ Volume-specific override active';
+                    statusDiv.style.background = '#fff3e0';
+                    statusDiv.style.color = '#ef6c00';
+                } else if (source === 'Job') {
+                    statusDiv.innerHTML = `Using job-wide assumptions`;
+                    statusDiv.style.background = '#e3f2fd';
+                    statusDiv.style.color = '#1565c0';
+                } else {
+                    statusDiv.innerHTML = `Using global defaults`;
+                    statusDiv.style.background = '#f5f5f5';
+                    statusDiv.style.color = '#666';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading volume assumptions:', error);
+        }
+    },
+    
+    async saveVolumeCoolAssumptions() {
+        const coolDataPercentage = parseFloat(document.getElementById('volume-cool-data-percentage').value);
+        const coolRetrievalPercentage = parseFloat(document.getElementById('volume-cool-retrieval-percentage').value);
+        
+        if (isNaN(coolDataPercentage) || coolDataPercentage < 0 || coolDataPercentage > 100) {
+            Toast.error('Cool data percentage must be between 0 and 100');
+            return;
+        }
+        
+        if (isNaN(coolRetrievalPercentage) || coolRetrievalPercentage < 0 || coolRetrievalPercentage > 100) {
+            Toast.error('Cool data retrieval percentage must be between 0 and 100');
+            return;
+        }
+        
+        try {
+            const encodedVolumeId = encodeURIComponent(this.volumeId);
+            const response = await fetch(`${API_BASE_URL}/cool-assumptions/volume/${this.jobId}/${encodedVolumeId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(authManager.isSignedIn() ? {
+                        'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                    } : {})
+                },
+                body: JSON.stringify({
+                    coolDataPercentage,
+                    coolDataRetrievalPercentage
+                })
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to save volume assumptions');
+            }
+            
+            Toast.success('Volume cool assumptions saved and cost recalculated');
+            
+            // Reload volume to show updated cost
+            await this.loadVolume();
+        } catch (error) {
+            console.error('Error saving volume assumptions:', error);
+            Toast.error(error.message || 'Failed to save volume assumptions');
+        }
+    },
+    
+    async clearVolumeCoolAssumptions() {
+        if (!confirm('Clear volume-specific cool assumptions? This will revert to job or global defaults and recalculate cost.')) {
+            return;
+        }
+        
+        try {
+            const encodedVolumeId = encodeURIComponent(this.volumeId);
+            const response = await fetch(`${API_BASE_URL}/cool-assumptions/volume/${this.jobId}/${encodedVolumeId}`, {
+                method: 'DELETE',
+                headers: authManager.isSignedIn() ? {
+                    'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                } : {}
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to clear volume assumptions');
+            }
+            
+            Toast.success('Volume overrides cleared and cost recalculated');
+            
+            // Reload volume to show updated cost
+            await this.loadVolume();
+        } catch (error) {
+            console.error('Error clearing volume assumptions:', error);
+            Toast.error(error.message || 'Failed to clear volume assumptions');
         }
     }
 };
