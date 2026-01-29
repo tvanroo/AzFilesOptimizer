@@ -784,14 +784,15 @@ public class CostCollectionService
                     }
                     
                     // Cool tier storage cost (always log, even if $0)
+                    // Note: Cool tier pricing is per month, convert to 30.375 days (729 hours)
                     var coolStorageCost = new StorageCostComponent
                     {
                         ComponentType = "cool-storage",
                         ResourceId = volume.ResourceId,
                         Region = volume.Location,
                         Quantity = coolTierGb,
-                        UnitPrice = pricing.CoolTierStoragePricePerGibMonth,
-                        CostForPeriod = coolTierGb * pricing.CoolTierStoragePricePerGibMonth,
+                        UnitPrice = pricing.CoolTierStoragePricePerGibMonth * (729.0 / 730.0),
+                        CostForPeriod = coolTierGb * pricing.CoolTierStoragePricePerGibMonth * (729.0 / 730.0),
                         Unit = "GiB/month",
                         PeriodStart = periodStart,
                         PeriodEnd = periodEnd,
@@ -808,9 +809,9 @@ public class CostCollectionService
                     if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
                     {
                         await _jobLogService.AddLogAsync(jobId, 
-                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost Formula: CoolDataSizeGiB * Retail API 'Cool Capacity' retailPrice");
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost Formula: CoolDataSizeGiB * Retail API 'Cool Capacity' retailPrice * (729/730) to convert to 30.375 day billing period");
                         await _jobLogService.AddLogAsync(jobId, 
-                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost Calculation: {coolTierGb:F2} GiB * ${pricing.CoolTierStoragePricePerGibMonth:F6}/GiB/month = ${coolStorageCost.CostForPeriod:F3}");
+                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost Calculation: {coolTierGb:F2} GiB * ${pricing.CoolTierStoragePricePerGibMonth:F6}/GiB/month * (729/730) = ${coolStorageCost.CostForPeriod:F3}");
                     }
                     
                     // Cool tier data transfer costs (estimated)
@@ -903,14 +904,15 @@ public class CostCollectionService
                     // Cool tier storage cost
                     if (pricing.CoolTierStoragePricePerGibMonth > 0)
                     {
+                        // Note: Cool tier pricing is per month, convert to 30.375 days (729 hours)
                         var coolStorageCost = new StorageCostComponent
                         {
                             ComponentType = "cool-storage",
                             ResourceId = volume.ResourceId,
                             Region = volume.Location,
                             Quantity = coolTierGb,
-                            UnitPrice = pricing.CoolTierStoragePricePerGibMonth,
-                            CostForPeriod = coolTierGb * pricing.CoolTierStoragePricePerGibMonth,
+                            UnitPrice = pricing.CoolTierStoragePricePerGibMonth * (729.0 / 730.0),
+                            CostForPeriod = coolTierGb * pricing.CoolTierStoragePricePerGibMonth * (729.0 / 730.0),
                             Unit = "GiB/month",
                             PeriodStart = periodStart,
                             PeriodEnd = periodEnd,
@@ -927,7 +929,7 @@ public class CostCollectionService
                         if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
                         {
                             await _jobLogService.AddLogAsync(jobId, 
-                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost (Estimated): {coolTierGb:F2} GiB * ${pricing.CoolTierStoragePricePerGibMonth:F6}/GiB/month = ${coolStorageCost.CostForPeriod:F3}");
+                                $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🧊 Cool Tier Storage Cost (Estimated): {coolTierGb:F2} GiB * ${pricing.CoolTierStoragePricePerGibMonth:F6}/GiB/month * (729/730) = ${coolStorageCost.CostForPeriod:F3}");
                         }
                     }
                     
