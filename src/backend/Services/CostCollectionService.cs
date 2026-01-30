@@ -1311,10 +1311,13 @@ public class CostCollectionService
                 Enum.TryParse<StorageRedundancy>(disk.RedundancyType, true, out redundancy);
             }
 
+            // For Premium SSD v2 and Ultra, use a placeholder SKU since they don't have P/S tiers
+            var sku = disk.PricingTier ?? (diskType == ManagedDiskType.PremiumSSDv2 || diskType == ManagedDiskType.UltraDisk ? "v2" : "P10");
+            
             var pricing = await _pricingService.GetManagedDiskPricingAsync(
                 disk.Location,
                 diskType,
-                disk.PricingTier ?? "P10",
+                sku,
                 redundancy
             );
 
@@ -1325,30 +1328,124 @@ public class CostCollectionService
                 return analysis;
             }
             
-            // Store pricing data for debugging
-            analysis.RetailPricingData = new Dictionary<string, object>
-            {
-                { "DiskType", diskType.ToString() },
-                { "SKU", pricing.SKU },
-                { "Redundancy", redundancy.ToString() },
-                { "PricePerMonth", pricing.PricePerMonth },
-                { "SnapshotPricePerGibMonth", pricing.SnapshotPricePerGibMonth }
-            };
-            
             var days = (periodEnd - periodStart).Days;
             if (days == 0) days = 1;
 
-            // Managed disk storage cost (monthly billing)
-            var diskCost = StorageCostComponent.ForCapacity(
-                disk.ResourceId,
-                disk.Location,
-                analysis.CapacityGigabytes,
-                pricing.PricePerMonth,
-                periodStart,
-                periodEnd,
-                $"{disk.ManagedDiskType}-{disk.PricingTier}"
-            );
-            analysis.AddCostComponent(diskCost);
+            // Calculate costs based on disk type
+            if (diskType == ManagedDiskType.PremiumSSDv2)
+            {
+                // Premium SSD v2: capacity + IOPS + throughput pricing
+                var capacityCost = StorageCostComponent.ForCapacity(
+                    disk.ResourceId,
+                    disk.Location,
+                    analysis.CapacityGigabytes,
+                    pricing.CapacityPricePerGibMonth,
+                    periodStart,
+                    periodEnd,
+                    "PremiumSSDv2-Capacity"
+                );
+                analysis.AddCostComponent(capacityCost);
+                
+                // IOPS cost
+                if (disk.EstimatedIops > 0 && pricing.IOPSPricePerMonth > 0)
+                {
+                    var iopsCost = new StorageCostComponent
+                    {
+                        ComponentType = "iops",
+                        Region = disk.Location,
+                        UnitPrice = pricing.IOPSPricePerMonth,
+                        Unit = "IOPS/month",
+                        Quantity = disk.EstimatedIops,
+                        CostForPeriod = disk.EstimatedIops * pricing.IOPSPricePerMonth,
+                        Currency = "USD",
+                        SkuName = "PremiumSSDv2-IOPS",
+                        PeriodStart = periodStart,
+                        PeriodEnd = periodEnd,
+                        IsEstimated = true,
+                        ResourceId = disk.ResourceId
+                    };
+                    analysis.AddCostComponent(iopsCost);
+                }
+                
+                // Throughput cost
+                if (disk.EstimatedThroughputMiBps > 0 && pricing.ThroughputPricePerMiBSecMonth > 0)
+                {
+                    var throughputCost = new StorageCostComponent
+                    {
+                        ComponentType = "throughput",
+                        Region = disk.Location,
+                        UnitPrice = pricing.ThroughputPricePerMiBSecMonth,
+                        Unit = "MiBps/month",
+                        Quantity = disk.EstimatedThroughputMiBps,
+                        CostForPeriod = disk.EstimatedThroughputMiBps * pricing.ThroughputPricePerMiBSecMonth,
+                        Currency = "USD",
+                        SkuName = "PremiumSSDv2-Throughput",
+                        PeriodStart = periodStart,
+                        PeriodEnd = periodEnd,
+                        IsEstimated = true,
+                        ResourceId = disk.ResourceId
+                    };
+                    analysis.AddCostComponent(throughputCost);
+                }
+                
+                // Store pricing data for debugging
+                analysis.RetailPricingData = new Dictionary<string, object>
+                {
+                    { "DiskType", diskType.ToString() },
+                    { "Redundancy", redundancy.ToString() },
+                    { "CapacityPricePerGibMonth", pricing.CapacityPricePerGibMonth },
+                    { "IOPSPricePerMonth", pricing.IOPSPricePerMonth },
+                    { "ThroughputPricePerMiBSecMonth", pricing.ThroughputPricePerMiBSecMonth },
+                    { "EstimatedIops", disk.EstimatedIops },
+                    { "EstimatedThroughputMiBps", disk.EstimatedThroughputMiBps }
+                };
+            }
+            else if (diskType == ManagedDiskType.UltraDisk)
+            {
+                // Ultra Disk: similar to Premium v2
+                var capacityCost = StorageCostComponent.ForCapacity(
+                    disk.ResourceId,
+                    disk.Location,
+                    analysis.CapacityGigabytes,
+                    pricing.UltraCapacityPricePerGibMonth,
+                    periodStart,
+                    periodEnd,
+                    "UltraDisk-Capacity"
+                );
+                analysis.AddCostComponent(capacityCost);
+                
+                // Store pricing data for debugging
+                analysis.RetailPricingData = new Dictionary<string, object>
+                {
+                    { "DiskType", diskType.ToString() },
+                    { "Redundancy", redundancy.ToString() },
+                    { "UltraCapacityPricePerGibMonth", pricing.UltraCapacityPricePerGibMonth }
+                };
+            }
+            else
+            {
+                // Traditional tier-based pricing (Premium SSD, Standard SSD, Standard HDD)
+                var diskCost = StorageCostComponent.ForCapacity(
+                    disk.ResourceId,
+                    disk.Location,
+                    analysis.CapacityGigabytes,
+                    pricing.PricePerMonth,
+                    periodStart,
+                    periodEnd,
+                    $"{disk.ManagedDiskType}-{disk.PricingTier}"
+                );
+                analysis.AddCostComponent(diskCost);
+                
+                // Store pricing data for debugging
+                analysis.RetailPricingData = new Dictionary<string, object>
+                {
+                    { "DiskType", diskType.ToString() },
+                    { "SKU", pricing.SKU },
+                    { "Redundancy", redundancy.ToString() },
+                    { "PricePerMonth", pricing.PricePerMonth },
+                    { "SnapshotPricePerGibMonth", pricing.SnapshotPricePerGibMonth }
+                };
+            }
 
             // Note: Managed disks are billed based on provisioned SKU size (not consumption),
             // so we use retail pricing based on the disk tier/SKU rather than querying

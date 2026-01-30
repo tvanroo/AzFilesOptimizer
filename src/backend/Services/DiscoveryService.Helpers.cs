@@ -35,6 +35,14 @@ public partial class DiscoveryService
 
     private static string? MapDiskSizeToPricingTier(long diskSizeGB, string diskSku)
     {
+        var skuLower = diskSku.ToLowerInvariant();
+        
+        // Premium SSD v2 and Ultra SSD don't use tier-based pricing
+        if (skuLower.Contains("premiumv2") || skuLower.Contains("ultrassd"))
+        {
+            return null; // These use capacity + IOPS + throughput pricing
+        }
+        
         if (diskSku.Contains("Standard"))
         {
             if (diskSizeGB <= 32) return "S4";
@@ -59,7 +67,7 @@ public partial class DiscoveryService
             if (diskSizeGB <= 4096) return "P50";
             return "P60"; // Up to 32TB
         }
-        return diskSku; // For Ultra, etc.
+        return null;
     }
 
     private static string? GetManagedDiskType(string? diskSku)
@@ -68,11 +76,14 @@ public partial class DiscoveryService
 
         var skuLower = diskSku.ToLowerInvariant();
 
-        if (skuLower.Contains("premium_v2")) return "PremiumSSDv2";
+        // Check for v2 variants first (before generic premium check)
+        if (skuLower.Contains("premiumv2")) return "PremiumSSDv2";
+        if (skuLower.Contains("ultrassd")) return "UltraDisk";
+        
+        // Then check for standard types
         if (skuLower.Contains("premium")) return "PremiumSSD";
         if (skuLower.Contains("standardssd")) return "StandardSSD";
-        if (skuLower.Contains("standard_lrs")) return "StandardHDD";
-        if (skuLower.Contains("ultrassd")) return "UltraDisk";
+        if (skuLower.Contains("standard")) return "StandardHDD";
 
         return null;
     }
