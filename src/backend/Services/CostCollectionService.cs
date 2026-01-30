@@ -1350,9 +1350,13 @@ public class CostCollectionService
             );
             analysis.AddCostComponent(diskCost);
 
-
-            // Try to replace retail estimate with actual billed cost if available
-            await TryApplyActualCostAsync(analysis, periodStart, periodEnd);
+            // Note: Managed disks are billed based on provisioned SKU size (not consumption),
+            // so we use retail pricing based on the disk tier/SKU rather than querying
+            // Cost Management API meter data. The retail price from the Azure Pricing API
+            // already reflects the accurate monthly cost for the provisioned disk.
+            analysis.ActualCostsApplied = false;
+            analysis.ActualCostsNotAppliedReason = "Managed disks use provisioned size pricing (SKU-based), not consumption meters";
+            analysis.ActualCostMeterCount = 0;
 
             _logger.LogInformation("Calculated Managed Disk costs for {Disk}: ${Cost} over {Days} days (Source: {Source})",
                 disk.DiskName,
