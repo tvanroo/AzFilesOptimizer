@@ -748,19 +748,22 @@ public class RetailPricingService
             $"armRegionName eq '{armRegionName}'"
         };
         
-        // Premium SSD v2 and Ultra use different SKU naming
+        // Premium SSD v2 and Ultra use generic SKU names (e.g., "Premium LRS", "Ultra LRS").
+        // Classic tiers (Premium/Standard SSD/HDD) use size-based P/E/S tiers in skuName
+        // (e.g., "P20 ZRS", "E20 LRS", "S20 LRS").
         if (diskType == ManagedDiskType.PremiumSSDv2 || diskType == ManagedDiskType.UltraDisk)
         {
-            // Premium v2 uses "Premium LRS", "Premium ZRS", etc.
-            // Ultra uses "Ultra LRS", etc.
             var skuPrefix = diskType == ManagedDiskType.PremiumSSDv2 ? "Premium" : "Ultra";
             filters.Add($"skuName eq '{skuPrefix} {redundancy}'");
         }
         else
         {
-            // Traditional disks: filter by tier in meter name (e.g., "P30 LRS Disk")
-            filters.Add($"meterName contains '{sku}'");
-            filters.Add($"meterName contains '{redundancy}'");
+            if (!string.IsNullOrWhiteSpace(sku))
+            {
+                // Classic managed disks: match exactly on skuName (tier + redundancy),
+                // for example: "P20 ZRS", "E20 LRS", "S20 LRS".
+                filters.Add($"skuName eq '{sku} {redundancy}'");
+            }
         }
         
         return string.Join(" and ", filters);
