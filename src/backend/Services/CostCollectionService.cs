@@ -153,6 +153,36 @@ public class CostCollectionService
     {
         try
         {
+            // Identify Azure Files permutation
+            var permutation = AzureFilesPermutation.IdentifyPermutation(
+                share.StorageAccountSku,
+                share.StorageAccountKind,
+                share.IsProvisioned,
+                share.ProvisionedTier,
+                share.AccessTier);
+            
+            if (permutation == null)
+            {
+                _logger.LogWarning(
+                    "[{Time}] ⚠️ Unable to identify Azure Files permutation for share {ShareName} (SKU: {SKU}, Kind: {Kind}, IsProvisioned: {Provisioned}, Tier: {Tier})",
+                    DateTime.UtcNow.ToString("HH:mm:ss"),
+                    share.ShareName,
+                    share.StorageAccountSku,
+                    share.StorageAccountKind,
+                    share.IsProvisioned,
+                    share.AccessTier ?? share.ProvisionedTier);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "[{Time}] 📊 Azure Files Permutation for {ShareName}: {PermutationName} (ID: {PermutationId}, Redundancy: {Redundancy})",
+                    DateTime.UtcNow.ToString("HH:mm:ss"),
+                    share.ShareName,
+                    permutation.Name,
+                    (int)permutation.PermutationId,
+                    permutation.Redundancy);
+            }
+            
             var analysis = new VolumeCostAnalysis
             {
                 ResourceId = share.ResourceId,
@@ -171,9 +201,13 @@ public class CostCollectionService
                 BackupConfigured = share.BackupPolicyConfigured ?? false,
                 CostCalculationInputs = new Dictionary<string, object>
                 {
+                    { "PermutationId", permutation != null ? (int)permutation.PermutationId : 0 },
+                    { "PermutationName", permutation?.Name ?? "Unknown" },
                     { "AccessTier", share.AccessTier ?? "null" },
                     { "IsProvisioned", share.IsProvisioned },
                     { "ProvisionedTier", share.ProvisionedTier ?? "null" },
+                    { "StorageAccountSku", share.StorageAccountSku ?? "null" },
+                    { "StorageAccountKind", share.StorageAccountKind ?? "null" },
                     { "RedundancyType", share.RedundancyType ?? "null" },
                     { "ShareQuotaGiB", share.ShareQuotaGiB ?? 0 },
                     { "ShareUsageBytes", share.ShareUsageBytes ?? 0 },
