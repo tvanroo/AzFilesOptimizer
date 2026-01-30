@@ -592,6 +592,8 @@ public class VolumeAnalysisFunction
                     PeriodStart = cost.PeriodStart,
                     PeriodEnd = cost.PeriodEnd
                 };
+                // Include full detailed cost analysis for debugging and transparency
+                dto.DetailedCostAnalysis = cost;
                 dto.CostStatus = "Completed";
             }
             else
