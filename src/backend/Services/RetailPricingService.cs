@@ -601,33 +601,66 @@ public class RetailPricingService
         AzureFilesProvisionedTier? provisionedTier)
     {
         var armRegionName = NormalizeRegionForApi(region);
+        
+        // Determine product name based on tier
+        string productName = "Files v2"; // Pay-as-you-go tiers
+        if (provisionedTier.HasValue)
+        {
+            if (provisionedTier.Value == AzureFilesProvisionedTier.ProvisionedV1)
+            {
+                productName = "Premium Files";
+            }
+            else
+            {
+                productName = "Azure Files Provisioned v2";
+            }
+        }
+        
         var filters = new List<string>
         {
+            "serviceFamily eq 'Storage'",
             "serviceName eq 'Storage'",
-            "productName eq 'Files'",
-            $"armRegionName eq '{armRegionName}'",
-            "priceType eq 'Consumption'"
+            $"productName eq '{productName}'",
+            $"armRegionName eq '{armRegionName}'"
         };
         
-        // Add tier-specific filters
+        // Only add priceType filter for pay-as-you-go (not for Premium/Provisioned)
+        if (!provisionedTier.HasValue)
+        {
+            filters.Add("priceType eq 'Consumption'");
+        }
+        
+        // Add tier-specific SKU name filters
         if (accessTier.HasValue)
         {
-            var tierName = accessTier.Value switch
+            // Map access tier to API SKU name
+            var skuName = accessTier.Value switch
             {
-                AzureFilesAccessTier.Hot => "Hot",
-                AzureFilesAccessTier.Cool => "Cool",
-                AzureFilesAccessTier.TransactionOptimized => "Transaction Optimized",
+                AzureFilesAccessTier.Hot => $"Hot {redundancy}",
+                AzureFilesAccessTier.Cool => $"Cool {redundancy}",
+                AzureFilesAccessTier.TransactionOptimized => $"Standard {redundancy}", // Transaction Optimized is called "Standard" in API
                 _ => ""
             };
-            filters.Add($"skuName contains '{tierName}'");
+            if (!string.IsNullOrEmpty(skuName))
+            {
+                filters.Add($"skuName eq '{skuName}'");
+            }
         }
         else if (provisionedTier.HasValue)
         {
-            filters.Add("skuName contains 'Provisioned'");
+            // Provisioned tiers
+            if (provisionedTier.Value == AzureFilesProvisionedTier.ProvisionedV1)
+            {
+                // Premium Files: "Premium LRS" or "Premium ZRS"
+                filters.Add($"skuName eq 'Premium {redundancy}'");
+            }
+            else
+            {
+                // Provisioned v2: "SSD LRS", "HDD ZRS", etc.
+                var tierPrefix = provisionedTier.Value == AzureFilesProvisionedTier.ProvisionedV2SSD ? "SSD" : "HDD";
+                filters.Add($"skuName eq '{tierPrefix} {redundancy}'");
+            }
         }
-        
-        // Add redundancy filter
-        filters.Add($"skuName contains '{redundancy}'");
         
         return string.Join(" and ", filters);
     }
