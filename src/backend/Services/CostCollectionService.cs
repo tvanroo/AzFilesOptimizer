@@ -162,7 +162,7 @@ public class CostCollectionService
                 JobId = "",
                 PeriodStart = periodStart,
                 PeriodEnd = periodEnd,
-                CapacityGigabytes = (share.ShareQuotaGiB ?? 0) * 1024.0,
+                CapacityGigabytes = (share.ShareQuotaGiB ?? 0), // Quota is already in GiB
                 UsedGigabytes = (share.ShareUsageBytes ?? 0) / (1024.0 * 1024.0 * 1024.0),
                 AverageTransactionsPerDay = 0, // Will be replaced by actuals
                 AverageEgressPerDayGb = 0, // Will be replaced by actuals
