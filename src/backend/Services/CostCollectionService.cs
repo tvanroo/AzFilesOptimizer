@@ -280,11 +280,23 @@ public class CostCollectionService
                 return analysis;
             }
             
-            // Log pricing details to job log
-            if (_jobLogService != null && !string.IsNullOrEmpty(jobId) && pricing.StoragePricePerGbMonth > 0)
+            // Log pricing details to job log (including when price is $0 to help debug)
+            if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
             {
                 await _jobLogService.AddLogAsync(jobId, 
-                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Storage Price: ${pricing.StoragePricePerGbMonth:F6}/GiB/month");
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🔍 Pricing Lookup: Region={share.Location}, AccessTier={accessTier?.ToString() ?? "null"}, Redundancy={redundancy}");
+                
+                if (pricing.StoragePricePerGbMonth > 0)
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Storage Price: ${pricing.StoragePricePerGbMonth:F6}/GiB/month");
+                }
+                else
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚠️ Storage Price is $0.00 - pricing API may not have returned data for this configuration");
+                }
+                
                 if (pricing.WriteOperationsPricePer10K > 0)
                 {
                     await _jobLogService.AddLogAsync(jobId, 
