@@ -405,29 +405,32 @@ public class RetailPricingService
                 string meterType = "";
                 string redundancyStr = "";
                 
-                // Extract tier
+                // Extract tier from SKU name
+                // SKU names: "Hot LRS", "Cool GRS", "Standard LRS" (for Transaction Optimized), "Premium LRS", "SSD ZRS", "HDD GRS"
                 if (skuNameLower.Contains("hot"))
                     tierStr = "Hot";
                 else if (skuNameLower.Contains("cool"))
                     tierStr = "Cool";
-                else if (skuNameLower.Contains("transaction optimized"))
+                else if (skuNameLower.StartsWith("standard ")) // "Standard LRS/GRS/etc" = Transaction Optimized
                     tierStr = "TransactionOptimized";
-                else if (skuNameLower.Contains("provisioned v2"))
-                    tierStr = "ProvisionedV2SSD";
-                else if (skuNameLower.Contains("provisioned"))
+                else if (skuNameLower.StartsWith("premium "))
                     tierStr = "ProvisionedV1";
+                else if (skuNameLower.StartsWith("ssd "))
+                    tierStr = "ProvisionedV2SSD";
+                else if (skuNameLower.StartsWith("hdd "))
+                    tierStr = "ProvisionedV2HDD";
                 else if (meterNameLower.Contains("snapshot"))
                     tierStr = "snapshot";
                 
-                // Extract redundancy
+                // Extract redundancy from SKU name
                 if (skuNameLower.Contains("lrs"))
                     redundancyStr = "LRS";
                 else if (skuNameLower.Contains("zrs"))
                     redundancyStr = "ZRS";
-                else if (skuNameLower.Contains("grs"))
-                    redundancyStr = "GRS";
                 else if (skuNameLower.Contains("gzrs"))
                     redundancyStr = "GZRS";
+                else if (skuNameLower.Contains("grs"))
+                    redundancyStr = "GRS";
                 
                 // Determine meter type
                 if (meterNameLower.Contains("data stored"))
