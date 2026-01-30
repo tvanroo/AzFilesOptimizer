@@ -1347,7 +1347,7 @@ public class CostCollectionService
                 analysis.AddCostComponent(capacityCost);
                 
                 // IOPS cost
-                if (disk.EstimatedIops > 0 && pricing.IOPSPricePerMonth > 0)
+                if (disk.EstimatedIops.HasValue && disk.EstimatedIops.Value > 0 && pricing.IOPSPricePerMonth > 0)
                 {
                     var iopsCost = new StorageCostComponent
                     {
@@ -1355,8 +1355,8 @@ public class CostCollectionService
                         Region = disk.Location,
                         UnitPrice = pricing.IOPSPricePerMonth,
                         Unit = "IOPS/month",
-                        Quantity = disk.EstimatedIops,
-                        CostForPeriod = disk.EstimatedIops * pricing.IOPSPricePerMonth,
+                        Quantity = disk.EstimatedIops.Value,
+                        CostForPeriod = disk.EstimatedIops.Value * pricing.IOPSPricePerMonth,
                         Currency = "USD",
                         SkuName = "PremiumSSDv2-IOPS",
                         PeriodStart = periodStart,
@@ -1368,7 +1368,7 @@ public class CostCollectionService
                 }
                 
                 // Throughput cost
-                if (disk.EstimatedThroughputMiBps > 0 && pricing.ThroughputPricePerMiBSecMonth > 0)
+                if (disk.EstimatedThroughputMiBps.HasValue && disk.EstimatedThroughputMiBps.Value > 0 && pricing.ThroughputPricePerMiBSecMonth > 0)
                 {
                     var throughputCost = new StorageCostComponent
                     {
@@ -1376,8 +1376,8 @@ public class CostCollectionService
                         Region = disk.Location,
                         UnitPrice = pricing.ThroughputPricePerMiBSecMonth,
                         Unit = "MiBps/month",
-                        Quantity = disk.EstimatedThroughputMiBps,
-                        CostForPeriod = disk.EstimatedThroughputMiBps * pricing.ThroughputPricePerMiBSecMonth,
+                        Quantity = disk.EstimatedThroughputMiBps.Value,
+                        CostForPeriod = disk.EstimatedThroughputMiBps.Value * pricing.ThroughputPricePerMiBSecMonth,
                         Currency = "USD",
                         SkuName = "PremiumSSDv2-Throughput",
                         PeriodStart = periodStart,
@@ -1396,8 +1396,8 @@ public class CostCollectionService
                     { "CapacityPricePerGibMonth", pricing.CapacityPricePerGibMonth },
                     { "IOPSPricePerMonth", pricing.IOPSPricePerMonth },
                     { "ThroughputPricePerMiBSecMonth", pricing.ThroughputPricePerMiBSecMonth },
-                    { "EstimatedIops", disk.EstimatedIops },
-                    { "EstimatedThroughputMiBps", disk.EstimatedThroughputMiBps }
+                    { "EstimatedIops", (object?)disk.EstimatedIops ?? 0 },
+                    { "EstimatedThroughputMiBps", (object?)disk.EstimatedThroughputMiBps ?? 0.0 }
                 };
             }
             else if (diskType == ManagedDiskType.UltraDisk)
