@@ -45,22 +45,17 @@ public class CostCollectionService
     }
 
     /// <summary>
-    /// Get weekday-weighted transaction average from metrics
+    /// Get weekday-weighted transaction average from already-collected metrics
     /// </summary>
-    private async Task<(double weekdayAvg, double weekendAvg, int sampleDays, double confidence)?> GetTransactionMetricsAsync(
-        string shareResourceId,
+    private (double weekdayAvg, double weekendAvg, int sampleDays, double confidence)? GetTransactionMetricsFromSummary(
+        string metricsSummary,
         string shareName)
     {
         try
         {
-            // Collect last 7-14 days of file share-level metrics to capture weekday/weekend patterns
-            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectFileShareMetricsAsync(
-                shareResourceId,
-                shareName);
-            
-            if (!hasData || string.IsNullOrEmpty(metricsSummary))
+            if (string.IsNullOrEmpty(metricsSummary))
             {
-                _logger.LogDebug("No transaction metrics available for file share {Share}", shareName);
+                _logger.LogDebug("No metrics summary available for file share {Share}", shareName);
                 return null;
             }
             
@@ -95,25 +90,21 @@ public class CostCollectionService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error collecting transaction metrics for file share {Share}", shareName);
+            _logger.LogWarning(ex, "Error parsing transaction metrics for file share {Share}", shareName);
             return null;
         }
     }
     
     /// <summary>
-    /// Get average egress per day from metrics
+    /// Get average egress per day from already-collected metrics
     /// </summary>
-    private async Task<(double avgEgressGbPerDay, int sampleDays)?> GetEgressMetricsAsync(
-        string shareResourceId,
+    private (double avgEgressGbPerDay, int sampleDays)? GetEgressMetricsFromSummary(
+        string metricsSummary,
         string shareName)
     {
         try
         {
-            var (hasData, daysAvailable, metricsSummary) = await _metricsService.CollectFileShareMetricsAsync(
-                shareResourceId,
-                shareName);
-            
-            if (!hasData || string.IsNullOrEmpty(metricsSummary))
+            if (string.IsNullOrEmpty(metricsSummary))
                 return null;
             
             // Parse metrics JSON to extract egress data
@@ -138,7 +129,7 @@ public class CostCollectionService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error collecting egress metrics for file share {Share}", shareName);
+            _logger.LogWarning(ex, "Error parsing egress metrics for file share {Share}", shareName);
             return null;
         }
     }
@@ -423,9 +414,9 @@ public class CostCollectionService
             // Add transaction costs (for pay-as-you-go tiers only)
             if (!share.IsProvisioned && accessTier.HasValue)
             {
-                // Use file share resource ID for share-level metrics
-                var transactionMetrics = await GetTransactionMetricsAsync(
-                    share.ResourceId,
+                // Use already-collected metrics from discovery phase
+                var transactionMetrics = GetTransactionMetricsFromSummary(
+                    share.HistoricalMetricsSummary,
                     share.ShareName);
                     
                     if (transactionMetrics.HasValue)
@@ -495,7 +486,7 @@ public class CostCollectionService
                 }
                 
                 // Add egress costs
-                var egressMetrics = await GetEgressMetricsAsync(share.ResourceId, share.ShareName);
+                var egressMetrics = GetEgressMetricsFromSummary(share.HistoricalMetricsSummary, share.ShareName);
                     if (egressMetrics.HasValue && pricing.EgressPricePerGb > 0)
                     {
                         var (avgEgressGbPerDay, sampleDays) = egressMetrics.Value;
