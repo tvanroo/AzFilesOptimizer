@@ -1478,16 +1478,26 @@ public class CostCollectionService
             }
             else
             {
-                // Traditional tier-based pricing (Premium SSD, Standard SSD, Standard HDD)
-                var diskCost = StorageCostComponent.ForCapacity(
-                    disk.ResourceId,
-                    disk.Location,
-                    analysis.CapacityGigabytes,
-                    pricing.PricePerMonth,
-                    periodStart,
-                    periodEnd,
-                    $"{disk.ManagedDiskType}-{disk.PricingTier}"
-                );
+                // Traditional tier-based pricing (Premium SSD, Standard SSD, Standard HDD).
+                // For these, the Retail API returns a *per-disk per-month* price for each
+                // tier+redundancy combination (e.g., "S30 LRS Disk" with unit "1/Month").
+                // We must NOT multiply this by disk size again; it already represents the
+                // full disk cost for the given tier.
+                var diskCost = new StorageCostComponent
+                {
+                    ComponentType = "storage",
+                    Region = disk.Location,
+                    UnitPrice = pricing.PricePerMonth,
+                    Unit = "disk/month",
+                    Quantity = 1,
+                    CostForPeriod = pricing.PricePerMonth,
+                    Currency = "USD",
+                    ResourceId = disk.ResourceId,
+                    PeriodStart = periodStart,
+                    PeriodEnd = periodEnd,
+                    IsEstimated = true,
+                    SkuName = $"{diskType}-{(disk.PricingTier ?? sku)}"
+                };
                 analysis.AddCostComponent(diskCost);
                 
                 // Store pricing data for debugging
