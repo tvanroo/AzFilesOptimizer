@@ -490,13 +490,16 @@ public class CostAnalysisFunction
             if (disks.Count > 0)
             {
                 await _jobLogService.AddLogAsync(job.JobId,
-                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating costs for managed disks (querying actual billed costs from {costPeriodStart:yyyy-MM-dd} to {costPeriodEnd:yyyy-MM-dd})...");
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] Calculating costs for managed disks (based on provisioned SKU size + retail pricing)...");
             }
 
             foreach (var disk in disks)
             {
                 try
                 {
+                    await _jobLogService.AddLogAsync(job.JobId,
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Processing disk '{disk.DiskName}' | ResourceId: {disk.ResourceId}");
+                    
                     var cost = await _costCollection.GetManagedDiskCostAsync(
                         disk,
                         costPeriodStart,
@@ -504,26 +507,11 @@ public class CostAnalysisFunction
                     
                     cost.JobId = job.JobId;
                     
+                    // Managed disk costs are calculated from retail pricing (SKU-based), not Cost Management API
                     await _jobLogService.AddLogAsync(job.JobId,
-                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Processing disk '{disk.DiskName}' | ResourceId: {disk.ResourceId}");
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ✓ Calculated from retail pricing: ${cost.TotalCostForPeriod:F2}");
                     
-                    await _jobLogService.AddLogAsync(job.JobId,
-                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   → Querying Cost Management API for actual costs...");
-                    
-                    // Managed disks: enrich with detailed actual costs from Cost Management API
-                    await _costCollection.EnrichWithDetailedActualCostsAsync(cost, costPeriodStart, costPeriodEnd);
-                    
-                    // Log the result
-                    if (cost.ActualCostsApplied)
-                    {
-                        await _jobLogService.AddLogAsync(job.JobId,
-                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ✓ Actual costs applied: ${cost.TotalCostForPeriod:F2} ({cost.ActualCostMeterCount} meters)");
-                    }
-                    else
-                    {
-                        await _jobLogService.AddLogAsync(job.JobId,
-                            $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚠ Using retail estimates: ${cost.TotalCostForPeriod:F2} | Reason: {cost.ActualCostsNotAppliedReason}");
-                    }
+                    // Note: No Cost Management API enrichment needed - managed disks use provisioned size pricing
                     
                     costAnalyses.Add(cost);
 
