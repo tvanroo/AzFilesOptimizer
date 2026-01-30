@@ -149,7 +149,8 @@ public class CostCollectionService
     public async Task<VolumeCostAnalysis> GetAzureFilesCostAsync(
         DiscoveredAzureFileShare share,
         DateTime periodStart,
-        DateTime periodEnd)
+        DateTime periodEnd,
+        string? jobId = null)
     {
         try
         {
@@ -181,6 +182,15 @@ public class CostCollectionService
                     permutation.Name,
                     (int)permutation.PermutationId,
                     permutation.Redundancy);
+                
+                // Log permutation identification to job log
+                if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🔍 Azure Files Cost Permutation: #{(int)permutation.PermutationId} - {permutation.Name}");
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   📊 Configuration: Tier={permutation.AccessTier ?? permutation.ProvisionedType}, Redundancy={permutation.Redundancy}, Provisioned={permutation.IsProvisioned}");
+                }
             }
             
             var analysis = new VolumeCostAnalysis
@@ -262,7 +272,24 @@ public class CostCollectionService
             {
                 _logger.LogWarning("Could not retrieve pricing for Azure File Share {ShareName}", share.ShareName);
                 analysis.Warnings.Add("Failed to retrieve retail pricing data");
+                if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   ⚠️ Failed to retrieve pricing data");
+                }
                 return analysis;
+            }
+            
+            // Log pricing details to job log
+            if (_jobLogService != null && !string.IsNullOrEmpty(jobId) && pricing.StoragePricePerGbMonth > 0)
+            {
+                await _jobLogService.AddLogAsync(jobId, 
+                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Storage Price: ${pricing.StoragePricePerGbMonth:F6}/GiB/month");
+                if (pricing.WriteOperationsPricePer10K > 0)
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💰 Write Operations: ${pricing.WriteOperationsPricePer10K:F6} per 10K");
+                }
             }
             
             // Store pricing data for debugging
@@ -357,6 +384,15 @@ public class CostCollectionService
                     share.AccessTier
                 );
                 analysis.AddCostComponent(storageCost);
+                
+                // Log storage cost calculation to job log
+                if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                {
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💾 Storage Cost Formula: UsedCapacityGiB * Retail API Storage Price ($/GiB/month)");
+                    await _jobLogService.AddLogAsync(jobId, 
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   💾 Storage Cost Calculation: {analysis.UsedGigabytes:F2} GiB * ${pricing.StoragePricePerGbMonth:F6}/GiB/month = ${storageCost.CostForPeriod:F3}");
+                }
             }
 
             if(share.SnapshotCount > 0)
@@ -420,6 +456,15 @@ public class CostCollectionService
                                 Notes = $"Based on {sampleDays} days of metrics. Weekday: {weekdayAvg:F0}/day, Weekend: {weekendAvg:F0}/day"
                             };
                             analysis.AddCostComponent(transactionCost);
+                            
+                            // Log transaction cost calculation to job log
+                            if (_jobLogService != null && !string.IsNullOrEmpty(jobId))
+                            {
+                                await _jobLogService.AddLogAsync(jobId, 
+                                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🔄 Transaction Cost Formula: (Weekday Avg * 22 + Weekend Avg * 8) / 10,000 * Retail API Write Operations Price");
+                                await _jobLogService.AddLogAsync(jobId, 
+                                    $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}]   🔄 Transaction Cost Calculation: ({weekdayAvg:F0} * 22 + {weekendAvg:F0} * 8) / 10,000 * ${transactionPrice:F6} = ${transactionCost.CostForPeriod:F3} (Confidence: {confidence:F0}%)");
+                            }
                             
                             _logger.LogInformation(
                                 "Added transaction costs for {Share}: ${Cost:F2}/month (Confidence: {Confidence:F0}%)",

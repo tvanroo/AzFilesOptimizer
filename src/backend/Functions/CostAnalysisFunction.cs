@@ -404,7 +404,8 @@ public class CostAnalysisFunction
                     var cost = await _costCollection.GetAzureFilesCostAsync(
                         share,
                         costPeriodStart,
-                        costPeriodEnd);
+                        costPeriodEnd,
+                        job.JobId);
                     
                     cost.JobId = job.JobId;
                     
