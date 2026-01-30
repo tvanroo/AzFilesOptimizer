@@ -1304,15 +1304,28 @@ public class CostCollectionService
                         disk.ManagedDiskType, disk.DiskName);
                 }
             }
+            else
+            {
+                _logger.LogWarning("ManagedDiskType is null for disk {DiskName} (SKU: {DiskSku}), defaulting to StandardHDD - Discovery may not have run correctly",
+                    disk.DiskName, disk.DiskType);
+            }
             
             var redundancy = StorageRedundancy.LRS; // Default
             if (!string.IsNullOrEmpty(disk.RedundancyType))
             {
                 Enum.TryParse<StorageRedundancy>(disk.RedundancyType, true, out redundancy);
             }
+            else
+            {
+                _logger.LogWarning("RedundancyType is null for disk {DiskName} (SKU: {DiskSku}), defaulting to LRS",
+                    disk.DiskName, disk.DiskType);
+            }
 
             // For Premium SSD v2 and Ultra, use a placeholder SKU since they don't have P/S tiers
             var sku = disk.PricingTier ?? (diskType == ManagedDiskType.PremiumSSDv2 || diskType == ManagedDiskType.UltraDisk ? "v2" : "P10");
+            
+            _logger.LogInformation("Pricing lookup for disk {DiskName}: DiskType={DiskType}, SKU={SKU}, Redundancy={Redundancy}, Region={Region}",
+                disk.DiskName, diskType, sku, redundancy, disk.Location);
             
             var pricing = await _pricingService.GetManagedDiskPricingAsync(
                 disk.Location,
