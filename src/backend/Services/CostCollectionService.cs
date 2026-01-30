@@ -240,8 +240,13 @@ public class CostCollectionService
                 }
             }
             
+            // Use redundancy from permutation if available, otherwise try RedundancyType field, finally default to LRS
             var redundancy = StorageRedundancy.LRS; // Default
-            if (!string.IsNullOrEmpty(share.RedundancyType))
+            if (permutation != null && !string.IsNullOrEmpty(permutation.Redundancy))
+            {
+                Enum.TryParse<StorageRedundancy>(permutation.Redundancy, true, out redundancy);
+            }
+            else if (!string.IsNullOrEmpty(share.RedundancyType))
             {
                 Enum.TryParse<StorageRedundancy>(share.RedundancyType, true, out redundancy);
             }
