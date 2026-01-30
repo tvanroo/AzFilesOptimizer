@@ -734,6 +734,7 @@ public class RetailPricingService
         
         var filters = new List<string>
         {
+            "serviceFamily eq 'Storage'",
             "serviceName eq 'Storage'",
             $"productName eq '{productName}'",
             $"armRegionName eq '{armRegionName}'",
