@@ -312,36 +312,44 @@ public class RetailPricingService
             
             if (meter != null)
             {
-                // For fixed-tier disks (Premium SSD, Standard SSD, Standard HDD)
+                // For fixed-tier disks (Premium SSD, Standard SSD, Standard HDD), the retail
+                // API typically returns a price per disk-month (e.g., P20 Disk). In that
+                // case, UnitOfMeasure is "1/Month" or similar, so we can treat UnitPrice
+                // as a monthly cost directly.
                 if (diskType != ManagedDiskType.PremiumSSDv2 && diskType != ManagedDiskType.UltraDisk)
                 {
                     pricing.PricePerMonth = meter.UnitPrice;
                 }
                 else if (diskType == ManagedDiskType.PremiumSSDv2)
                 {
-                    // Premium SSD v2 has separate meters for capacity, IOPS, and throughput
-                    // This is the capacity meter
-                    pricing.CapacityPricePerGibMonth = meter.UnitPrice;
+                    // Premium SSD v2 has separate meters for capacity, IOPS, and throughput.
+                    // These are billed per GiB-hour, IOPS-hour, and MBps-hour respectively.
+                    // Normalize them to per-month prices to match the rest of the model.
+                    double HoursPerMonth = 730.0;
+
+                    // Capacity (GiB-hour → GiB-month)
+                    pricing.CapacityPricePerGibMonth = meter.UnitPrice * HoursPerMonth;
                     
                     // Get IOPS and throughput meters
                     var iopsKey = RetailPriceCache.CreateManagedDiskMeterKey($"{sku}-iops", redundancyStr);
                     var iopsMeter = await GetCachedPriceAsync(region, iopsKey, "ManagedDisk");
                     if (iopsMeter != null)
                     {
-                        pricing.IOPSPricePerMonth = iopsMeter.UnitPrice;
+                        pricing.IOPSPricePerMonth = iopsMeter.UnitPrice * HoursPerMonth;
                     }
                     
                     var throughputKey = RetailPriceCache.CreateManagedDiskMeterKey($"{sku}-throughput", redundancyStr);
                     var throughputMeter = await GetCachedPriceAsync(region, throughputKey, "ManagedDisk");
                     if (throughputMeter != null)
                     {
-                        pricing.ThroughputPricePerMiBSecMonth = throughputMeter.UnitPrice;
+                        pricing.ThroughputPricePerMiBSecMonth = throughputMeter.UnitPrice * HoursPerMonth;
                     }
                 }
                 else if (diskType == ManagedDiskType.UltraDisk)
                 {
-                    // Ultra Disk has separate meters
-                    pricing.UltraCapacityPricePerGibMonth = meter.UnitPrice;
+                    // Ultra Disk also exposes capacity as GiB-hour; normalize to GiB-month.
+                    double HoursPerMonth = 730.0;
+                    pricing.UltraCapacityPricePerGibMonth = meter.UnitPrice * HoursPerMonth;
                 }
             }
             

@@ -1294,38 +1294,79 @@ public class CostCollectionService
                 TotalSnapshotSizeGb = 0
             };
 
-            // Parse enums with null checks and defaults
-            var diskType = ManagedDiskType.StandardHDD; // Default
-            if (!string.IsNullOrEmpty(disk.ManagedDiskType))
+            // Resolve disk type & redundancy as robustly as possible, even if discovery
+            // did not populate ManagedDiskType / RedundancyType. Fall back to parsing
+            // the DiskSku / DiskType strings so we can still price accurately.
+            var rawSku = disk.ManagedDiskType ?? disk.DiskType ?? disk.DiskSku ?? string.Empty;
+            var skuLower = rawSku.ToLowerInvariant();
+
+            // Disk type resolution
+            var diskType = ManagedDiskType.StandardHDD;
+            if (!string.IsNullOrEmpty(disk.ManagedDiskType) &&
+                Enum.TryParse<ManagedDiskType>(disk.ManagedDiskType, true, out var parsedType))
             {
-                if (!Enum.TryParse<ManagedDiskType>(disk.ManagedDiskType, true, out diskType))
-                {
-                    _logger.LogWarning("Unknown managed disk type '{DiskType}' for disk {DiskName}, using StandardHDD",
-                        disk.ManagedDiskType, disk.DiskName);
-                }
+                diskType = parsedType;
             }
             else
             {
-                _logger.LogWarning("ManagedDiskType is null for disk {DiskName} (SKU: {DiskSku}), defaulting to StandardHDD - Discovery may not have run correctly",
-                    disk.DiskName, disk.DiskType);
-            }
-            
-            var redundancy = StorageRedundancy.LRS; // Default
-            if (!string.IsNullOrEmpty(disk.RedundancyType))
-            {
-                Enum.TryParse<StorageRedundancy>(disk.RedundancyType, true, out redundancy);
-            }
-            else
-            {
-                _logger.LogWarning("RedundancyType is null for disk {DiskName} (SKU: {DiskSku}), defaulting to LRS",
-                    disk.DiskName, disk.DiskType);
+                if (skuLower.Contains("premiumv2"))
+                    diskType = ManagedDiskType.PremiumSSDv2;
+                else if (skuLower.Contains("ultrassd"))
+                    diskType = ManagedDiskType.UltraDisk;
+                else if (skuLower.Contains("premium"))
+                    diskType = ManagedDiskType.PremiumSSD;
+                else if (skuLower.Contains("standardssd"))
+                    diskType = ManagedDiskType.StandardSSD;
+                else
+                    diskType = ManagedDiskType.StandardHDD;
+
+                _logger.LogWarning(
+                    "ManagedDiskType is null or unrecognized for disk {DiskName} (RawSku: {RawSku}), inferring type as {DiskType}",
+                    disk.DiskName, rawSku, diskType);
             }
 
-            // For Premium SSD v2 and Ultra, use a placeholder SKU since they don't have P/S tiers
-            var sku = disk.PricingTier ?? (diskType == ManagedDiskType.PremiumSSDv2 || diskType == ManagedDiskType.UltraDisk ? "v2" : "P10");
-            
-            _logger.LogInformation("Pricing lookup for disk {DiskName}: DiskType={DiskType}, SKU={SKU}, Redundancy={Redundancy}, Region={Region}",
-                disk.DiskName, diskType, sku, redundancy, disk.Location);
+            // Redundancy resolution
+            var redundancy = StorageRedundancy.LRS; // Default
+            if (!string.IsNullOrEmpty(disk.RedundancyType) &&
+                Enum.TryParse<StorageRedundancy>(disk.RedundancyType, true, out var parsedRedundancy))
+            {
+                redundancy = parsedRedundancy;
+            }
+            else
+            {
+                if (skuLower.Contains("_gzrs"))
+                    redundancy = StorageRedundancy.GZRS;
+                else if (skuLower.Contains("_grs"))
+                    redundancy = StorageRedundancy.GRS;
+                else if (skuLower.Contains("_zrs"))
+                    redundancy = StorageRedundancy.ZRS;
+                else
+                    redundancy = StorageRedundancy.LRS;
+
+                _logger.LogWarning(
+                    "RedundancyType is null or unrecognized for disk {DiskName} (RawSku: {RawSku}), inferring redundancy as {Redundancy}",
+                    disk.DiskName, rawSku, redundancy);
+            }
+
+            // Determine SKU/tier used for Retail API queries
+            string? tier = disk.PricingTier;
+            if (string.IsNullOrEmpty(tier) &&
+                diskType != ManagedDiskType.PremiumSSDv2 &&
+                diskType != ManagedDiskType.UltraDisk)
+            {
+                tier = GetManagedDiskTier(diskType, disk.DiskSizeGB, rawSku);
+            }
+
+            // For Premium SSD v2 and Ultra, the Retail API uses generic SKU names like
+            // "Premium LRS" / "Premium ZRS" and separate meters for capacity/IOPS/throughput,
+            // so we don't pass a P/S tier. For classic tiers we pass the P/S/E tier.
+            var sku = (diskType == ManagedDiskType.PremiumSSDv2 || diskType == ManagedDiskType.UltraDisk)
+                ? (tier ?? "v2")
+                : (tier ?? "P10");
+
+            _logger.LogInformation(
+                "Pricing lookup for disk {DiskName}: DiskType={DiskType}, Tier={Tier}, SKUForQuery={SKU}, Redundancy={Redundancy}, Region={Region}",
+                disk.DiskName, diskType, tier ?? "null", sku, redundancy, disk.Location);
             
             var pricing = await _pricingService.GetManagedDiskPricingAsync(
                 disk.Location,
@@ -1480,6 +1521,61 @@ public class CostCollectionService
         {
             _logger.LogError(ex, "Error calculating Managed Disk costs for {Disk}", disk.DiskName);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Derive a managed disk tier (P/E/S) from disk type and size, similar to the
+    /// discovery-time mapping, but usable even if discovery did not persist tiers.
+    /// </summary>
+    private static string? GetManagedDiskTier(ManagedDiskType diskType, long diskSizeGB, string rawSku)
+    {
+        // Premium / Standard SSD / HDD tiers are size-based. Premium v2 and Ultra
+        // do not use these tiers and should return null.
+        switch (diskType)
+        {
+            case ManagedDiskType.PremiumSSD:
+                if (diskSizeGB <= 32) return "P4";
+                if (diskSizeGB <= 64) return "P6";
+                if (diskSizeGB <= 128) return "P10";
+                if (diskSizeGB <= 256) return "P15";
+                if (diskSizeGB <= 512) return "P20";
+                if (diskSizeGB <= 1024) return "P30";
+                if (diskSizeGB <= 2048) return "P40";
+                if (diskSizeGB <= 4096) return "P50";
+                if (diskSizeGB <= 8192) return "P60";
+                if (diskSizeGB <= 16384) return "P70";
+                return "P80";
+
+            case ManagedDiskType.StandardSSD:
+                if (diskSizeGB <= 32) return "E4";
+                if (diskSizeGB <= 64) return "E6";
+                if (diskSizeGB <= 128) return "E10";
+                if (diskSizeGB <= 256) return "E15";
+                if (diskSizeGB <= 512) return "E20";
+                if (diskSizeGB <= 1024) return "E30";
+                if (diskSizeGB <= 2048) return "E40";
+                if (diskSizeGB <= 4096) return "E50";
+                if (diskSizeGB <= 8192) return "E60";
+                if (diskSizeGB <= 16384) return "E70";
+                return "E80";
+
+            case ManagedDiskType.StandardHDD:
+                if (diskSizeGB <= 32) return "S4";
+                if (diskSizeGB <= 64) return "S6";
+                if (diskSizeGB <= 128) return "S10";
+                if (diskSizeGB <= 256) return "S15";
+                if (diskSizeGB <= 512) return "S20";
+                if (diskSizeGB <= 1024) return "S30";
+                if (diskSizeGB <= 2048) return "S40";
+                if (diskSizeGB <= 4096) return "S50";
+                if (diskSizeGB <= 8192) return "S60";
+                if (diskSizeGB <= 16384) return "S70";
+                return "S80";
+
+            default:
+                // Premium v2 / Ultra and any unknowns don't use P/S/E tiers.
+                return null;
         }
     }
 
