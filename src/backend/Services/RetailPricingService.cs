@@ -725,7 +725,7 @@ public class RetailPricingService
         var productName = diskType switch
         {
             ManagedDiskType.PremiumSSD => "Premium SSD Managed Disks",
-            ManagedDiskType.PremiumSSDv2 => "Premium SSD v2 Managed Disks",
+            ManagedDiskType.PremiumSSDv2 => "Azure Premium SSD v2",
             ManagedDiskType.StandardSSD => "Standard SSD Managed Disks",
             ManagedDiskType.StandardHDD => "Standard HDD Managed Disks",
             ManagedDiskType.UltraDisk => "Ultra Disks",
@@ -737,10 +737,23 @@ public class RetailPricingService
             "serviceFamily eq 'Storage'",
             "serviceName eq 'Storage'",
             $"productName eq '{productName}'",
-            $"armRegionName eq '{armRegionName}'",
-            $"meterName contains '{sku}'",
-            $"meterName contains '{redundancy}'"
+            $"armRegionName eq '{armRegionName}'"
         };
+        
+        // Premium SSD v2 and Ultra use different SKU naming
+        if (diskType == ManagedDiskType.PremiumSSDv2 || diskType == ManagedDiskType.UltraDisk)
+        {
+            // Premium v2 uses "Premium LRS", "Premium ZRS", etc.
+            // Ultra uses "Ultra LRS", etc.
+            var skuPrefix = diskType == ManagedDiskType.PremiumSSDv2 ? "Premium" : "Ultra";
+            filters.Add($"skuName eq '{skuPrefix} {redundancy}'");
+        }
+        else
+        {
+            // Traditional disks: filter by tier in meter name (e.g., "P30 LRS Disk")
+            filters.Add($"meterName contains '{sku}'");
+            filters.Add($"meterName contains '{redundancy}'");
+        }
         
         return string.Join(" and ", filters);
     }
