@@ -468,10 +468,6 @@
 
                 <div class="analysis-toolbar">
                     <div>
-                        <label>Workload Filter</label>
-                        <input type="text" id="workloadFilter" placeholder="Filter by workload" oninput="jobDetail.applyFilters()">
-                    </div>
-                    <div>
                         <label>Status Filter</label>
                         <select id="statusFilter" onchange="jobDetail.applyFilters()">
                             <option value="">All Status</option>
@@ -481,12 +477,6 @@
                             <option value="Approved">Approved</option>
                         </select>
                     </div>
-                    <div>
-                        <label>Min Confidence</label>
-                        <input type="range" id="confidenceSlider" min="0" max="100" value="0">
-                        <span id="confidenceValue">0%</span>
-                    </div>
-                    <button class="btn btn-primary" onclick="jobDetail.runAnalysis()">Run AI Analysis</button>
                 </div>
                 
                 <div id="bulkToolbar" class="bulk-toolbar">

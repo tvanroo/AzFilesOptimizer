@@ -106,15 +106,6 @@ const jobDetail = {
     },
     
     setupEventListeners() {
-        // Confidence slider
-        const slider = document.getElementById('confidenceSlider');
-        if (slider) {
-            slider.addEventListener('input', (e) => {
-                document.getElementById('confidenceValue').textContent = e.target.value + '%';
-                this.applyFilters();
-            });
-        }
-        
         // Chat input
         const chatInput = document.getElementById('chatInput');
         if (chatInput) {
@@ -293,23 +284,13 @@ const jobDetail = {
             this.visibleVolumeColumns = parsed.visibleColumns || [...this.defaultVisibleVolumeColumns];
             this.volumeSortColumn = parsed.sortColumn || null;
             this.volumeSortDirection = parsed.sortDirection || 'asc';
-            const workloadFilter = parsed.workloadFilter || '';
             const statusFilter = parsed.statusFilter || '';
-            const confidenceMin = typeof parsed.confidenceMin === 'number' ? parsed.confidenceMin : 0;
             const searchTerm = parsed.searchTerm || '';
 
-            const workloadSelect = document.getElementById('workloadFilter');
             const statusSelect = document.getElementById('statusFilter');
-            const confidenceSlider = document.getElementById('confidenceSlider');
             const searchInput = document.getElementById('volumeSearchInput');
 
-            if (workloadSelect) workloadSelect.value = workloadFilter;
             if (statusSelect) statusSelect.value = statusFilter;
-            if (confidenceSlider) {
-                confidenceSlider.value = Math.round(confidenceMin * 100);
-                const label = document.getElementById('confidenceValue');
-                if (label) label.textContent = `${confidenceSlider.value}%`;
-            }
             if (searchInput) searchInput.value = searchTerm;
         } catch {
             this.visibleVolumeColumns = [...this.defaultVisibleVolumeColumns];
@@ -317,18 +298,14 @@ const jobDetail = {
     },
 
     saveVolumeViewState() {
-        const workloadFilter = document.getElementById('workloadFilter')?.value || '';
         const statusFilter = document.getElementById('statusFilter')?.value || '';
-        const confidenceMin = parseInt(document.getElementById('confidenceSlider')?.value || 0) / 100;
         const searchTerm = document.getElementById('volumeSearchInput')?.value || '';
 
         const payload = {
             visibleColumns: this.visibleVolumeColumns || this.defaultVisibleVolumeColumns,
             sortColumn: this.volumeSortColumn,
             sortDirection: this.volumeSortDirection,
-            workloadFilter,
             statusFilter,
-            confidenceMin,
             searchTerm
         };
         try {
@@ -343,18 +320,14 @@ const jobDetail = {
     },
     
     async applyFilters() {
-        const workloadFilter = document.getElementById('workloadFilter')?.value || '';
         const statusFilter = document.getElementById('statusFilter')?.value || '';
-        const confidenceMin = parseInt(document.getElementById('confidenceSlider')?.value || 0) / 100;
 
         // Persist filter portion of view state immediately
         this.saveVolumeViewState();
         
         try {
             let url = `/discovery/${this.jobId}/volumes?page=${this.currentPage}&pageSize=${this.pageSize}`;
-            if (workloadFilter) url += `&workloadFilter=${encodeURIComponent(workloadFilter)}`;
             if (statusFilter) url += `&statusFilter=${encodeURIComponent(statusFilter)}`;
-            if (confidenceMin > 0) url += `&confidenceMin=${confidenceMin}`;
             
             const data = await apiClient.fetchJson(url);
             this.volumes = data.Volumes || [];
