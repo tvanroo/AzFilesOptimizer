@@ -10,7 +10,6 @@ const volumeAnalysis = {
 
     init() {
         this.loadJobs();
-        this.loadWorkloadProfiles();
         document.getElementById('confidenceSlider').addEventListener('input', (e) => {
             document.getElementById('confidenceValue').textContent = e.target.value + '%';
         });
@@ -30,22 +29,6 @@ const volumeAnalysis = {
         }
     },
 
-    async loadWorkloadProfiles() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/workload-profiles`);
-            if (!response.ok) throw new Error('Failed to load workload profiles');
-            const profiles = await response.json();
-            
-            const filterSelect = document.getElementById('workloadFilter');
-            const bulkSelect = document.getElementById('bulkWorkload');
-            
-            const options = profiles.map(p => `<option value="${p.ProfileId}">${this.escapeHtml(p.Name)}</option>`).join('');
-            filterSelect.innerHTML += options;
-            bulkSelect.innerHTML += options;
-        } catch (error) {
-            console.error('Error loading profiles:', error);
-        }
-    },
 
     async loadVolumes() {
         const jobId = document.getElementById('jobSelector').value;
@@ -303,9 +286,7 @@ const volumeAnalysis = {
                 <h3>User Annotations</h3>
                 <div class="form-group">
                     <label>Confirmed Workload</label>
-                    <select id="userWorkload">
-                        <option value="">Not confirmed</option>
-                    </select>
+                    <input type="text" id="userWorkload" placeholder="Enter workload name" value="${this.escapeHtml(volume.UserAnnotations?.ConfirmedWorkloadId || '')}">
                 </div>
                 
                 <div class="form-group">
@@ -332,14 +313,6 @@ const volumeAnalysis = {
             </div>
         `;
 
-        // Load workloads and set current value
-        const response = await fetch(`${API_BASE_URL}/workload-profiles`);
-        if (!response.ok) throw new Error('Failed to load workload profiles');
-        const profiles = await response.json();
-        const workloadSelect = document.getElementById('userWorkload');
-        workloadSelect.innerHTML = '<option value="">Not confirmed</option>' +
-            profiles.map(p => `<option value="${p.ProfileId}" ${volume.UserAnnotations?.ConfirmedWorkloadId === p.ProfileId ? 'selected' : ''}>${this.escapeHtml(p.Name)}</option>`).join('');
-        
         // Set status
         if (volume.UserAnnotations?.MigrationStatus) {
             document.getElementById('userStatus').value = volume.UserAnnotations.MigrationStatus;

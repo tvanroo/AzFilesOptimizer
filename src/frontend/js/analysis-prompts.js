@@ -1,7 +1,6 @@
 const analysisPrompts = {
     prompts: [],
     draggedItem: null,
-    workloadProfiles: [],
     variables: [
         '{VolumeName}', '{Size}', '{SizeGB}', '{UsedCapacity}',
         '{ShareQuotaGiB}', '{ShareUsageBytes}',
@@ -199,15 +198,6 @@ const analysisPrompts = {
                 <div class="variable-picker">
                     <small style="width: 100%; margin-bottom: 5px; display: block;">Click to insert:</small>
                     ${this.variables.map(v => `<span class="variable-tag" onclick="analysisPrompts.insertVariable('${v}')">${v}</span>`).join('')}
-                    <div class="workload-variable-picker" style="margin-top: 8px;">
-                        <small style="width: 100%; margin-bottom: 5px; display: block;">Insert workload profile:</small>
-                        <select id="workloadVariableSelect" onchange="analysisPrompts.insertWorkloadVariable(this.value)">
-                            <option value="">Select workload...</option>
-                            ${this.workloadProfiles.map(p => `
-                                <option value="${p.ProfileId}">${this.escapeHtml(p.Name)}</option>
-                            `).join('')}
-                        </select>
-                    </div>
                 </div>
                 <textarea id="promptTemplate" rows="8" placeholder="Enter your prompt template here...">${this.escapeHtml(prompt.PromptTemplate)}</textarea>
             </div>
@@ -229,9 +219,7 @@ const analysisPrompts = {
 
                     <div id="workloadPicker" style="margin-top: 15px; display: ${stopConditions.ActionOnMatch === 'SetWorkload' ? 'block' : 'none'};">
                         <label>Target Workload</label>
-                        <select id="targetWorkload">
-                            <option value="">Select workload...</option>
-                        </select>
+                        <input type="text" id="targetWorkload" placeholder="Enter workload id" value="${this.escapeHtml(stopConditions.TargetWorkloadId || '')}">
                     </div>
                 </div>
             </div>
@@ -251,36 +239,8 @@ const analysisPrompts = {
             document.getElementById('workloadPicker').style.display = e.target.value === 'SetWorkload' ? 'block' : 'none';
         });
 
-        // Load workload profiles for picker
-        this.loadWorkloadProfiles();
 
         modal.classList.add('show');
-    },
-
-    async loadWorkloadProfiles() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/workload-profiles`);
-            if (!response.ok) throw new Error('Failed to load workload profiles');
-            const profiles = await response.json();
-
-            // Cache for both stop-condition picker and workload variable dropdown
-            this.workloadProfiles = profiles;
-
-            const select = document.getElementById('targetWorkload');
-            if (select) {
-                select.innerHTML = '<option value="">Select workload...</option>' + 
-                    profiles.map(p => `<option value="${p.ProfileId}">${this.escapeHtml(p.Name)}</option>`).join('');
-            }
-
-            // Refresh workload variable dropdown if present
-            const workloadVarSelect = document.getElementById('workloadVariableSelect');
-            if (workloadVarSelect) {
-                workloadVarSelect.innerHTML = '<option value="">Select workload...</option>' +
-                    profiles.map(p => `<option value="${p.ProfileId}">${this.escapeHtml(p.Name)}</option>`).join('');
-            }
-        } catch (error) {
-            console.error('Error loading workload profiles:', error);
-        }
     },
 
     insertVariable(variable) {
@@ -293,22 +253,6 @@ const analysisPrompts = {
         textarea.setSelectionRange(pos + variable.length, pos + variable.length);
     },
 
-    insertWorkloadVariable(profileId) {
-        if (!profileId) return;
-        const textarea = document.getElementById('promptTemplate');
-        if (!textarea) return;
-
-        const variable = `{WorkloadProfile:${profileId}}`;
-        const pos = textarea.selectionStart || 0;
-        const text = textarea.value;
-        textarea.value = text.substring(0, pos) + variable + text.substring(pos);
-        textarea.focus();
-        const newPos = pos + variable.length;
-        textarea.setSelectionRange(newPos, newPos);
-
-        const select = document.getElementById('workloadVariableSelect');
-        if (select) select.value = '';
-    },
 
     closeModal() {
         document.getElementById('promptModal').classList.remove('show');

@@ -11,7 +11,6 @@ public class VolumeAnalysisService
 {
     private readonly ILogger _logger;
     private readonly BlobContainerClient _blobContainer;
-    private readonly WorkloadProfileService _profileService;
     private readonly AnalysisPromptService _promptService;
     private readonly CapacityAnalysisService _capacityAnalysisService;
     private AnalysisLogService? _logService;
@@ -20,13 +19,11 @@ public class VolumeAnalysisService
 
     public VolumeAnalysisService(
         string connectionString,
-        WorkloadProfileService profileService,
         AnalysisPromptService promptService,
         ILogger logger,
         CapacityAnalysisService? capacityAnalysisService = null)
     {
         _logger = logger;
-        _profileService = profileService;
         _promptService = promptService;
         _capacityAnalysisService = capacityAnalysisService ?? new CapacityAnalysisService(logger);
         
@@ -97,11 +94,10 @@ public class VolumeAnalysisService
             return;
         }
 
-        // Load enabled prompts and workload profiles
+        // Load enabled prompts
         var prompts = await _promptService.GetEnabledPromptsAsync();
-        var profiles = await _profileService.GetAllProfilesAsync();
 
-        _logger.LogInformation("Loaded {PromptCount} prompts and {ProfileCount} profiles", prompts.Count, profiles.Count);
+        _logger.LogInformation("Loaded {PromptCount} prompts", prompts.Count);
         if (_logService != null && !string.IsNullOrEmpty(analysisJobId))
         {
             await _logService.LogProgressAsync(
@@ -135,7 +131,6 @@ public class VolumeAnalysisService
                     var analysis = await AnalyzeSingleVolumeAsync(
                         share,
                         prompts.ToArray(),
-                        profiles.ToArray(),
                         apiKey,
                         provider,
                         endpoint,
@@ -167,7 +162,6 @@ public class VolumeAnalysisService
                     var analysis = await AnalyzeAnfVolumeAsync(
                         anfVolume,
                         prompts.ToArray(),
-                        profiles.ToArray(),
                         apiKey,
                         provider,
                         endpoint,
@@ -199,7 +193,6 @@ public class VolumeAnalysisService
                     var analysis = await AnalyzeManagedDiskAsync(
                         disk,
                         prompts.ToArray(),
-                        profiles.ToArray(),
                         apiKey,
                         provider,
                         endpoint,
@@ -258,7 +251,6 @@ public class VolumeAnalysisService
     public async Task<AiAnalysisResult> AnalyzeSingleVolumeAsync(
         DiscoveredAzureFileShare volume,
         AnalysisPrompt[] prompts,
-        WorkloadProfile[] profiles,
         string apiKey,
         string provider,
         string? endpoint,
@@ -295,12 +287,11 @@ public class VolumeAnalysisService
                         analysisJobId,
                         $"  [{volumeName}] → Executing prompt '{prompt.Name}' (priority {prompt.Priority})");
                 }
-                // Substitute volume and workload profile variables in prompt template
+                // Substitute volume variables in prompt template
                 var processedPrompt = SubstitutePromptVariables(prompt.PromptTemplate, volume);
-                processedPrompt = SubstituteWorkloadProfileVariables(processedPrompt, profiles);
 
-                // Add workload profile context and instructions
-                var fullPrompt = BuildFullPrompt(processedPrompt, profiles);
+                // Add analysis instructions
+                var fullPrompt = BuildFullPrompt(processedPrompt);
 
                 // Call AI
                 var aiResponse = await CallAIForAnalysis(fullPrompt, apiKey, provider, endpoint, preferredModel);
@@ -333,31 +324,26 @@ public class VolumeAnalysisService
                     // If structured parsing found a classification, use it
                     if (!string.IsNullOrEmpty(classification))
                     {
-                        var workload = profiles.FirstOrDefault(p => p.ProfileId == classification);
-                        if (workload != null)
-                        {
-                            result.SuggestedWorkloadId = workload.ProfileId;
-                            result.SuggestedWorkloadName = workload.Name;
-                            result.ConfidenceScore = confidence / 100.0;
-                            
-                            _logger.LogInformation("Structured classification: {WorkloadName} with {Confidence}% confidence", 
-                                workload.Name, confidence);
-                        }
+                        result.SuggestedWorkloadId = classification;
+                        result.SuggestedWorkloadName = classification;
+                        result.ConfidenceScore = confidence / 100.0;
+                        
+                        _logger.LogInformation("Structured classification: {WorkloadName} with {Confidence}% confidence", 
+                            classification, confidence);
                     }
                     else
                     {
                         // Fallback to old logic
-                        ApplyStopAction(prompt.StopCondition, result, profiles);
+                        ApplyStopAction(prompt.StopCondition, result);
                     }
                 }
                 else if (!string.IsNullOrEmpty(classification) && matched)
                 {
                     // Workload detected but not stopping - store for later
-                    var workload = profiles.FirstOrDefault(p => p.ProfileId == classification);
-                    if (workload != null && string.IsNullOrEmpty(result.SuggestedWorkloadId))
+                    if (string.IsNullOrEmpty(result.SuggestedWorkloadId))
                     {
-                        result.SuggestedWorkloadId = workload.ProfileId;
-                        result.SuggestedWorkloadName = workload.Name;
+                        result.SuggestedWorkloadId = classification;
+                        result.SuggestedWorkloadName = classification;
                         result.ConfidenceScore = confidence / 100.0;
                     }
                 }
@@ -447,7 +433,6 @@ public class VolumeAnalysisService
     public async Task<AiAnalysisResult> AnalyzeAnfVolumeAsync(
         DiscoveredAnfVolume volume,
         AnalysisPrompt[] prompts,
-        WorkloadProfile[] profiles,
         string apiKey,
         string provider,
         string? endpoint,
@@ -485,7 +470,6 @@ public class VolumeAnalysisService
         return await AnalyzeSingleVolumeAsync(
             pseudoShare,
             prompts,
-            profiles,
             apiKey,
             provider,
             endpoint,
@@ -501,7 +485,6 @@ public class VolumeAnalysisService
     public async Task<AiAnalysisResult> AnalyzeManagedDiskAsync(
         DiscoveredManagedDisk disk,
         AnalysisPrompt[] prompts,
-        WorkloadProfile[] profiles,
         string apiKey,
         string provider,
         string? endpoint,
@@ -628,94 +611,19 @@ public class VolumeAnalysisService
         substituted = substituted.Replace("{MonitoringDataAvailableDays}", volume.MonitoringDataAvailableDays?.ToString() ?? "N/A");
         substituted = substituted.Replace("{HistoricalMetricsSummary}", volume.HistoricalMetricsSummary ?? "None");
         substituted = substituted.Replace("{MetricsSummary}", FormatMetricsSummary(volume.HistoricalMetricsSummary));
+        substituted = Regex.Replace(substituted, @"\{WorkloadProfile:[^}]+\}", "[Workload profile removed]", RegexOptions.IgnoreCase);
 
         return substituted;
     }
 
-    private string SubstituteWorkloadProfileVariables(string template, WorkloadProfile[] profiles)
-    {
-        if (string.IsNullOrEmpty(template) || profiles == null || profiles.Length == 0)
-            return template;
 
-        var regex = new Regex(@"\{WorkloadProfile:([^}]+)\}", RegexOptions.IgnoreCase);
-        var result = regex.Replace(template, match =>
-        {
-            var profileId = match.Groups[1].Value;
-            var profile = profiles.FirstOrDefault(p =>
-                string.Equals(p.ProfileId, profileId, StringComparison.OrdinalIgnoreCase));
-
-            if (profile == null)
-            {
-                return $"[Unknown workload profile: {profileId}]";
-            }
-
-            return FormatWorkloadProfileForPrompt(profile);
-        });
-
-        return result;
-    }
-
-    private string FormatWorkloadProfileForPrompt(WorkloadProfile profile)
-    {
-        var perf = profile.PerformanceRequirements;
-        var anf = profile.AnfSuitabilityInfo;
-        var hints = profile.Hints;
-
-        var sb = new StringBuilder();
-        sb.AppendLine($"Workload profile: {profile.Name} (Id: {profile.ProfileId})");
-        sb.AppendLine($"Description: {profile.Description}");
-        sb.AppendLine("Performance requirements:");
-        sb.AppendLine($"  - Size range: {perf.MinSizeGB?.ToString() ?? "?"}–{perf.MaxSizeGB?.ToString() ?? "?"} GB");
-        sb.AppendLine($"  - IOPS range: {perf.MinIops?.ToString() ?? "?"}–{perf.MaxIops?.ToString() ?? "?"}");
-        sb.AppendLine($"  - Latency sensitivity: {perf.LatencySensitivity}");
-        sb.AppendLine($"  - Throughput range: {perf.MinThroughputMBps?.ToString() ?? "?"}–{perf.MaxThroughputMBps?.ToString() ?? "?"} MB/s");
-        if (!string.IsNullOrEmpty(perf.IoPattern))
-            sb.AppendLine($"  - I/O pattern: {perf.IoPattern}");
-
-        sb.AppendLine("ANF suitability:");
-        sb.AppendLine($"  - Compatible with ANF: {anf.Compatible}");
-        if (!string.IsNullOrEmpty(anf.RecommendedServiceLevel))
-            sb.AppendLine($"  - Recommended ANF service level: {anf.RecommendedServiceLevel}");
-        if (!string.IsNullOrEmpty(anf.Notes))
-            sb.AppendLine($"  - Notes: {anf.Notes}");
-        if (anf.Caveats != null && anf.Caveats.Length > 0)
-            sb.AppendLine($"  - Caveats: {string.Join("; ", anf.Caveats)}");
-
-        sb.AppendLine("Detection hints (for matching volumes to this workload):");
-        if (hints.NamingPatterns != null && hints.NamingPatterns.Length > 0)
-            sb.AppendLine($"  - Naming patterns: {string.Join(", ", hints.NamingPatterns)}");
-        if (hints.CommonTags != null && hints.CommonTags.Length > 0)
-            sb.AppendLine($"  - Common tags: {string.Join(", ", hints.CommonTags)}");
-        if (hints.FileTypeIndicators != null && hints.FileTypeIndicators.Length > 0)
-            sb.AppendLine($"  - File types: {string.Join(", ", hints.FileTypeIndicators)}");
-        if (hints.PathPatterns != null && hints.PathPatterns.Length > 0)
-            sb.AppendLine($"  - Path patterns: {string.Join(", ", hints.PathPatterns)}");
-
-        return sb.ToString();
-    }
-
-    private string BuildFullPrompt(string userPrompt, WorkloadProfile[] profiles)
+    private string BuildFullPrompt(string userPrompt)
     {
         var sb = new StringBuilder();
         sb.AppendLine("You are an Azure storage workload classification expert. Your task is to analyze Azure Files volumes and classify them based on their characteristics.");
         sb.AppendLine();
-        sb.AppendLine("Available Workload Classifications (summary):");
-
-        foreach (var profile in profiles.Where(p => !p.IsExclusionProfile))
-        {
-            var desc = profile.Description ?? string.Empty;
-            if (desc.Length > 220)
-            {
-                desc = desc.Substring(0, 220) + "...";
-            }
-            sb.AppendLine($"- {profile.Name} (ID: {profile.ProfileId}): {desc}");
-        }
-
-        sb.AppendLine();
         sb.AppendLine("Volume to analyze and instructions:");
         sb.AppendLine(userPrompt);
-        sb.AppendLine();
-        sb.AppendLine("When workload profile details are inlined (via {WorkloadProfile:<id>} markers already expanded above), explicitly compare the volume against those profiles.");
         sb.AppendLine();
         
         // Add structured output requirements (cannot be edited by users - applies to ALL prompts)
@@ -728,7 +636,7 @@ public class VolumeAnalysisService
         sb.AppendLine("```json");
         sb.AppendLine("{");
         sb.AppendLine("  \"match\": \"YES\" or \"NO\",");
-        sb.AppendLine("  \"classification\": \"workload-profile-id\" or null,");
+        sb.AppendLine("  \"classification\": \"workload-id\" or null,");
         sb.AppendLine("  \"confidence\": 0-100,");
         sb.AppendLine("  \"reasoning\": \"brief explanation\"");
         sb.AppendLine("}");
@@ -738,8 +646,8 @@ public class VolumeAnalysisService
         sb.AppendLine("- match: String \"YES\" or \"NO\" ONLY (case-sensitive)");
         sb.AppendLine("  * For EXCLUSION prompts: \"YES\" = exclude this volume (stop processing), \"NO\" = not excluded (continue)");
         sb.AppendLine("  * For WORKLOAD DETECTION prompts: \"YES\" = this workload matches, \"NO\" = does not match");
-        sb.AppendLine("- classification: String containing valid ProfileId from list above, or null");
-        sb.AppendLine("  * Set to ProfileId if match=YES and you can classify to a specific workload");
+        sb.AppendLine("- classification: String containing workload identifier, or null");
+        sb.AppendLine("  * Set to a workload identifier if match=YES and you can classify to a specific workload");
         sb.AppendLine("  * Set to null if match=NO or cannot classify");
         sb.AppendLine("- confidence: Integer between 0 and 100 (inclusive) representing certainty percentage");
         sb.AppendLine("- reasoning: String with one brief sentence explaining your decision");
@@ -952,19 +860,15 @@ public class VolumeAnalysisService
         return false;
     }
 
-    private void ApplyStopAction(StopConditions stopCondition, AiAnalysisResult result, WorkloadProfile[] profiles)
+    private void ApplyStopAction(StopConditions stopCondition, AiAnalysisResult result)
     {
         switch (stopCondition.ActionOnMatch)
         {
             case StopAction.SetWorkload:
                 if (!string.IsNullOrEmpty(stopCondition.TargetWorkloadId))
                 {
-                    var workload = profiles.FirstOrDefault(p => p.ProfileId == stopCondition.TargetWorkloadId);
-                    if (workload != null)
-                    {
-                        result.SuggestedWorkloadId = workload.ProfileId;
-                        result.SuggestedWorkloadName = workload.Name;
-                    }
+                    result.SuggestedWorkloadId = stopCondition.TargetWorkloadId;
+                    result.SuggestedWorkloadName = stopCondition.TargetWorkloadId;
                 }
                 break;
                 

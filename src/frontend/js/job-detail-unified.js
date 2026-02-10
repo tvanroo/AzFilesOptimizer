@@ -150,7 +150,6 @@ const jobDetail = {
         if (tabName === 'analysis') {
             if (this.volumes.length === 0) {
                 this.loadVolumes();
-                this.loadWorkloadProfiles();
             }
             // Always check for analysis logs when switching to analysis tab
             this.checkForAnalysisLogs();
@@ -339,22 +338,6 @@ const jobDetail = {
         }
     },
 
-    async loadWorkloadProfiles() {
-        try {
-            const profiles = await apiClient.fetchJson('/workload-profiles');
-            const filterSelect = document.getElementById('workloadFilter');
-            
-            profiles.forEach(p => {
-                const option = document.createElement('option');
-                option.value = p.ProfileId;
-                option.textContent = p.Name;
-                filterSelect.appendChild(option);
-            });
-        } catch (error) {
-            console.error('Error loading profiles:', error);
-        }
-    },
-    
     async loadVolumes() {
         await this.applyFilters();
     },

@@ -18,7 +18,6 @@ public class AnalysisJobRunner
 
     private TableClient? _analysisJobsTable;
     private AnalysisLogService? _analysisLogService;
-    private WorkloadProfileService? _profileService;
     private AnalysisPromptService? _promptService;
     private ApiKeyStorageService? _apiKeyService;
 
@@ -100,7 +99,6 @@ public class AnalysisJobRunner
             // 4) Create analysis service and run analysis
             var analysisService = new VolumeAnalysisService(
                 _connectionString,
-                _profileService!,
                 _promptService!,
                 _logger);
 
@@ -151,7 +149,6 @@ public class AnalysisJobRunner
         }
 
         _analysisLogService ??= new AnalysisLogService(_connectionString, _logger);
-        _profileService ??= new WorkloadProfileService(_connectionString, _logger);
         _promptService ??= new AnalysisPromptService(_connectionString, _logger);
         _apiKeyService ??= new ApiKeyStorageService(_connectionString);
     }

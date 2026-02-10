@@ -2,7 +2,6 @@ const volumeDetailPage = {
     jobId: null,
     volumeId: null,
     currentData: null,
-    workloadProfiles: [],
     undoStack: [],
     autoSaveTimeout: null,
     _downloadUrl: null,
@@ -37,7 +36,6 @@ const volumeDetailPage = {
             return;
         }
 
-        await this.loadWorkloadProfiles();
         await this.loadVolume();
         this.initializeDecisionPanel();
 
@@ -1027,31 +1025,9 @@ const volumeDetailPage = {
     },
 
     // Decision Panel Methods
-    async loadWorkloadProfiles() {
-        try {
-            const url = `${API_BASE_URL}/workload-profiles`;
-            const response = await fetch(url);
-            if (response.ok) {
-                this.workloadProfiles = await response.json();
-            }
-        } catch (error) {
-            console.error('Error loading workload profiles:', error);
-        }
-    },
 
     initializeDecisionPanel() {
-        // Populate workload dropdown
         const workloadSelect = document.getElementById('workload-select');
-        if (workloadSelect && this.workloadProfiles.length > 0) {
-            this.workloadProfiles.forEach(profile => {
-                if (!profile.IsExclusionProfile) {
-                    const option = document.createElement('option');
-                    option.value = profile.ProfileId;
-                    option.textContent = profile.Name;
-                    workloadSelect.appendChild(option);
-                }
-            });
-        }
 
         // Quick action buttons
         document.getElementById('btn-accept-ai')?.addEventListener('click', () => this.acceptAiClassification());
@@ -1072,7 +1048,7 @@ const volumeDetailPage = {
         });
 
         // Auto-save on changes
-        workloadSelect?.addEventListener('change', () => this.scheduleAutoSave());
+        workloadSelect?.addEventListener('input', () => this.scheduleAutoSave());
         document.getElementById('status-select')?.addEventListener('change', () => this.scheduleAutoSave());
         document.getElementById('capacity-override')?.addEventListener('input', () => this.scheduleAutoSave());
         document.getElementById('throughput-override')?.addEventListener('input', () => this.scheduleAutoSave());

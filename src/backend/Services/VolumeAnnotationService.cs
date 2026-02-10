@@ -10,7 +10,6 @@ public class VolumeAnnotationService
 {
     private readonly ILogger _logger;
     private readonly BlobContainerClient _blobContainer;
-    private readonly WorkloadProfileService _workloadProfileService;
     private readonly DiscoveredResourceStorageService _resourceStorage;
 
     public VolumeAnnotationService(string connectionString, ILogger logger)
@@ -19,7 +18,6 @@ public class VolumeAnnotationService
         var blobServiceClient = new BlobServiceClient(connectionString);
         _blobContainer = blobServiceClient.GetBlobContainerClient("discovery-data");
         _blobContainer.CreateIfNotExists();
-        _workloadProfileService = new WorkloadProfileService(connectionString, logger);
         _resourceStorage = new DiscoveredResourceStorageService(connectionString);
     }
 
@@ -427,13 +425,9 @@ public class VolumeAnnotationService
             throw new InvalidOperationException($"Volume {volumeId} not found");
 
         // Populate ConfirmedWorkloadName if ConfirmedWorkloadId is provided
-        if (!string.IsNullOrEmpty(annotations.ConfirmedWorkloadId))
+        if (!string.IsNullOrEmpty(annotations.ConfirmedWorkloadId) && string.IsNullOrEmpty(annotations.ConfirmedWorkloadName))
         {
-            var profile = await _workloadProfileService.GetProfileAsync(annotations.ConfirmedWorkloadId);
-            if (profile != null)
-            {
-                annotations.ConfirmedWorkloadName = profile.Name;
-            }
+            annotations.ConfirmedWorkloadName = annotations.ConfirmedWorkloadId;
         }
 
         annotations.ReviewedBy = userId;
@@ -477,7 +471,10 @@ public class VolumeAnnotationService
                 volume.UserAnnotations ??= new UserAnnotations();
                 
                 if (annotations.ConfirmedWorkloadId != null)
+                {
                     volume.UserAnnotations.ConfirmedWorkloadId = annotations.ConfirmedWorkloadId;
+                    volume.UserAnnotations.ConfirmedWorkloadName = annotations.ConfirmedWorkloadId;
+                }
                 
                 if (annotations.CustomTags != null)
                     volume.UserAnnotations.CustomTags = annotations.CustomTags;

@@ -14,7 +14,6 @@ namespace AzFilesOptimizer.Backend.Functions;
 public class ChatAssistantFunction
 {
     private readonly ILogger _logger;
-    private readonly WorkloadProfileService _profileService;
     private readonly ApiKeyStorageService _apiKeyService;
 
     public ChatAssistantFunction(ILoggerFactory loggerFactory)
@@ -22,7 +21,6 @@ public class ChatAssistantFunction
         _logger = loggerFactory.CreateLogger<ChatAssistantFunction>();
         var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
         
-        _profileService = new WorkloadProfileService(connectionString, _logger);
         _apiKeyService = new ApiKeyStorageService(connectionString);
     }
 
@@ -73,7 +71,7 @@ public class ChatAssistantFunction
 
             // Create chat service
             var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "";
-            var chatService = new ChatAssistantService(connectionString, _profileService, _logger);
+            var chatService = new ChatAssistantService(connectionString, _logger);
 
             // Normalize history
             var history = request.ConversationHistory ?? new List<ChatMessage>();

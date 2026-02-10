@@ -11,15 +11,12 @@ public class ChatAssistantService
 {
     private readonly ILogger _logger;
     private readonly BlobContainerClient _blobContainer;
-    private readonly WorkloadProfileService _profileService;
 
     public ChatAssistantService(
         string connectionString,
-        WorkloadProfileService profileService,
         ILogger logger)
     {
         _logger = logger;
-        _profileService = profileService;
         
         var blobServiceClient = new BlobServiceClient(connectionString);
         _blobContainer = blobServiceClient.GetBlobContainerClient("discovery-data");
@@ -43,11 +40,9 @@ public class ChatAssistantService
             return "I couldn't find any volume data for this discovery job. Please make sure the job has completed.";
         }
 
-        // Load workload profiles for context
-        var profiles = await _profileService.GetAllProfilesAsync();
 
         // Build system prompt with volume data context
-        var systemPrompt = BuildSystemPrompt(discoveryData, profiles);
+        var systemPrompt = BuildSystemPrompt(discoveryData);
 
         // Build conversation history
         var messages = new List<object>();
@@ -75,7 +70,7 @@ public class ChatAssistantService
         }
     }
 
-    private string BuildSystemPrompt(DiscoveryData discoveryData, List<WorkloadProfile> profiles)
+    private string BuildSystemPrompt(DiscoveryData discoveryData)
     {
         var sb = new StringBuilder();
         
@@ -112,13 +107,6 @@ public class ChatAssistantService
             sb.AppendLine();
         }
 
-        // Available workload profiles
-        sb.AppendLine("KNOWN WORKLOAD TYPES:");
-        foreach (var profile in profiles.Where(p => !p.IsExclusionProfile))
-        {
-            sb.AppendLine($"- {profile.Name}");
-        }
-        sb.AppendLine();
 
         // Sample volumes (first 5 for context)
         sb.AppendLine("SAMPLE VOLUMES:");

@@ -428,7 +428,6 @@
         <ul>
             <li><a href="index.html">Home</a></li>
             <li><a href="jobs.html">Jobs</a></li>
-            <li><a href="workload-profiles.html">Workload Profiles</a></li>
             <li><a href="analysis-prompts.html">Analysis Prompts</a></li>
             <li><a href="settings.html">Settings</a></li>
         </ul>
@@ -471,9 +470,7 @@
                 <div class="analysis-toolbar">
                     <div>
                         <label>Workload Filter</label>
-                        <select id="workloadFilter" onchange="jobDetail.applyFilters()">
-                            <option value="">All Workloads</option>
-                        </select>
+                        <input type="text" id="workloadFilter" placeholder="Filter by workload" oninput="jobDetail.applyFilters()">
                     </div>
                     <div>
                         <label>Status Filter</label>
