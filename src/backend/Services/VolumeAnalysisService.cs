@@ -394,7 +394,6 @@ public class VolumeAnalysisService
         // the result as having insufficient data.
         return await AnalyzeSingleVolumeAsync(
             pseudoShare,
-            prompts,
             apiKey,
             provider,
             endpoint,
