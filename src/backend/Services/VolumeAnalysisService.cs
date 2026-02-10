@@ -523,7 +523,6 @@ public class VolumeAnalysisService
         return await AnalyzeSingleVolumeAsync(
             pseudoShare,
             prompts,
-            profiles,
             apiKey,
             provider,
             endpoint,
