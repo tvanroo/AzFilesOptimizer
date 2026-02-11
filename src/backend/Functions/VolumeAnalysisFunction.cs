@@ -263,16 +263,15 @@ public class VolumeAnalysisFunction
         {
             // Ensure volumes are migrated from Tables to Blob storage
             await _migrationService.MigrateJobVolumesToBlobAsync(jobId);
+            await _annotationService.ScrubWorkloadAnalysisDataAsync(jobId);
             
             var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
-            var workloadFilter = query["workloadFilter"];
             var statusFilter = query["statusFilter"];
-            var confidenceMin = double.TryParse(query["confidenceMin"], out var conf) ? conf : (double?)null;
             var page = int.TryParse(query["page"], out var p) ? p : 1;
             var pageSize = int.TryParse(query["pageSize"], out var ps) ? ps : 50;
             
             var result = await _annotationService.GetVolumesWithFiltersAsync(
-                jobId, workloadFilter, statusFilter, confidenceMin, page, pageSize);
+                jobId, statusFilter, page, pageSize);
             
             var response = req.CreateResponse(HttpStatusCode.OK);
             var options = new JsonSerializerOptions
@@ -303,6 +302,7 @@ public class VolumeAnalysisFunction
         {
             // Ensure discovery data exists in Blob storage
             await _migrationService.MigrateJobVolumesToBlobAsync(jobId);
+            await _annotationService.ScrubWorkloadAnalysisDataAsync(jobId);
 
             var data = await _annotationService.GetDiscoveryDataAsync(jobId);
             var volume = data?.Volumes.FirstOrDefault(v => v.VolumeId == volumeId);
@@ -706,7 +706,7 @@ public class VolumeAnalysisFunction
         {
             var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
             var format = query["format"] ?? "json";
-            
+            await _annotationService.ScrubWorkloadAnalysisDataAsync(jobId);
             var data = await _annotationService.ExportVolumesAsync(jobId, format);
             
             var response = req.CreateResponse(HttpStatusCode.OK);

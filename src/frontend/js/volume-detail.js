@@ -71,7 +71,6 @@ const volumeDetailPage = {
         // Update JSON download link
         this.updateDownloadLink(model);
         const vol = v.VolumeData || {};
-        const ai = v.AiAnalysis || null;
         const user = v.UserAnnotations || null;
 
         const props = this.getVolumeProperties(volumeType, vol);
@@ -97,11 +96,6 @@ const volumeDetailPage = {
         document.getElementById('volume-subtitle').textContent =
             `${props.parentName || '-'} · ${vol.ResourceGroup || '-'} · ${vol.Location || '-'}`;
 
-        // Summary cards
-        const aiWorkload = ai?.SuggestedWorkloadName || 'Unclassified';
-        const aiConfidence = ai ? `${(ai.ConfidenceScore * 100).toFixed(0)}%` : '-';
-        document.getElementById('summary-ai-workload').textContent = aiWorkload;
-        document.getElementById('summary-ai-confidence').textContent = aiConfidence;
 
         // Cost summary (if available)
         const cost = v.CostSummary || null;
@@ -137,8 +131,6 @@ const volumeDetailPage = {
             }
         }
 
-        const userWorkload = user?.ConfirmedWorkloadName || 'Not confirmed';
-        document.getElementById('summary-user-workload').textContent = userWorkload;
 
         const status = this.getMigrationStatusText(user?.MigrationStatus) || 'Candidate';
         const statusEl = document.getElementById('summary-migration-status');
@@ -174,26 +166,10 @@ const volumeDetailPage = {
             this.addAnfSpecificProperties(vol);
         }
 
-        // AI categorization
-        this.setText('ai-suggested', aiWorkload);
-        this.setText('ai-confidence', aiConfidence);
-        this.setText('ai-last-analyzed', ai?.LastAnalyzed ? new Date(ai.LastAnalyzed).toLocaleString() : '-');
-        this.setText('ai-error', ai?.ErrorMessage || '-');
-        this.renderAiPrompts(ai?.AppliedPrompts || []);
-        
-        // Check Accept AI checkboxes if user has already accepted the AI classification
-        const aiAccepted = ai?.SuggestedWorkloadId && user?.ConfirmedWorkloadId === ai.SuggestedWorkloadId;
-        const summaryCheckbox = document.getElementById('accept-ai-checkbox-summary');
-        const detailCheckbox = document.getElementById('accept-ai-checkbox-detail');
-        if (summaryCheckbox) summaryCheckbox.checked = aiAccepted;
-        if (detailCheckbox) detailCheckbox.checked = aiAccepted;
 
         // Human decisions
-        this.setText('user-workload', userWorkload);
         this.setText('user-status', this.getMigrationStatusText(user?.MigrationStatus) || 'Candidate');
         this.renderTagArray('user-tags', user?.CustomTags);
-        this.setText('user-reviewed-by', user?.ReviewedBy || '-');
-        this.setText('user-reviewed-at', user?.ReviewedAt ? new Date(user.ReviewedAt).toLocaleString() : '-');
         const notesEl = document.getElementById('user-notes');
         if (user?.Notes) {
             notesEl.textContent = user.Notes;
@@ -206,13 +182,13 @@ const volumeDetailPage = {
         this.renderAllMetrics(volumeType, vol);
 
         // Capacity Sizing
-        this.renderCapacitySizing(ai?.CapacitySizing);
+        this.renderCapacitySizing(v.AiAnalysis?.CapacitySizing);
 
         // Populate decision panel
         this.populateDecisionPanel(model);
 
-        // History timeline: combine AI prompts, user review, and annotation history
-        this.renderHistoryTimeline(ai, user, v.AnnotationHistory || []);
+        // History timeline: combine user review and annotation history
+        this.renderHistoryTimeline(user, v.AnnotationHistory || []);
         
         // Load cool data assumptions if applicable
         this.loadCoolAssumptions();
@@ -244,29 +220,6 @@ const volumeDetailPage = {
             .join('');
     },
 
-    renderAiPrompts(prompts) {
-        const container = document.getElementById('ai-prompts');
-        if (!container) return;
-        if (!prompts || prompts.length === 0) {
-            container.innerHTML = '<p style="font-size:0.85rem; color:var(--text-secondary);">No prompt-level details available.</p>';
-            return;
-        }
-        container.innerHTML = prompts.map(p => {
-            const stopped = p.StoppedProcessing ? '<span style="margin-left:6px; font-size:0.75rem; color:#ef6c00;">Stopped Here</span>' : '';
-            const evidenceHtml = (p.Evidence && p.Evidence.length)
-                ? '<ul style="margin:4px 0 0 1rem; font-size:0.8rem;">' +
-                  p.Evidence.map(e => `<li>${this.escapeHtml(e)}</li>`).join('') +
-                  '</ul>'
-                : '';
-            return `
-                <div style="border:1px solid #ddd; border-radius:4px; padding:8px 10px; margin-bottom:6px; font-size:0.85rem;">
-                    <div style="font-weight:600;">${this.escapeHtml(p.PromptName || '')}${stopped}</div>
-                    <div style="margin-top:4px; white-space:pre-wrap;">${this.escapeHtml(p.Result || '')}</div>
-                    ${evidenceHtml}
-                </div>
-            `;
-        }).join('');
-    },
 
     renderAllMetrics(volumeType, vol) {
         const container = document.getElementById('metrics-container');
@@ -625,7 +578,7 @@ const volumeDetailPage = {
         }
     },
 
-    renderHistoryTimeline(ai, user, history) {
+    renderHistoryTimeline(user, history) {
         const container = document.getElementById('history-timeline');
         if (!container) return;
         const items = [];
@@ -639,39 +592,22 @@ const volumeDetailPage = {
                     time: h.Timestamp ? new Date(h.Timestamp).toLocaleString() : null,
                     body: h.Notes || '',
                     meta: [
-                        h.UserId ? `User: ${h.UserId}` : null,
                         h.MigrationStatus ? `Status: ${h.MigrationStatus}` : null,
-                        h.ConfirmedWorkloadName ? `Workload: ${h.ConfirmedWorkloadName}` : null,
                         h.Source ? `Source: ${h.Source}` : null
                     ].filter(Boolean).join(' | ')
                 });
             });
         }
-
-        // AI prompts (logical lineage of AI decision)
-        if (ai && ai.AppliedPrompts && ai.AppliedPrompts.length) {
-            ai.AppliedPrompts.forEach(p => {
-                items.push({
-                    type: 'ai-prompt',
-                    title: `AI Prompt: ${p.PromptName || ''}`,
-                    time: null,
-                    body: p.Result || '',
-                    meta: p.StoppedProcessing ? 'Stop condition triggered' : null
-                });
-            });
         }
 
         // Most recent consolidated user review (for convenience)
-        if (user && (user.ReviewedAt || user.ReviewedBy || user.MigrationStatus || user.ConfirmedWorkloadName || user.Notes)) {
+        if (user && (user.MigrationStatus || user.Notes)) {
             items.push({
                 type: 'user-review',
                 title: 'Latest human review',
-                time: user.ReviewedAt ? new Date(user.ReviewedAt).toLocaleString() : null,
                 body: user.Notes || '',
                 meta: [
-                    user.ReviewedBy ? `Reviewer: ${user.ReviewedBy}` : null,
-                    user.MigrationStatus ? `Status: ${user.MigrationStatus}` : null,
-                    user.ConfirmedWorkloadName ? `Workload: ${user.ConfirmedWorkloadName}` : null
+                    user.MigrationStatus ? `Status: ${user.MigrationStatus}` : null
                 ].filter(Boolean).join(' | ')
             });
         }
@@ -1027,28 +963,12 @@ const volumeDetailPage = {
     // Decision Panel Methods
 
     initializeDecisionPanel() {
-        const workloadSelect = document.getElementById('workload-select');
-
         // Quick action buttons
-        document.getElementById('btn-accept-ai')?.addEventListener('click', () => this.acceptAiClassification());
         document.getElementById('btn-exclude')?.addEventListener('click', () => this.quickExclude());
         document.getElementById('btn-approve')?.addEventListener('click', () => this.quickApprove());
         document.getElementById('btn-undo')?.addEventListener('click', () => this.undoLastChange());
-        
-        // Inline accept AI checkboxes
-        document.getElementById('accept-ai-checkbox-summary')?.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                this.acceptAiClassification();
-            }
-        });
-        document.getElementById('accept-ai-checkbox-detail')?.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                this.acceptAiClassification();
-            }
-        });
 
         // Auto-save on changes
-        workloadSelect?.addEventListener('input', () => this.scheduleAutoSave());
         document.getElementById('status-select')?.addEventListener('change', () => this.scheduleAutoSave());
         document.getElementById('capacity-override')?.addEventListener('input', () => this.scheduleAutoSave());
         document.getElementById('throughput-override')?.addEventListener('input', () => this.scheduleAutoSave());
@@ -1056,15 +976,8 @@ const volumeDetailPage = {
     },
 
     populateDecisionPanel(model) {
-        const ai = model.AiAnalysis || {};
         const user = model.UserAnnotations || {};
-        const sizing = ai.CapacitySizing || {};
-
-        // Set workload
-        const workloadSelect = document.getElementById('workload-select');
-        if (workloadSelect) {
-            workloadSelect.value = user.ConfirmedWorkloadId || '';
-        }
+        const sizing = model.AiAnalysis?.CapacitySizing || {};
 
         // Set status
         const statusSelect = document.getElementById('status-select');
@@ -1103,50 +1016,6 @@ const volumeDetailPage = {
         }
     },
 
-    acceptAiClassification() {
-        const ai = this.currentData?.AiAnalysis;
-        if (!ai || !ai.SuggestedWorkloadId) {
-            Toast.error('No AI classification available to accept');
-            return;
-        }
-
-        const workloadSelect = document.getElementById('workload-select');
-        const statusSelect = document.getElementById('status-select');
-        
-        if (!workloadSelect || !statusSelect) {
-            Toast.error('Decision panel not initialized');
-            return;
-        }
-
-        this.saveCurrentState();
-        workloadSelect.value = ai.SuggestedWorkloadId;
-        statusSelect.value = 'UnderReview';
-        
-        // Update the current data model
-        if (!this.currentData.UserAnnotations) {
-            this.currentData.UserAnnotations = {};
-        }
-        this.currentData.UserAnnotations.ConfirmedWorkloadId = ai.SuggestedWorkloadId;
-        this.currentData.UserAnnotations.ConfirmedWorkloadName = ai.SuggestedWorkloadName;
-        this.currentData.UserAnnotations.MigrationStatus = 'UnderReview';
-        
-        // Update the summary display immediately
-        document.getElementById('summary-user-workload').textContent = ai.SuggestedWorkloadName;
-        const statusEl = document.getElementById('summary-migration-status');
-        statusEl.textContent = 'UnderReview';
-        statusEl.className = 'badge-status UnderReview';
-        document.getElementById('user-workload').textContent = ai.SuggestedWorkloadName;
-        document.getElementById('user-status').textContent = 'UnderReview';
-        
-        // Check the Accept AI checkboxes
-        const summaryCheckbox = document.getElementById('accept-ai-checkbox-summary');
-        const detailCheckbox = document.getElementById('accept-ai-checkbox-detail');
-        if (summaryCheckbox) summaryCheckbox.checked = true;
-        if (detailCheckbox) detailCheckbox.checked = true;
-        
-        this.scheduleAutoSave();
-        Toast.success('Accepted AI classification');
-    },
 
     quickExclude() {
         this.saveCurrentState();
@@ -1158,20 +1027,12 @@ const volumeDetailPage = {
     quickApprove() {
         this.saveCurrentState();
         document.getElementById('status-select').value = 'Approved';
-        const workloadSelect = document.getElementById('workload-select');
-        if (!workloadSelect.value) {
-            const ai = this.currentData?.AiAnalysis;
-            if (ai?.SuggestedWorkloadId) {
-                workloadSelect.value = ai.SuggestedWorkloadId;
-            }
-        }
         this.scheduleAutoSave();
         Toast.success('Volume approved for migration');
     },
 
     saveCurrentState() {
         const state = {
-            workload: document.getElementById('workload-select')?.value,
             status: document.getElementById('status-select')?.value,
             capacity: document.getElementById('capacity-override')?.value,
             throughput: document.getElementById('throughput-override')?.value,
@@ -1186,7 +1047,6 @@ const volumeDetailPage = {
         if (this.undoStack.length === 0) return;
         
         const state = this.undoStack.pop();
-        document.getElementById('workload-select').value = state.workload || '';
         document.getElementById('status-select').value = state.status || 'Candidate';
         document.getElementById('capacity-override').value = state.capacity || '';
         document.getElementById('throughput-override').value = state.throughput || '';
@@ -1209,14 +1069,12 @@ const volumeDetailPage = {
     },
 
     async saveDecisions() {
-        const workloadId = document.getElementById('workload-select')?.value;
         const status = document.getElementById('status-select')?.value;
         const capacity = document.getElementById('capacity-override')?.value;
         const throughput = document.getElementById('throughput-override')?.value;
         const notes = document.getElementById('notes-input')?.value;
 
         const updates = {
-            ConfirmedWorkloadId: workloadId || null,
             MigrationStatus: status || 'Candidate',
             Notes: notes || null
         };

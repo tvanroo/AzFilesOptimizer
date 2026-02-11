@@ -73,6 +73,70 @@ public class VolumeAnnotationService
         }
     }
 
+    public async Task<bool> ScrubWorkloadAnalysisDataAsync(string discoveryJobId)
+    {
+        var data = await GetDiscoveryDataAsync(discoveryJobId);
+        if (data == null) return false;
+
+        var changed = false;
+        foreach (var volume in data.Volumes)
+        {
+            // Scrub AI workload analysis fields but keep capacity sizing if present.
+            if (volume.AiAnalysis != null)
+            {
+                var ai = volume.AiAnalysis;
+                if (ai.SuggestedWorkloadId != null || ai.SuggestedWorkloadName != null || ai.AppliedPrompts != null ||
+                    ai.ErrorMessage != null || ai.LastAnalyzed != null || Math.Abs(ai.ConfidenceScore) > 0)
+                {
+                    ai.SuggestedWorkloadId = null;
+                    ai.SuggestedWorkloadName = null;
+                    ai.AppliedPrompts = null;
+                    ai.ErrorMessage = null;
+                    ai.LastAnalyzed = null;
+                    ai.ConfidenceScore = 0;
+                    changed = true;
+                }
+            }
+
+            // Scrub user workload/review fields but keep migration status, notes, tags, and overrides.
+            if (volume.UserAnnotations != null)
+            {
+                var user = volume.UserAnnotations;
+                if (user.ConfirmedWorkloadId != null || user.ConfirmedWorkloadName != null || user.ReviewedBy != null || user.ReviewedAt != null)
+                {
+                    user.ConfirmedWorkloadId = null;
+                    user.ConfirmedWorkloadName = null;
+                    user.ReviewedBy = null;
+                    user.ReviewedAt = null;
+                    changed = true;
+                }
+            }
+
+            // Scrub workload-related history fields.
+            if (volume.AnnotationHistory != null)
+            {
+                foreach (var entry in volume.AnnotationHistory)
+                {
+                    if (entry.ConfirmedWorkloadId != null || entry.ConfirmedWorkloadName != null || !string.IsNullOrEmpty(entry.UserId))
+                    {
+                        entry.ConfirmedWorkloadId = null;
+                        entry.ConfirmedWorkloadName = null;
+                        entry.UserId = string.Empty;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if (changed)
+        {
+            await SaveDiscoveryDataAsync(data);
+            _logger.LogInformation("Scrubbed workload/analysis fields for job {JobId}", discoveryJobId);
+        }
+
+        return changed;
+    }
+
     public async Task<VolumeListResponse> GetVolumesWithFiltersAsync(
         string discoveryJobId,
         string? workloadFilter = null,
@@ -551,7 +615,7 @@ public class VolumeAnnotationService
         
         // Header
         sb.AppendLine("Volume Type,Volume Name,Storage Account/Account,Resource Group,Size (GiB),Used Capacity," +
-                     "AI Workload,AI Confidence,User Workload,Migration Status,Custom Tags,Notes");
+                     "Migration Status,Custom Tags,Notes");
 
         // Data rows - handle all three volume types
         foreach (var volume in data.Volumes)
@@ -574,12 +638,6 @@ public class VolumeAnnotationService
             sb.Append(size);
             sb.Append(',');
             sb.Append(usedCapacity);
-            sb.Append(',');
-            sb.Append(CsvEscape(volume.AiAnalysis?.SuggestedWorkloadName ?? ""));
-            sb.Append(',');
-            sb.Append(volume.AiAnalysis?.ConfidenceScore.ToString("P0") ?? "");
-            sb.Append(',');
-            sb.Append(CsvEscape(volume.UserAnnotations?.ConfirmedWorkloadName ?? ""));
             sb.Append(',');
             sb.Append(CsvEscape(volume.UserAnnotations?.MigrationStatus?.ToString() ?? ""));
             sb.Append(',');

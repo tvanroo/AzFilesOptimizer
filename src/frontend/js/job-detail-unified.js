@@ -43,15 +43,9 @@ const jobDetail = {
         { key: 'Cost30Days', label: '30-Day Cost', sortable: true },
         { key: 'CostPerDay', label: 'Daily Cost', sortable: true },
         { key: 'CostSource', label: 'Cost Source', sortable: true },
-        { key: 'AiWorkload', label: 'AI Workload', sortable: true },
-        { key: 'AiConfidence', label: 'AI Confidence', sortable: true },
-        { key: 'AiLastAnalyzed', label: 'AI Last Analyzed', sortable: true },
-        { key: 'UserWorkload', label: 'User Workload', sortable: true },
-        { key: 'MigrationStatus', label: 'Migration Status', sortable: true },
-        { key: 'ReviewedBy', label: 'Reviewed By', sortable: true },
-        { key: 'ReviewedAt', label: 'Reviewed At', sortable: true }
+        { key: 'MigrationStatus', label: 'Migration Status', sortable: true }
     ],
-    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','UsedCapacity','RequiredCapacityGiB','RequiredThroughputMiBps','AccessTier','Cost30Days','AiWorkload','UserWorkload','AiConfidence','MigrationStatus'],
+    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','UsedCapacity','RequiredCapacityGiB','RequiredThroughputMiBps','AccessTier','Cost30Days','MigrationStatus'],
     visibleVolumeColumns: null,
     volumeSortColumn: null,
     volumeSortDirection: 'asc',
@@ -348,6 +342,8 @@ const jobDetail = {
         if (!this.visibleVolumeColumns || !Array.isArray(this.visibleVolumeColumns)) {
             this.visibleVolumeColumns = [...this.defaultVisibleVolumeColumns];
         }
+        const validKeys = new Set(this.volumeColumns.map(c => c.key));
+        this.visibleVolumeColumns = this.visibleVolumeColumns.filter(k => validKeys.has(k));
         return this.visibleVolumeColumns;
     },
 
@@ -589,25 +585,8 @@ const jobDetail = {
                 if (!cs) return v.CostStatus || 'Pending';
                 return cs.IsActual ? 'Actual' : 'Estimate';
             }
-            case 'AiWorkload':
-                return v.AiAnalysis?.SuggestedWorkloadName || '-';
-            case 'AiConfidence': {
-                const rawScore = v.AiAnalysis?.ConfidenceScore || 0;
-                const percentage = rawScore * 100;
-                const displayValue = percentage.toFixed(0) + '%';
-                const fullPrecision = percentage.toFixed(8) + '%';
-                return `<span title="Full precision: ${fullPrecision} (confidence score: ${rawScore.toFixed(8)})">${displayValue}</span>`;
-            }
-            case 'AiLastAnalyzed':
-                return v.AiAnalysis?.LastAnalyzed ? new Date(v.AiAnalysis.LastAnalyzed).toLocaleString() : '-';
-            case 'UserWorkload':
-                return v.UserAnnotations?.ConfirmedWorkloadName || '-';
             case 'MigrationStatus':
                 return v.UserAnnotations?.MigrationStatus || 'Candidate';
-            case 'ReviewedBy':
-                return v.UserAnnotations?.ReviewedBy || '-';
-            case 'ReviewedAt':
-                return v.UserAnnotations?.ReviewedAt ? new Date(v.UserAnnotations.ReviewedAt).toLocaleString() : '-';
             default:
                 return '';
         }
@@ -641,8 +620,6 @@ const jobDetail = {
                     vData.ShareName || vData.DiskName || vData.VolumeName,
                     vData.StorageAccountName || vData.AttachedVmName || vData.NetAppAccountName,
                     vData.ResourceGroup,
-                    v.AiAnalysis?.SuggestedWorkloadName,
-                    v.UserAnnotations?.ConfirmedWorkloadName,
                     v.UserAnnotations?.MigrationStatus?.toString() || ''
                 ].map(x => (x || '').toString().toLowerCase());
                 return fields.some(f => f.includes(searchTerm));
@@ -662,11 +639,6 @@ const jobDetail = {
                 if (key === 'RequiredCapacityGiB' || key === 'RequiredThroughputMiBps' || key === 'CurrentThroughputMiBps' || key === 'CurrentIops') {
                     const av = typeof a[key] === 'number' ? a[key] : 0;
                     const bv = typeof b[key] === 'number' ? b[key] : 0;
-                    return (av - bv) * dir;
-                }
-                if (key === 'AiConfidence') {
-                    const av = a.AiAnalysis?.ConfidenceScore ?? 0;
-                    const bv = b.AiAnalysis?.ConfidenceScore ?? 0;
                     return (av - bv) * dir;
                 }
                 const avRaw = this.getVolumeCellValue(key, a) || '';
