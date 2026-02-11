@@ -53,10 +53,6 @@ const jobDetail = {
     // Chat state
     conversationHistory: [],
 
-    // Verbose log toggle state
-    showVerboseLogs: false,
-    verboseStorageKey: 'azfo-job-log-verbose',
-    
     // Initialize
     async init() {
         if (!this.jobId) {
@@ -83,13 +79,6 @@ const jobDetail = {
         this.loadVolumeViewState();
         this.setupEventListeners();
 
-        // Initialize verbose log toggle from local storage
-        const verboseToggle = document.getElementById('job-log-verbose-toggle');
-        if (verboseToggle) {
-            const saved = localStorage.getItem(this.verboseStorageKey);
-            this.showVerboseLogs = saved === '1';
-            verboseToggle.checked = this.showVerboseLogs;
-        }
 
         // Apply initial tab selection
         const initialTab = this.currentTab || 'analysis';
@@ -278,13 +267,8 @@ const jobDetail = {
             this.visibleVolumeColumns = parsed.visibleColumns || [...this.defaultVisibleVolumeColumns];
             this.volumeSortColumn = parsed.sortColumn || null;
             this.volumeSortDirection = parsed.sortDirection || 'asc';
-            const statusFilter = parsed.statusFilter || '';
             const searchTerm = parsed.searchTerm || '';
-
-            const statusSelect = document.getElementById('statusFilter');
             const searchInput = document.getElementById('volumeSearchInput');
-
-            if (statusSelect) statusSelect.value = statusFilter;
             if (searchInput) searchInput.value = searchTerm;
         } catch {
             this.visibleVolumeColumns = [...this.defaultVisibleVolumeColumns];
@@ -292,14 +276,12 @@ const jobDetail = {
     },
 
     saveVolumeViewState() {
-        const statusFilter = document.getElementById('statusFilter')?.value || '';
         const searchTerm = document.getElementById('volumeSearchInput')?.value || '';
 
         const payload = {
             visibleColumns: this.visibleVolumeColumns || this.defaultVisibleVolumeColumns,
             sortColumn: this.volumeSortColumn,
             sortDirection: this.volumeSortDirection,
-            statusFilter,
             searchTerm
         };
         try {
@@ -314,14 +296,12 @@ const jobDetail = {
     },
     
     async applyFilters() {
-        const statusFilter = document.getElementById('statusFilter')?.value || '';
 
         // Persist filter portion of view state immediately
         this.saveVolumeViewState();
         
         try {
             let url = `/discovery/${this.jobId}/volumes?page=${this.currentPage}&pageSize=${this.pageSize}`;
-            if (statusFilter) url += `&statusFilter=${encodeURIComponent(statusFilter)}`;
             
             const data = await apiClient.fetchJson(url);
             this.volumes = data.Volumes || [];
@@ -856,19 +836,6 @@ const jobDetail = {
 
             let combinedLogs = jobLogs.slice();
 
-            // When verbose mode is enabled, append analysis logs (if any) into the unified stream.
-            if (this.showVerboseLogs && this.currentAnalysisJobId) {
-                try {
-                    const analysisLogs = await apiClient.fetchJson(`/analysis/${this.currentAnalysisJobId}/logs`);
-                    const mapped = (analysisLogs || []).map(l => ({
-                        ...l,
-                        Message: `[ANALYSIS] ${l.Message || ''}`
-                    }));
-                    combinedLogs = combinedLogs.concat(mapped);
-                } catch (err) {
-                    console.error('Error fetching analysis logs for verbose mode:', err);
-                }
-            }
 
             combinedLogs.sort((a, b) => new Date(a.Timestamp) - new Date(b.Timestamp));
             
@@ -934,13 +901,6 @@ const jobDetail = {
         }
     },
 
-    onToggleVerbose(e) {
-        this.showVerboseLogs = !!e.target.checked;
-        try {
-            localStorage.setItem(this.verboseStorageKey, this.showVerboseLogs ? '1' : '0');
-        } catch {}
-        this.fetchDiscoveryLogs();
-    },
 
     copyLogContent(elementId, btnElement) {
         const logBody = document.getElementById(elementId);

@@ -466,18 +466,7 @@
                     </div>
                 </div>
 
-                <div class="analysis-toolbar">
-                    <div>
-                        <label>Status Filter</label>
-                        <select id="statusFilter" onchange="jobDetail.applyFilters()">
-                            <option value="">All Status</option>
-                            <option value="Candidate">Candidate</option>
-                            <option value="Excluded">Excluded</option>
-                            <option value="UnderReview">Under Review</option>
-                            <option value="Approved">Approved</option>
-                        </select>
-                    </div>
-                </div>
+                <div class="analysis-toolbar"></div>
                 
                 <div id="bulkToolbar" class="bulk-toolbar">
                     <span id="selectedCount">0 selected</span>
@@ -565,10 +554,6 @@
                     <span>Job Activity Log</span>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
-                    <label style="font-size: 12px; display: flex; align-items: center; gap: 4px;">
-                        <input type="checkbox" id="job-log-verbose-toggle" onchange="jobDetail.onToggleVerbose(event)">
-                        Show verbose
-                    </label>
                     <button class="btn" onclick="jobDetail.copyLogContent('discovery-log-body', this)" style="background: rgba(255,255,255,0.15); padding: 6px 12px; font-size: 12px;" title="Copy log to clipboard">📋 Copy</button>
                     <button class="btn" onclick="jobDetail.toggleLogConsole()" style="background: rgba(255,255,255,0.2); padding: 6px 12px; font-size: 12px;">Collapse</button>
                 </div>
