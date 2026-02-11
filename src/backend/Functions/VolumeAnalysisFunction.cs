@@ -271,7 +271,7 @@ public class VolumeAnalysisFunction
             var pageSize = int.TryParse(query["pageSize"], out var ps) ? ps : 50;
             
             var result = await _annotationService.GetVolumesWithFiltersAsync(
-                jobId, statusFilter, page, pageSize);
+                jobId, null, statusFilter, null, page, pageSize);
             
             var response = req.CreateResponse(HttpStatusCode.OK);
             var options = new JsonSerializerOptions
