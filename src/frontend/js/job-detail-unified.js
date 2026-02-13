@@ -966,24 +966,23 @@ const jobDetail = {
         try {
             Toast.info('Calculating hypothetical costs...');
             
-            // Prepare batch request with all volumes
-            const volumeRequests = this.volumes.map(v => ({
-                VolumeId: v.VolumeId,
-                RequiredCapacityGiB: v.RequiredCapacityGiB,
-                RequiredThroughputMiBps: v.RequiredThroughputMiBps
-            }));
+            // Prepare batch request with volume IDs
+            const volumeIds = this.volumes.map(v => v.VolumeId);
             
-            const assumptions = coolEnabled ? {
-                CoolDataPercentage: coolPercentage,
-                CoolDataRetrievalPercentage: retrievalPercentage
-            } : null;
+            const requestBody = {
+                JobId: this.jobId,
+                VolumeIds: volumeIds,
+                CoolAccessEnabled: coolEnabled
+            };
+            
+            if (coolEnabled) {
+                requestBody.CoolDataPercentage = coolPercentage;
+                requestBody.CoolDataRetrievalPercentage = retrievalPercentage;
+            }
             
             const response = await apiClient.fetchJson('/hypothetical-cost/batch', {
                 method: 'POST',
-                body: JSON.stringify({
-                    Volumes: volumeRequests,
-                    Assumptions: assumptions
-                })
+                body: JSON.stringify(requestBody)
             });
             
             // Update volumes with hypothetical costs
