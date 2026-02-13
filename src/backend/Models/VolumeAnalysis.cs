@@ -311,7 +311,7 @@ public class HypotheticalCostResult
     /// <summary>
     /// Breakdown of cost components (capacity, throughput, cool storage, retrieval, etc.)
     /// </summary>
-    public List<CostComponentEstimate> CostComponents { get; set; } = new();
+    public HypotheticalCostComponents CostComponents { get; set; } = new();
     
     /// <summary>
     /// Whether cool access is enabled for this calculation
@@ -326,5 +326,18 @@ public class HypotheticalCostResult
     /// <summary>
     /// Additional notes about the calculation (minimums applied, assumptions used, etc.)
     /// </summary>
-    public string CalculationNotes { get; set; } = string.Empty;
+    public List<string> CalculationNotes { get; set; } = new();
+}
+
+/// <summary>
+/// Cost components for hypothetical ANF Flexible calculations
+/// </summary>
+public class HypotheticalCostComponents
+{
+    public double CapacityCost { get; set; }
+    public double HotCapacityCost { get; set; }
+    public double CoolCapacityCost { get; set; }
+    public double ThroughputCost { get; set; }
+    public double TieringCost { get; set; }
+    public double RetrievalCost { get; set; }
 }

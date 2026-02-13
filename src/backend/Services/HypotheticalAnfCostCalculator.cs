@@ -48,7 +48,7 @@ public class HypotheticalAnfCostCalculator
             var pricing = await _pricesClient.GetAnfPricingAsync(region, "Flexible");
             if (!pricing.Any())
             {
-                result.CalculationNotes = $"No ANF Flexible pricing available for {region}";
+                result.CalculationNotes.Add($"No ANF Flexible pricing available for {region}");
                 result.TotalMonthlyCost = 0;
                 return result;
             }
@@ -63,7 +63,12 @@ public class HypotheticalAnfCostCalculator
             await CalculateThroughputCostAsync(requiredThroughputMiBps, pricing, result);
 
             // Sum total cost
-            result.TotalMonthlyCost = result.CostComponents.Sum(c => c.EstimatedCost);
+            result.TotalMonthlyCost = result.CostComponents.CapacityCost + 
+                                      result.CostComponents.HotCapacityCost + 
+                                      result.CostComponents.CoolCapacityCost + 
+                                      result.CostComponents.ThroughputCost + 
+                                      result.CostComponents.TieringCost + 
+                                      result.CostComponents.RetrievalCost;
 
             _logger.LogInformation("Calculated hypothetical ANF Flexible cost: ${Cost:F2} for {Capacity:F2} GiB, {Throughput:F2} MiB/s, Cool={Cool}",
                 result.TotalMonthlyCost, adjustedCapacity, requiredThroughputMiBps, coolAccessEnabled);
@@ -71,7 +76,7 @@ public class HypotheticalAnfCostCalculator
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to calculate hypothetical ANF Flexible cost");
-            result.CalculationNotes = $"Calculation error: {ex.Message}";
+            result.CalculationNotes.Add($"Calculation error: {ex.Message}");
             result.TotalMonthlyCost = 0;
         }
 
@@ -87,7 +92,7 @@ public class HypotheticalAnfCostCalculator
         
         if (requestedCapacity < minCapacity)
         {
-            result.CalculationNotes += $"Applied minimum capacity: {minCapacity:N0} GiB (requested: {requestedCapacity:N2} GiB). ";
+            result.CalculationNotes.Add($"Applied minimum capacity: {minCapacity:N0} GiB (requested: {requestedCapacity:N2} GiB)");
             return minCapacity;
         }
 
@@ -114,7 +119,7 @@ public class HypotheticalAnfCostCalculator
 
         if (capacityPrice == null)
         {
-            result.CalculationNotes += "Capacity pricing not found. ";
+            result.CalculationNotes.Add("Capacity pricing not found");
             return;
         }
 
@@ -122,19 +127,9 @@ public class HypotheticalAnfCostCalculator
         {
             // Simple capacity cost (all hot tier)
             var monthlyCost = capacityGiB * capacityPrice.RetailPrice * 730; // 730 hours/month average
-
-            result.CostComponents.Add(new CostComponentEstimate
-            {
-                ComponentType = "storage",
-                Description = $"Flexible capacity ({capacityGiB:N2} GiB)",
-                Quantity = capacityGiB,
-                Unit = "GiB",
-                UnitPrice = capacityPrice.RetailPrice,
-                EstimatedCost = monthlyCost,
-                DataSource = "Azure Retail Prices API"
-            });
-
-            result.CalculationNotes += $"Included throughput: 128 MiB/s base. ";
+            result.CostComponents.CapacityCost = monthlyCost;
+            result.CalculationNotes.Add($"Capacity: {capacityGiB:N2} GiB at ${capacityPrice.RetailPrice:F6}/GiB/hour");
+            result.CalculationNotes.Add("Included throughput: 128 MiB/s base");
         }
         else
         {
@@ -170,16 +165,7 @@ public class HypotheticalAnfCostCalculator
         if (hotCapacityPrice != null)
         {
             var hotCost = hotDataGiB * hotCapacityPrice.RetailPrice * 730;
-            result.CostComponents.Add(new CostComponentEstimate
-            {
-                ComponentType = "storage_hot",
-                Description = $"Hot tier capacity ({hotDataGiB:N2} GiB, {100 - assumptions.CoolDataPercentage:N0}% of total)",
-                Quantity = hotDataGiB,
-                Unit = "GiB",
-                UnitPrice = hotCapacityPrice.RetailPrice,
-                EstimatedCost = hotCost,
-                DataSource = "Azure Retail Prices API"
-            });
+            result.CostComponents.HotCapacityCost = hotCost;
         }
 
         // Cool tier capacity cost (significantly lower)
@@ -190,16 +176,7 @@ public class HypotheticalAnfCostCalculator
         if (coolCapacityPrice != null && coolDataGiB > 0)
         {
             var coolCost = coolDataGiB * coolCapacityPrice.RetailPrice * 730;
-            result.CostComponents.Add(new CostComponentEstimate
-            {
-                ComponentType = "storage_cool",
-                Description = $"Cool tier capacity ({coolDataGiB:N2} GiB, {assumptions.CoolDataPercentage:N0}% of total)",
-                Quantity = coolDataGiB,
-                Unit = "GiB",
-                UnitPrice = coolCapacityPrice.RetailPrice,
-                EstimatedCost = coolCost,
-                DataSource = "Azure Retail Prices API"
-            });
+            result.CostComponents.CoolCapacityCost = coolCost;
         }
 
         // Data retrieval cost (cool → hot reads)
@@ -212,20 +189,10 @@ public class HypotheticalAnfCostCalculator
         {
             double retrievedGiB = coolDataGiB * (assumptions.CoolDataRetrievalPercentage / 100.0);
             var retrievalCost = retrievedGiB * retrievalPrice.RetailPrice;
-
-            result.CostComponents.Add(new CostComponentEstimate
-            {
-                ComponentType = "cool_retrieval",
-                Description = $"Cool data retrieval ({retrievedGiB:N2} GiB, {assumptions.CoolDataRetrievalPercentage:N0}% of cool data)",
-                Quantity = retrievedGiB,
-                Unit = "GiB",
-                UnitPrice = retrievalPrice.RetailPrice,
-                EstimatedCost = retrievalCost,
-                DataSource = "Azure Retail Prices API"
-            });
+            result.CostComponents.RetrievalCost = retrievalCost;
         }
 
-        result.CalculationNotes += $"Cool assumptions: {assumptions.CoolDataPercentage:N0}% cool data, {assumptions.CoolDataRetrievalPercentage:N0}% retrieval. ";
+        result.CalculationNotes.Add($"Cool assumptions: {assumptions.CoolDataPercentage:N0}% cool data, {assumptions.CoolDataRetrievalPercentage:N0}% retrieval");
 
         await Task.CompletedTask;
     }
@@ -243,7 +210,7 @@ public class HypotheticalAnfCostCalculator
 
         if (requiredThroughputMiBps <= baseThroughput)
         {
-            result.CalculationNotes += $"Required throughput ({requiredThroughputMiBps:N2} MiB/s) within base 128 MiB/s (no additional charge). ";
+            result.CalculationNotes.Add($"Required throughput ({requiredThroughputMiBps:N2} MiB/s) within base 128 MiB/s (no additional charge)");
             return;
         }
 
@@ -257,23 +224,12 @@ public class HypotheticalAnfCostCalculator
         if (throughputPrice != null)
         {
             var throughputCost = additionalThroughput * throughputPrice.RetailPrice * 730; // 730 hours/month
-
-            result.CostComponents.Add(new CostComponentEstimate
-            {
-                ComponentType = "throughput",
-                Description = $"Additional throughput ({additionalThroughput:N2} MiB/s beyond 128 MiB/s base)",
-                Quantity = additionalThroughput,
-                Unit = "MiB/s",
-                UnitPrice = throughputPrice.RetailPrice,
-                EstimatedCost = throughputCost,
-                DataSource = "Azure Retail Prices API"
-            });
-
-            result.CalculationNotes += $"Additional throughput: {additionalThroughput:N2} MiB/s charged separately. ";
+            result.CostComponents.ThroughputCost = throughputCost;
+            result.CalculationNotes.Add($"Additional throughput: {additionalThroughput:N2} MiB/s beyond base at ${throughputPrice.RetailPrice:F6}/MiB/s/hour");
         }
         else
         {
-            result.CalculationNotes += "Throughput pricing not found (assuming included in capacity). ";
+            result.CalculationNotes.Add("Throughput pricing not found (assuming included in capacity)");
         }
 
         await Task.CompletedTask;
