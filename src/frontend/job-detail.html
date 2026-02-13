@@ -468,6 +468,31 @@
 
                 <div class="analysis-toolbar"></div>
                 
+                <!-- Hypothetical ANF Flexible Settings -->
+                <div class="hypothetical-settings-toolbar" style="background: #e8f5e9; padding: 15px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #4caf50;">
+                    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                        <strong style="color: #2e7d32;">Hypothetical ANF Flexible:</strong>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="hypothetical-cool-enabled" onchange="jobDetail.updateHypotheticalSettings()">
+                            <span>Enable Cool Access</span>
+                        </label>
+                        <div id="hypothetical-cool-inputs" style="display: none; gap: 15px; flex-wrap: wrap;">
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <span>Cool Data %:</span>
+                                <input type="number" id="hypothetical-cool-percentage" min="0" max="100" step="1" value="80" 
+                                       style="width: 70px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <span>Retrieval %:</span>
+                                <input type="number" id="hypothetical-retrieval-percentage" min="0" max="100" step="1" value="15" 
+                                       style="width: 70px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </label>
+                        </div>
+                        <button class="btn" onclick="jobDetail.recalculateHypotheticalCosts()" 
+                                style="background-color: #4caf50; color: white; padding: 8px 16px;">↻ Recalculate</button>
+                    </div>
+                </div>
+                
                 <div id="bulkToolbar" class="bulk-toolbar">
                     <span id="selectedCount">0 selected</span>
                     <button class="btn" onclick="jobDetail.bulkExclude()">Exclude Selected</button>
