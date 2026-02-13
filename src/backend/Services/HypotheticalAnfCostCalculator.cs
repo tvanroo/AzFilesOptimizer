@@ -38,8 +38,8 @@ public class HypotheticalAnfCostCalculator
         var result = new HypotheticalCostResult
         {
             CoolAccessEnabled = coolAccessEnabled,
-            CostComponents = new List<CostComponentEstimate>(),
-            CalculationNotes = ""
+            CostComponents = new HypotheticalCostComponents(),
+            CalculationNotes = new List<string>()
         };
 
         try
@@ -261,6 +261,6 @@ public class HypotheticalAnfCostCalculator
         }
 
         // Fall back to global defaults
-        return await _assumptionsService.GetGlobalDefaultsAsync();
+        return await _assumptionsService.GetGlobalAssumptionsAsync();
     }
 }
