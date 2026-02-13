@@ -987,11 +987,12 @@ const jobDetail = {
             });
             
             // Update volumes with hypothetical costs
-            if (response && response.Results) {
-                response.Results.forEach(result => {
-                    const volume = this.volumes.find(v => v.VolumeId === result.VolumeId);
+            // Response is a dictionary with volumeId as key
+            if (response) {
+                Object.keys(response).forEach(volumeId => {
+                    const volume = this.volumes.find(v => v.VolumeId === volumeId);
                     if (volume) {
-                        volume.HypotheticalCost = result.Result;
+                        volume.HypotheticalCost = response[volumeId];
                     }
                 });
             }
