@@ -43,9 +43,10 @@ const jobDetail = {
         { key: 'Cost30Days', label: '30-Day Cost', sortable: true },
         { key: 'CostPerDay', label: 'Daily Cost', sortable: true },
         { key: 'CostSource', label: 'Cost Source', sortable: true },
+        { key: 'HypotheticalAnfFlexible', label: 'Hypothetical ANF Flexible', sortable: true },
         { key: 'MigrationStatus', label: 'Migration Status', sortable: true }
     ],
-    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','UsedCapacity','RequiredCapacityGiB','RequiredThroughputMiBps','AccessTier','Cost30Days','MigrationStatus'],
+    defaultVisibleVolumeColumns: ['select','VolumeType','VolumeName','StorageAccountName','ResourceGroup','CapacityGiB','UsedCapacity','RequiredCapacityGiB','RequiredThroughputMiBps','AccessTier','Cost30Days','HypotheticalAnfFlexible','MigrationStatus'],
     visibleVolumeColumns: null,
     volumeSortColumn: null,
     volumeSortDirection: 'asc',
@@ -565,6 +566,16 @@ const jobDetail = {
                 if (!cs) return v.CostStatus || 'Pending';
                 return cs.IsActual ? 'Actual' : 'Estimate';
             }
+            case 'HypotheticalAnfFlexible': {
+                const hc = v.HypotheticalCost;
+                if (!hc || typeof hc.TotalMonthlyCost !== 'number') return '-';
+                const rawValue = hc.TotalMonthlyCost;
+                const displayValue = `$${rawValue.toFixed(2)}`;
+                const fullPrecision = `$${rawValue.toFixed(8)}`;
+                const coolIndicator = hc.CoolAccessEnabled ? ' <span style="color: #4a9eff; font-size: 0.8em;" title="Cool access enabled">❄️</span>' : '';
+                const tooltip = `Full precision: ${fullPrecision} (Hypothetical ANF Flexible)`;
+                return `<span style="color: #666; font-style: italic;" title="${tooltip}">${displayValue}${coolIndicator}</span>`;
+            }
             case 'MigrationStatus':
                 return v.UserAnnotations?.MigrationStatus || 'Candidate';
             default:
@@ -928,6 +939,70 @@ const jobDetail = {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    },
+    
+    // Hypothetical ANF Flexible Cost Functions
+    updateHypotheticalSettings() {
+        const coolEnabled = document.getElementById('hypothetical-cool-enabled').checked;
+        const coolInputs = document.getElementById('hypothetical-cool-inputs');
+        
+        if (coolEnabled) {
+            coolInputs.style.display = 'flex';
+        } else {
+            coolInputs.style.display = 'none';
+        }
+    },
+    
+    async recalculateHypotheticalCosts() {
+        const coolEnabled = document.getElementById('hypothetical-cool-enabled').checked;
+        const coolPercentage = parseFloat(document.getElementById('hypothetical-cool-percentage').value) || 80;
+        const retrievalPercentage = parseFloat(document.getElementById('hypothetical-retrieval-percentage').value) || 15;
+        
+        if (coolPercentage < 0 || coolPercentage > 100 || retrievalPercentage < 0 || retrievalPercentage > 100) {
+            Toast.error('Percentages must be between 0 and 100');
+            return;
+        }
+        
+        try {
+            Toast.info('Calculating hypothetical costs...');
+            
+            // Prepare batch request with all volumes
+            const volumeRequests = this.volumes.map(v => ({
+                VolumeId: v.VolumeId,
+                RequiredCapacityGiB: v.RequiredCapacityGiB,
+                RequiredThroughputMiBps: v.RequiredThroughputMiBps
+            }));
+            
+            const assumptions = coolEnabled ? {
+                CoolDataPercentage: coolPercentage,
+                CoolDataRetrievalPercentage: retrievalPercentage
+            } : null;
+            
+            const response = await apiClient.fetchJson('/hypothetical-cost/batch', {
+                method: 'POST',
+                body: JSON.stringify({
+                    Volumes: volumeRequests,
+                    Assumptions: assumptions
+                })
+            });
+            
+            // Update volumes with hypothetical costs
+            if (response && response.Results) {
+                response.Results.forEach(result => {
+                    const volume = this.volumes.find(v => v.VolumeId === result.VolumeId);
+                    if (volume) {
+                        volume.HypotheticalCost = result.Result;
+                    }
+                });
+            }
+            
+            // Re-render the table
+            this.renderVolumeTable();
+            Toast.success('Hypothetical costs calculated successfully');
+        } catch (error) {
+            console.error('Error calculating hypothetical costs:', error);
+            Toast.error('Failed to calculate hypothetical costs: ' + error.message);
+        }
     },
     
     // Chat Functions

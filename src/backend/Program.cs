@@ -18,6 +18,12 @@ var host = new HostBuilder()
         services.AddScoped<AnfCostCalculator>();
         services.AddScoped<ManagedDiskCostCalculator>();
         services.AddScoped<AccurateCostEstimationService>();
+        services.AddScoped<HypotheticalAnfCostCalculator>();
+        services.AddScoped<CoolDataAssumptionsService>();
+        services.AddScoped<VolumeAnnotationService>(sp => 
+            new VolumeAnnotationService(
+                Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? string.Empty,
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<VolumeAnnotationService>>()));
     })
     .Build();
 

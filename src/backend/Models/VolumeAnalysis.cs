@@ -290,4 +290,41 @@ public class VolumeWithAnalysis
     /// /// Populated for detail views.
     /// </summary>
     public List<AnnotationHistoryEntry>? AnnotationHistory { get; set; }
+    
+    /// <summary>
+    /// Hypothetical cost if this volume was migrated to ANF Flexible Tier.
+    /// Used for "what-if" analysis across all volume types.
+    /// </summary>
+    public HypotheticalCostResult? HypotheticalAnfFlexibleCost { get; set; }
+}
+
+/// <summary>
+/// Result of hypothetical ANF Flexible Tier cost calculation
+/// </summary>
+public class HypotheticalCostResult
+{
+    /// <summary>
+    /// Total estimated monthly cost in USD
+    /// </summary>
+    public double TotalMonthlyCost { get; set; }
+    
+    /// <summary>
+    /// Breakdown of cost components (capacity, throughput, cool storage, retrieval, etc.)
+    /// </summary>
+    public List<CostComponentEstimate> CostComponents { get; set; } = new();
+    
+    /// <summary>
+    /// Whether cool access is enabled for this calculation
+    /// </summary>
+    public bool CoolAccessEnabled { get; set; }
+    
+    /// <summary>
+    /// Cool data assumptions applied (if cool access enabled)
+    /// </summary>
+    public CoolDataAssumptions? AppliedAssumptions { get; set; }
+    
+    /// <summary>
+    /// Additional notes about the calculation (minimums applied, assumptions used, etc.)
+    /// </summary>
+    public string CalculationNotes { get; set; } = string.Empty;
 }
