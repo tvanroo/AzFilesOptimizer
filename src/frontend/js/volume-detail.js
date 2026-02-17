@@ -598,6 +598,7 @@ const volumeDetailPage = {
                 });
             });
         }
+        }
 
         // Most recent consolidated user review (for convenience)
         if (user && (user.MigrationStatus || user.Notes)) {
