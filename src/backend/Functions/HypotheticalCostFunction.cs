@@ -245,11 +245,7 @@ public class HypotheticalCostFunction
             _logger.LogInformation("Batch calculation completed with {ResultCount} results out of {TotalVolumes} volumes", results.Count, validVolumeIds.Length);
             
             var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(results, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                WriteIndented = false
-            });
+            await response.WriteAsJsonAsync(results);
             return response;
         }
         catch (Exception ex)
