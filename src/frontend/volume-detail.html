@@ -508,13 +508,27 @@
                         </div>
                         
                         <div class="decision-field">
-                            <label for="capacity-override">Target Capacity (GiB) <small style="font-weight:normal;">(optional override)</small></label>
-                            <input type="number" id="capacity-override" placeholder="Leave empty for AI recommendation">
+                            <label for="capacity-override">
+                                Target Capacity (GiB)
+                                <span id="capacity-calculated-label" style="font-weight:normal; color: var(--text-secondary); font-size: 0.85em;"></span>
+                            </label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="number" id="capacity-override" style="flex: 1;">
+                                <button type="button" id="capacity-revert-btn" class="btn" style="display: none; padding: 0.4rem 0.6rem; font-size: 0.8rem; background: #f0f0f0; color: #666;" title="Revert to calculated value">↺</button>
+                            </div>
+                            <div id="capacity-status" style="font-size: 0.8rem; margin-top: 0.25rem;"></div>
                         </div>
                         
                         <div class="decision-field">
-                            <label for="throughput-override">Target Throughput (MiB/s) <small style="font-weight:normal;">(optional override)</small></label>
-                            <input type="number" id="throughput-override" placeholder="Leave empty for AI recommendation">
+                            <label for="throughput-override">
+                                Target Throughput (MiB/s)
+                                <span id="throughput-calculated-label" style="font-weight:normal; color: var(--text-secondary); font-size: 0.85em;"></span>
+                            </label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="number" id="throughput-override" style="flex: 1;">
+                                <button type="button" id="throughput-revert-btn" class="btn" style="display: none; padding: 0.4rem 0.6rem; font-size: 0.8rem; background: #f0f0f0; color: #666;" title="Revert to calculated value">↺</button>
+                            </div>
+                            <div id="throughput-status" style="font-size: 0.8rem; margin-top: 0.25rem;"></div>
                         </div>
                     </div>
                     
@@ -527,7 +541,7 @@
                 <div class="summary-grid">
                     <div class="summary-card">
                         <div class="summary-label">Migration Status</div>
-                        <div style="margin-top:0.25rem;">
+                        <div class="summary-value">
                             <span id="summary-migration-status" class="badge-status">Candidate</span>
                         </div>
                     </div>

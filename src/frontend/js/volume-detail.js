@@ -970,14 +970,27 @@ const volumeDetailPage = {
 
         // Auto-save on changes
         document.getElementById('status-select')?.addEventListener('change', () => this.scheduleAutoSave());
-        document.getElementById('capacity-override')?.addEventListener('input', () => this.scheduleAutoSave());
-        document.getElementById('throughput-override')?.addEventListener('input', () => this.scheduleAutoSave());
+        document.getElementById('capacity-override')?.addEventListener('input', () => {
+            this.updateCapacityOverrideState();
+            this.scheduleAutoSave();
+        });
+        document.getElementById('throughput-override')?.addEventListener('input', () => {
+            this.updateThroughputOverrideState();
+            this.scheduleAutoSave();
+        });
         document.getElementById('notes-input')?.addEventListener('input', () => this.scheduleAutoSave());
+
+        // Revert buttons
+        document.getElementById('capacity-revert-btn')?.addEventListener('click', () => this.revertCapacity());
+        document.getElementById('throughput-revert-btn')?.addEventListener('click', () => this.revertThroughput());
     },
 
     populateDecisionPanel(model) {
         const user = model.UserAnnotations || {};
-        const sizing = model.AiAnalysis?.CapacitySizing || {};
+
+        // Store calculated values from model (used in ANF cost calculations)
+        this.calculatedCapacityGiB = model.RequiredCapacityGiB;
+        this.calculatedThroughputMiBps = model.RequiredThroughputMiBps;
 
         // Set status
         const statusSelect = document.getElementById('status-select');
@@ -985,34 +998,157 @@ const volumeDetailPage = {
             statusSelect.value = user.MigrationStatus?.toString() || 'Candidate';
         }
 
-        // Set capacity override (check user annotations first, then sizing)
+        // Set capacity - show calculated value, indicate if overridden
         const capacityInput = document.getElementById('capacity-override');
+        const capacityLabel = document.getElementById('capacity-calculated-label');
+        const capacityStatus = document.getElementById('capacity-status');
+        const capacityRevertBtn = document.getElementById('capacity-revert-btn');
+        
         if (capacityInput) {
-            capacityInput.value = user.TargetCapacityGiB || '';
-            capacityInput.placeholder = sizing.RecommendedCapacityGiB 
-                ? `AI recommends: ${sizing.RecommendedCapacityGiB.toFixed(2)} GiB`
-                : 'Leave empty for AI recommendation';
-            capacityInput.title = sizing.RecommendedCapacityGiB 
-                ? `AI recommendation (full precision): ${sizing.RecommendedCapacityGiB.toFixed(8)} GiB`
-                : '';
+            const hasOverride = user.TargetCapacityGiB != null;
+            const calculatedValue = this.calculatedCapacityGiB;
+            
+            if (hasOverride) {
+                // Show override value
+                capacityInput.value = user.TargetCapacityGiB;
+            } else if (calculatedValue != null) {
+                // Show calculated value
+                capacityInput.value = Math.ceil(calculatedValue);
+            } else {
+                capacityInput.value = '';
+            }
+            
+            // Update label and status
+            if (capacityLabel) {
+                capacityLabel.textContent = calculatedValue != null ? `(calculated: ${Math.ceil(calculatedValue)} GiB)` : '';
+            }
+            if (capacityStatus) {
+                if (hasOverride && calculatedValue != null) {
+                    capacityStatus.innerHTML = '<span style="color: #ff9800;">⚠ Manual override</span>';
+                } else if (calculatedValue != null) {
+                    capacityStatus.innerHTML = '<span style="color: #4caf50;">✓ Using calculated value</span>';
+                } else {
+                    capacityStatus.innerHTML = '<span style="color: #999;">No calculated value available</span>';
+                }
+            }
+            if (capacityRevertBtn) {
+                capacityRevertBtn.style.display = hasOverride && calculatedValue != null ? 'inline-block' : 'none';
+            }
         }
 
-        // Set throughput override
+        // Set throughput - show calculated value, indicate if overridden
         const throughputInput = document.getElementById('throughput-override');
+        const throughputLabel = document.getElementById('throughput-calculated-label');
+        const throughputStatus = document.getElementById('throughput-status');
+        const throughputRevertBtn = document.getElementById('throughput-revert-btn');
+        
         if (throughputInput) {
-            throughputInput.value = user.TargetThroughputMiBps || '';
-            throughputInput.placeholder = sizing.RecommendedThroughputMiBps
-                ? `AI recommends: ${sizing.RecommendedThroughputMiBps.toFixed(1)} MiB/s`
-                : 'Leave empty for AI recommendation';
-            throughputInput.title = sizing.RecommendedThroughputMiBps
-                ? `AI recommendation (full precision): ${sizing.RecommendedThroughputMiBps.toFixed(8)} MiB/s`
-                : '';
+            const hasOverride = user.TargetThroughputMiBps != null;
+            const calculatedValue = this.calculatedThroughputMiBps;
+            
+            if (hasOverride) {
+                // Show override value
+                throughputInput.value = user.TargetThroughputMiBps;
+            } else if (calculatedValue != null) {
+                // Show calculated value (round to 1 decimal)
+                throughputInput.value = Math.round(calculatedValue * 10) / 10;
+            } else {
+                throughputInput.value = '';
+            }
+            
+            // Update label and status
+            if (throughputLabel) {
+                throughputLabel.textContent = calculatedValue != null ? `(calculated: ${(Math.round(calculatedValue * 10) / 10)} MiB/s)` : '';
+            }
+            if (throughputStatus) {
+                if (hasOverride && calculatedValue != null) {
+                    throughputStatus.innerHTML = '<span style="color: #ff9800;">⚠ Manual override</span>';
+                } else if (calculatedValue != null) {
+                    throughputStatus.innerHTML = '<span style="color: #4caf50;">✓ Using calculated value</span>';
+                } else {
+                    throughputStatus.innerHTML = '<span style="color: #999;">No calculated value available</span>';
+                }
+            }
+            if (throughputRevertBtn) {
+                throughputRevertBtn.style.display = hasOverride && calculatedValue != null ? 'inline-block' : 'none';
+            }
         }
 
         // Set notes
         const notesInput = document.getElementById('notes-input');
         if (notesInput) {
             notesInput.value = user.Notes || '';
+        }
+    },
+
+    updateCapacityOverrideState() {
+        const capacityInput = document.getElementById('capacity-override');
+        const capacityStatus = document.getElementById('capacity-status');
+        const capacityRevertBtn = document.getElementById('capacity-revert-btn');
+        
+        if (!capacityInput) return;
+        
+        const currentValue = capacityInput.value ? parseFloat(capacityInput.value) : null;
+        const calculatedValue = this.calculatedCapacityGiB;
+        const isOverridden = currentValue != null && calculatedValue != null && 
+                            Math.ceil(currentValue) !== Math.ceil(calculatedValue);
+        
+        if (capacityStatus) {
+            if (isOverridden) {
+                capacityStatus.innerHTML = '<span style="color: #ff9800;">⚠ Manual override</span>';
+            } else if (calculatedValue != null) {
+                capacityStatus.innerHTML = '<span style="color: #4caf50;">✓ Using calculated value</span>';
+            }
+        }
+        if (capacityRevertBtn) {
+            capacityRevertBtn.style.display = isOverridden ? 'inline-block' : 'none';
+        }
+    },
+
+    updateThroughputOverrideState() {
+        const throughputInput = document.getElementById('throughput-override');
+        const throughputStatus = document.getElementById('throughput-status');
+        const throughputRevertBtn = document.getElementById('throughput-revert-btn');
+        
+        if (!throughputInput) return;
+        
+        const currentValue = throughputInput.value ? parseFloat(throughputInput.value) : null;
+        const calculatedValue = this.calculatedThroughputMiBps;
+        const calcRounded = calculatedValue != null ? Math.round(calculatedValue * 10) / 10 : null;
+        const isOverridden = currentValue != null && calcRounded != null && 
+                            Math.abs(currentValue - calcRounded) > 0.05;
+        
+        if (throughputStatus) {
+            if (isOverridden) {
+                throughputStatus.innerHTML = '<span style="color: #ff9800;">⚠ Manual override</span>';
+            } else if (calculatedValue != null) {
+                throughputStatus.innerHTML = '<span style="color: #4caf50;">✓ Using calculated value</span>';
+            }
+        }
+        if (throughputRevertBtn) {
+            throughputRevertBtn.style.display = isOverridden ? 'inline-block' : 'none';
+        }
+    },
+
+    revertCapacity() {
+        const capacityInput = document.getElementById('capacity-override');
+        if (capacityInput && this.calculatedCapacityGiB != null) {
+            this.saveCurrentState();
+            capacityInput.value = Math.ceil(this.calculatedCapacityGiB);
+            this.updateCapacityOverrideState();
+            this.scheduleAutoSave();
+            Toast.info('Capacity reverted to calculated value');
+        }
+    },
+
+    revertThroughput() {
+        const throughputInput = document.getElementById('throughput-override');
+        if (throughputInput && this.calculatedThroughputMiBps != null) {
+            this.saveCurrentState();
+            throughputInput.value = Math.round(this.calculatedThroughputMiBps * 10) / 10;
+            this.updateThroughputOverrideState();
+            this.scheduleAutoSave();
+            Toast.info('Throughput reverted to calculated value');
         }
     },
 
@@ -1052,6 +1188,10 @@ const volumeDetailPage = {
         document.getElementById('throughput-override').value = state.throughput || '';
         document.getElementById('notes-input').value = state.notes || '';
         
+        // Update override state indicators
+        this.updateCapacityOverrideState();
+        this.updateThroughputOverrideState();
+        
         document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
         this.scheduleAutoSave();
         
@@ -1079,9 +1219,32 @@ const volumeDetailPage = {
             Notes: notes || null
         };
 
-        // Add custom fields for capacity/throughput overrides
-        if (capacity) updates.TargetCapacityGiB = parseFloat(capacity);
-        if (throughput) updates.TargetThroughputMiBps = parseFloat(throughput);
+        // Only save as override if value differs from calculated
+        // If value matches calculated, send null to clear the override
+        if (capacity) {
+            const capacityVal = parseFloat(capacity);
+            const calcCapacity = this.calculatedCapacityGiB;
+            if (calcCapacity != null && Math.ceil(capacityVal) === Math.ceil(calcCapacity)) {
+                updates.TargetCapacityGiB = null; // Clear override
+            } else {
+                updates.TargetCapacityGiB = capacityVal;
+            }
+        } else {
+            updates.TargetCapacityGiB = null;
+        }
+
+        if (throughput) {
+            const throughputVal = parseFloat(throughput);
+            const calcThroughput = this.calculatedThroughputMiBps;
+            const calcRounded = calcThroughput != null ? Math.round(calcThroughput * 10) / 10 : null;
+            if (calcRounded != null && Math.abs(throughputVal - calcRounded) < 0.05) {
+                updates.TargetThroughputMiBps = null; // Clear override
+            } else {
+                updates.TargetThroughputMiBps = throughputVal;
+            }
+        } else {
+            updates.TargetThroughputMiBps = null;
+        }
 
         try {
             const url = `${API_BASE_URL}/discovery/${this.jobId}/volumes/${this.volumeId}/annotations`;
