@@ -179,36 +179,43 @@ public class HypotheticalCostFunction
             {
                 tasks.Add(Task.Run(async () =>
                 {
-                    var volume = discoveryData.Volumes.FirstOrDefault(v => v.VolumeId == volumeId);
-                    if (volume == null)
+                    try
                     {
-                        _logger.LogWarning("Volume {VolumeId} not found in job {JobId}", volumeId, request.JobId);
-                        return;
+                        var volume = discoveryData.Volumes.FirstOrDefault(v => v.VolumeId == volumeId);
+                        if (volume == null)
+                        {
+                            _logger.LogWarning("Volume {VolumeId} not found in job {JobId}", volumeId, request.JobId);
+                            return;
+                        }
+
+                        // Extract required values from volume
+                        double requiredCapacity = volume.AiAnalysis?.CapacitySizing?.RecommendedCapacityGiB ?? GetDefaultCapacity(volume);
+                        double requiredThroughput = volume.AiAnalysis?.CapacitySizing?.RecommendedThroughputMiBps ?? GetDefaultThroughput(volume);
+                        string region = GetRegion(volume);
+
+                        if (string.IsNullOrEmpty(region))
+                        {
+                            _logger.LogWarning("Could not determine region for volume {VolumeId}", volumeId);
+                            return;
+                        }
+
+                        var result = await _calculator.CalculateFlexibleTierCostAsync(
+                            requiredCapacity,
+                            requiredThroughput,
+                            region,
+                            request.CoolAccessEnabled,
+                            assumptions,
+                            volumeId,
+                            request.JobId);
+
+                        lock (results)
+                        {
+                            results[volumeId] = result;
+                        }
                     }
-
-                    // Extract required values from volume
-                    double requiredCapacity = volume.AiAnalysis?.CapacitySizing?.RecommendedCapacityGiB ?? GetDefaultCapacity(volume);
-                    double requiredThroughput = volume.AiAnalysis?.CapacitySizing?.RecommendedThroughputMiBps ?? GetDefaultThroughput(volume);
-                    string region = GetRegion(volume);
-
-                    if (string.IsNullOrEmpty(region))
+                    catch (Exception taskEx)
                     {
-                        _logger.LogWarning("Could not determine region for volume {VolumeId}", volumeId);
-                        return;
-                    }
-
-                    var result = await _calculator.CalculateFlexibleTierCostAsync(
-                        requiredCapacity,
-                        requiredThroughput,
-                        region,
-                        request.CoolAccessEnabled,
-                        assumptions,
-                        volumeId,
-                        request.JobId);
-
-                    lock (results)
-                    {
-                        results[volumeId] = result;
+                        _logger.LogError(taskEx, "Error processing volume {VolumeId} in batch", volumeId);
                     }
                 }));
             }

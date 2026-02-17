@@ -1238,6 +1238,70 @@ const volumeDetailPage = {
             console.error('Error clearing volume assumptions:', error);
             Toast.error(error.message || 'Failed to clear volume assumptions');
         }
+    },
+    
+    async recalculateHypothetical() {
+        const coolEnabled = document.getElementById('volume-hypothetical-cool-enabled').checked;
+        const coolPercentage = parseFloat(document.getElementById('volume-hypothetical-cool-percentage').value) || 80;
+        const retrievalPercentage = parseFloat(document.getElementById('volume-hypothetical-retrieval-percentage').value) || 15;
+        
+        if (coolPercentage < 0 || coolPercentage > 100 || retrievalPercentage < 0 || retrievalPercentage > 100) {
+            Toast.error('Percentages must be between 0 and 100');
+            return;
+        }
+        
+        try {
+            Toast.info('Calculating hypothetical ANF cost...');
+            
+            const encodedVolumeId = encodeURIComponent(this.volumeId);
+            const requestBody = {
+                VolumeId: this.volumeId,
+                CoolAccessEnabled: coolEnabled
+            };
+            
+            if (coolEnabled) {
+                requestBody.CoolDataPercentage = coolPercentage;
+                requestBody.CoolDataRetrievalPercentage = retrievalPercentage;
+            }
+            
+            const response = await fetch(`${API_BASE_URL}/hypothetical-cost/${this.jobId}/${encodedVolumeId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(authManager.isSignedIn() ? {
+                        'Authorization': `Bearer ${await authManager.getAccessToken()}`
+                    } : {})
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to calculate hypothetical cost');
+            }
+            
+            const result = await response.json();
+            
+            // Update the hypothetical cost display
+            const totalCostEl = document.getElementById('hypothetical-total-cost');
+            const breakdownEl = document.getElementById('hypothetical-cost-breakdown');
+            
+            if (totalCostEl) {
+                const totalCost = result.TotalMonthlyCost || result.totalMonthlyCost || 0;
+                totalCostEl.textContent = `$${totalCost.toFixed(2)}`;
+            }
+            
+            if (breakdownEl && result.CostBreakdown) {
+                breakdownEl.innerHTML = Object.entries(result.CostBreakdown)
+                    .map(([key, value]) => `<div>${this.escapeHtml(key)}: <strong>$${value.toFixed(2)}</strong></div>`)
+                    .join('');
+            }
+            
+            Toast.success('Hypothetical cost calculated successfully');
+        } catch (error) {
+            console.error('Error calculating hypothetical cost:', error);
+            Toast.error(error.message || 'Failed to calculate hypothetical cost');
+        }
     }
 };
 
