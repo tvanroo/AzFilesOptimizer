@@ -149,6 +149,18 @@ public class HypotheticalCostFunction
                 return badRequest;
             }
 
+            _logger.LogInformation("Processing batch hypothetical cost calculation for JobId={JobId}, VolumeCount={Count}, CoolAccess={Cool}", 
+                request.JobId, request.VolumeIds.Length, request.CoolAccessEnabled);
+            
+            // Filter out empty volume IDs
+            var validVolumeIds = request.VolumeIds.Where(id => !string.IsNullOrEmpty(id)).ToArray();
+            if (validVolumeIds.Length == 0)
+            {
+                var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequest.WriteStringAsync("No valid VolumeIds provided");
+                return badRequest;
+            }
+
             // Load discovery data for the job
             var discoveryData = await _annotationService.GetDiscoveryDataAsync(request.JobId);
             if (discoveryData == null)
@@ -175,7 +187,7 @@ public class HypotheticalCostFunction
             var results = new Dictionary<string, HypotheticalCostResult>();
             var tasks = new List<Task>();
 
-            foreach (var volumeId in request.VolumeIds)
+            foreach (var volumeId in validVolumeIds)
             {
                 tasks.Add(Task.Run(async () =>
                 {
@@ -220,10 +232,24 @@ public class HypotheticalCostFunction
                 }));
             }
 
-            await Task.WhenAll(tasks);
+            try
+            {
+                await Task.WhenAll(tasks);
+            }
+            catch (Exception taskException)
+            {
+                _logger.LogError(taskException, "Error in batch task execution");
+                // Don't fail entirely - return partial results
+            }
 
+            _logger.LogInformation("Batch calculation completed with {ResultCount} results out of {TotalVolumes} volumes", results.Count, validVolumeIds.Length);
+            
             var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(results);
+            await response.WriteAsJsonAsync(results, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                WriteIndented = false
+            });
             return response;
         }
         catch (Exception ex)
