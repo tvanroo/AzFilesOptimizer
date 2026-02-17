@@ -16,14 +16,11 @@ var host = new HostBuilder()
         // Register memory cache for pricing data
         services.AddMemoryCache();
         
-        // Register Azure Table Storage client
+        // Register Azure Table Storage client (required by CoolDataAssumptionsService)
         services.AddSingleton(sp => new TableServiceClient(storageConnectionString));
         
-        // Register DiscoveredResourceStorageService
-        services.AddScoped<DiscoveredResourceStorageService>(sp =>
-            new DiscoveredResourceStorageService(
-                storageConnectionString,
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DiscoveredResourceStorageService>>()));
+        // Register DiscoveredResourceStorageService (required by CoolDataAssumptionsService)
+        services.AddScoped(sp => new DiscoveredResourceStorageService(storageConnectionString));
         
         // Register cost calculation services
         services.AddScoped<AzureRetailPricesClient>();
